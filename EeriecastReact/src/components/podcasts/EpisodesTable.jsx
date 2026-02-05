@@ -1,0 +1,165 @@
+// filepath: src/components/podcasts/EpisodesTable.jsx
+import { useMemo } from 'react';
+import PropTypes from 'prop-types';
+import { Button } from '@/components/ui/button';
+import { Heart, Play, Plus, Trash2 } from 'lucide-react';
+import { useUser } from '@/context/UserContext.jsx';
+import { UserLibrary } from '@/api/entities';
+import { useAuthModal } from '@/context/AuthModalContext.jsx';
+import { formatDate } from '@/lib/utils';
+
+
+function formatDuration(secondsOrString) {
+  if (!secondsOrString && secondsOrString !== 0) return '';
+  if (typeof secondsOrString === 'string') {
+    // if already looks like 00:00:00 or 00:00, return
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(secondsOrString)) return secondsOrString;
+    const num = Number(secondsOrString);
+    if (!Number.isFinite(num)) return secondsOrString;
+    secondsOrString = num;
+  }
+  const total = Math.max(0, Math.floor(secondsOrString));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+export default function EpisodesTable({
+  episodes,
+  show,
+  onPlay,
+  onAddToPlaylist,
+  onRemoveFromPlaylist, // new optional handler
+  removingEpisodeId, // id currently being removed
+  className = '',
+}) {
+  const { favoriteEpisodeIds, user, refreshFavorites, isAuthenticated, isPremium } = useUser();
+  const { openAuth } = useAuthModal();
+
+  const rows = useMemo(() => Array.isArray(episodes) ? episodes : [], [episodes]);
+
+  const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
+  const getShowName = (ep) => ep?.podcast?.title || ep?.podcast?.name || show?.title || show?.name || '';
+
+  const toggleFavorite = async (ep) => {
+    const userId = user?.id || user?.user?.id || user?.pk;
+    if (!userId || !isAuthenticated) {
+      openAuth('login');
+      return;
+    }
+
+    const isFavorited = favoriteEpisodeIds.has(ep.id);
+
+    try {
+      if (isFavorited) {
+        // Remove from favorites
+        await UserLibrary.removeFavorite('episode', ep.id);
+      } else {
+        // Add to favorites
+        await UserLibrary.addFavorite('episode', ep.id);
+      }
+      // Refresh favorites to update context
+      await refreshFavorites();
+    } catch (err) {
+      if (typeof console !== 'undefined') console.debug('episode favorite toggle failed', err);
+    }
+  };
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {rows.map((ep) => {
+        const fav = favoriteEpisodeIds.has(ep.id);
+        const isRemoving = onRemoveFromPlaylist && removingEpisodeId === ep.id;
+        const isGated = (!isPremium) && (ep?.is_premium || show?.is_exclusive);
+        return (
+          <div
+            key={ep.id || ep.slug || ep.title}
+            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg hover:bg-gray-800/50 transition-colors group"
+          >
+            <div className="flex items-start sm:items-center gap-4 flex-1 min-w-0">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
+                {getArtwork(ep) ? (
+                  <img src={getArtwork(ep)} alt={ep.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="text-2xl">🎧</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3
+                  className="text-white font-semibold text-base truncate mb-1 hover:text-blue-400 cursor-pointer"
+                  onClick={() => onPlay && onPlay(ep)}
+                >
+                  {ep.title}
+                </h3>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-400">
+                  <span className="text-purple-400 font-medium truncate max-w-[60%] sm:max-w-[40%]">{getShowName(ep)}</span>
+                  <span>•</span>
+                  <span>{formatDuration(ep.duration || ep.length_seconds)}</span>
+                  <span>•</span>
+                  <span>{formatDate(ep.created_date || ep.published_at || ep.release_date)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-gray-400 mt-3 sm:mt-0 w-full sm:w-auto justify-end">
+              {onRemoveFromPlaylist ? (
+                <button
+                  className={`p-2 transition-colors ${isRemoving ? 'text-gray-500 cursor-wait' : 'hover:text-white'}`}
+                  onClick={() => !isRemoving && onRemoveFromPlaylist && onRemoveFromPlaylist(ep)}
+                  title={isRemoving ? 'Removing...' : 'Remove from playlist'}
+                  disabled={isRemoving}
+                >
+                  {isRemoving ? (
+                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" />
+                    </svg>
+                  ) : (
+                    <Trash2 className="w-5 h-5" />
+                  )}
+                </button>
+              ) : (
+                <button
+                  className={`p-2 transition-colors ${isGated ? 'text-gray-600 cursor-not-allowed' : 'hover:text-white'}`}
+                  onClick={() => { if (!isGated && onAddToPlaylist) onAddToPlaylist(ep); }}
+                  title={isGated ? 'Premium members only' : 'Add to playlist'}
+                  disabled={isGated}
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              )}
+              <button
+                className={`p-2 transition-colors ${isGated ? 'text-gray-600 cursor-not-allowed' : 'hover:text-white'}`}
+                onClick={() => { if (!isGated) toggleFavorite(ep); }}
+                title={isGated ? 'Premium members only' : (fav ? 'Remove from favorites' : 'Add to favorites')}
+                disabled={isGated}
+              >
+                <Heart className={`w-5 h-5 ${fav ? 'text-red-500 fill-current' : ''}`} />
+              </button>
+              <Button
+                size="icon"
+                onClick={() => onPlay && onPlay(ep)}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white w-9 h-9 rounded-lg"
+              >
+                <Play className="w-4 h-4 fill-white ml-0.5" />
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+EpisodesTable.propTypes = {
+  episodes: PropTypes.array,
+  show: PropTypes.object,
+  onPlay: PropTypes.func,
+  onAddToPlaylist: PropTypes.func,
+  onRemoveFromPlaylist: PropTypes.func, // new prop type
+  removingEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  className: PropTypes.string,
+};

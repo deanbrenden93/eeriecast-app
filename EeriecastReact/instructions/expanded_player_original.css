@@ -1,0 +1,1886 @@
+/* player.css - Enhanced Audio Player System for EerieCast */
+/* Version 1.5 - Added swipe animations for track transitions */
+
+/* CSS Variables */
+:root {
+    --accent-primary: #ff0040;
+    --accent-purple: #9d00ff;
+    --accent-green: #1db954;
+    --text-primary: #ffffff;
+    --text-secondary: #b3b3b3;
+    --text-tertiary: #7a7a7a;
+    --bg-primary: #000000 !important;
+    --bg-secondary: #121212;
+    --bg-tertiary: #181818;
+    --bg-card: #282828;
+    --bg-hover: #3a3a3a;
+    --bg-elevated: #242424;
+    --border-color: #282828;
+}
+
+/* Icon System */
+.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    vertical-align: middle;
+}
+
+.icon svg {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+    stroke: currentColor;
+}
+
+/* Enhanced Expanded Player */
+.player-expanded {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg,
+    rgba(18, 18, 18, 0.98) 0%,
+    rgba(0, 0, 0, 0.98) 100%);
+    backdrop-filter: blur(40px) saturate(200%);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+}
+
+.player-expanded::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 300px;
+    background: radial-gradient(ellipse at center top,
+    rgba(255, 0, 64, 0.15) 0%,
+    transparent 70%);
+    pointer-events: none;
+}
+
+.player-expanded.active {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* UPDATED: Reduced header height by 50% */
+.player-expanded-header {
+    padding: 10px 20px; /* Reduced from 20px */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.05), transparent);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
+    z-index: 10;
+    flex-shrink: 0;
+    min-height: 40px; /* Added explicit height */
+}
+
+/* UPDATED: X button scaled down by 30% */
+.player-close {
+    width: 29px; /* Reduced from 42px (42 * 0.7) */
+    height: 29px; /* Reduced from 42px */
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 17px; /* Reduced from 24px */
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-close:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.1) rotate(90deg);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* NEW: Swipeable Track Container */
+.swipeable-track-container {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    touch-action: pan-y;
+}
+
+/* NEW: Track content wrapper for swipe animations */
+.track-content-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: none; /* Will be controlled by JS */
+}
+
+/* NEW: Individual track content states */
+.track-content {
+    position: absolute;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    transform: translateX(0);
+    transition: opacity 0.3s ease-out;
+    pointer-events: none;
+}
+
+.track-content.current {
+    position: relative;
+    opacity: 1;
+    pointer-events: all;
+}
+
+.track-content.next {
+    transform: translateX(100%);
+}
+
+.track-content.prev {
+    transform: translateX(-100%);
+}
+
+/* Removed swipe indicator dots - queue already shows position */
+
+/* Enhanced Cover Art */
+.player-cover-large {
+    width: 320px;
+    height: 320px;
+    max-width: 60vw;
+    max-height: 60vw;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    margin: 0 auto 30px;
+    box-shadow:
+            0 25px 80px rgba(0, 0, 0, 0.7),
+            0 10px 25px rgba(0, 0, 0, 0.5),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    background: var(--bg-card);
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+
+/* Cover image styles */
+.player-cover-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    transition: opacity 0.3s ease;
+}
+
+/* Like button overlay on album art */
+.player-like-overlay {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    z-index: 10;
+}
+
+/* FIXED: Add to playlist button centering */
+.player-playlist-overlay {
+    position: absolute;
+    top: 72px; /* Positioned below like button (16px + 44px + 12px gap) */
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px; /* Increased from 24px for better centering */
+    font-weight: 400; /* Changed from 300 to 400 for better rendering */
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    z-index: 10;
+    /* Fix text centering */
+    text-align: center;
+    padding: 0;
+}
+
+.player-playlist-overlay:hover {
+    background: rgba(0, 0, 0, 0.85);
+    transform: scale(1.1);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.player-playlist-overlay.active {
+    color: var(--accent-purple);
+    background: rgba(157, 0, 255, 0.2);
+    border-color: var(--accent-purple);
+}
+
+.player-like-overlay:hover {
+    background: rgba(0, 0, 0, 0.85);
+    transform: scale(1.1);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.player-like-overlay.liked {
+    color: var(--accent-primary);
+    background: rgba(255, 0, 64, 0.2);
+    border-color: var(--accent-primary);
+    animation: likeAnimation 0.4s ease;
+}
+
+.player-cover-gradient {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg,
+    var(--accent-primary) 0%,
+    var(--accent-purple) 50%,
+    #ff0040 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 120px;
+    color: rgba(255, 255, 255, 0.2);
+    position: relative;
+}
+
+.player-cover-gradient::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+/* Compact Player Content Layout */
+.player-expanded-content {
+    flex: 1;
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box; /* Include padding in width */
+    touch-action: pan-y pinch-zoom; /* Allow vertical scroll but detect horizontal swipes */
+}
+
+/* Visual swipe indicator for multiple tracks */
+.player-expanded-content::after {
+    content: '';
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 3px;
+    background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 20%,
+    rgba(255, 255, 255, 0.3) 80%,
+    transparent 100%);
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.player-expanded-content.swipeable::after {
+
+    animation: swipeHint 3s ease-in-out infinite;
+}
+
+@keyframes swipeHint {
+    0%, 100% { transform: translateX(-50%) scaleX(1); }
+    50% { transform: translateX(-50%) scaleX(1.2); }
+}
+
+/* Info Section with Better Typography */
+.player-info-large {
+    text-align: center;
+    margin-bottom: 20px;
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+}
+
+.player-show-name {
+    font-size: 18px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+/* FIXED: Episode title scrolling animation */
+.player-episode-title {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.5px;
+    color: var(--text-primary);
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+    /* Ensure no horizontal overflow */
+    max-width: 100%;
+    padding: 0 10px; /* Consistent padding for all titles */
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.player-episode-title.scrolling {
+    /* Create a mask to hide overflow with padding */
+    mask-image: linear-gradient(90deg,
+    transparent 0%,
+    black 10px,
+    black calc(100% - 10px),
+    transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg,
+    transparent 0%,
+    black 10px,
+    black calc(100% - 10px),
+    transparent 100%);
+}
+
+.player-episode-title.scrolling .title-text {
+    display: inline-block;
+    padding-right: 50px; /* Space between duplicated text */
+    padding-left: 10px; /* Start position offset */
+    animation: scrollText 20s linear infinite;
+    animation-delay: 2s; /* Pause before starting */
+    color: inherit; /* Ensure text color is inherited */
+}
+
+/* FIXED: Scroll animation direction - now scrolls left to reveal more text */
+@keyframes scrollText {
+    0%, 15% {
+        transform: translateX(0);
+    }
+    85%, 100% {
+        transform: translateX(-50%); /* Move left by 50% to show the second copy */
+    }
+}
+
+/* Compact Player Controls Section */
+.player-controls-section {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    position: relative;
+    overflow: visible; /* Ensure no clipping */
+    padding: 0 20px; /* Add some padding */
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+/* Episode Description - Centered Modal */
+.player-action-buttons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px; /* Reduced from 12px */
+    margin-bottom: 20px;
+}
+
+/* Network Ratings Styles */
+.rating-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid;
+}
+
+.rating-badge.rating-g {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.rating-badge.rating-pg {
+    background: rgba(234, 179, 8, 0.1);
+    color: #eab308;
+    border-color: rgba(234, 179, 8, 0.3);
+}
+
+.rating-badge.rating-pg-13,
+.rating-badge.rating-pg13 {
+    background: rgba(251, 146, 60, 0.1);
+    color: #fb923c;
+    border-color: rgba(251, 146, 60, 0.3);
+}
+
+.rating-badge.rating-r {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.rating-badge:hover {
+    transform: scale(1.05);
+    filter: brightness(1.2);
+}
+
+/* Ratings Popup */
+.ratings-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    z-index: 2004;
+}
+
+.ratings-popup.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.ratings-content {
+    background: rgba(24, 24, 24, 0.98);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    width: 90%;
+    max-width: 500px;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.ratings-popup.active .ratings-content {
+    transform: scale(1);
+}
+
+.ratings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ratings-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.ratings-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.ratings-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+.rating-display {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.rating-large {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.rating-description {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.content-warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.content-warning-bubble {
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+
+.content-warning-bubble:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* UPDATED: Renamed and styled episode description button */
+.episode-description-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.episode-description-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+}
+
+/* NEW: Download button */
+.episode-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.episode-download-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+}
+
+/* Sleep Timer Indicator */
+.sleep-timer-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(255, 0, 64, 0.1);
+    border: 1px solid rgba(255, 0, 64, 0.3);
+    border-radius: 20px;
+    color: var(--accent-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.sleep-timer-indicator:hover {
+    background: rgba(255, 0, 64, 0.15);
+    border-color: rgba(255, 0, 64, 0.5);
+    transform: scale(1.02);
+}
+
+.sleep-timer-remaining {
+    font-variant-numeric: tabular-nums;
+}
+
+/* More Options Button */
+.more-options-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.more-options-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.05);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.episode-description-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    z-index: 2002;
+}
+
+.episode-description-modal.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.episode-description {
+    background: rgba(24, 24, 24, 0.98);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.episode-description-modal.active .episode-description {
+    transform: scale(1);
+}
+
+.episode-description-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.episode-description-header h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.episode-description-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.episode-description-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+.episode-description-content {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+/* Additional Controls Popup */
+.additional-controls-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    z-index: 2003;
+}
+
+.additional-controls-popup.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.additional-controls-content {
+    background: rgba(24, 24, 24, 0.98);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 90%;
+    width: 400px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.additional-controls-popup.active .additional-controls-content {
+    transform: scale(1);
+}
+
+.additional-controls-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.additional-controls-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.additional-controls-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* UPDATED: Tighter controls for expanded view with seek buttons */
+.player-controls-large {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px; /* Reduced from 16px */
+    margin-bottom: 24px;
+}
+
+/* UPDATED: Smaller control buttons to make room */
+.player-control-large {
+    width: 40px; /* Reduced from 48px */
+    height: 40px; /* Reduced from 48px */
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 18px; /* Reduced from 20px */
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+/* NEW: Seek buttons styling */
+.player-control-large.seek-btn {
+    width: 36px; /* Slightly smaller */
+    height: 36px;
+    font-size: 16px;
+}
+
+.player-control-large.seek-btn .seek-text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+.player-control-large::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    transform: scale(0);
+    transition: transform 0.3s ease;
+}
+
+.player-control-large:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.player-control-large:active::before {
+    transform: scale(1);
+}
+
+.player-control-large.active {
+    color: var(--accent-primary);
+    background: rgba(255, 0, 64, 0.1);
+    border-color: var(--accent-primary);
+}
+
+.player-control-large.repeat-btn {
+    position: relative;
+    overflow: visible;
+}
+
+.player-control-large.repeat-btn.repeat-one::after {
+    content: '1';
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: var(--accent-primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(24, 24, 24, 0.98);
+    z-index: 1;
+}
+
+/* UPDATED: Adjusted play button size */
+.player-control-large.play-pause {
+    width: 64px; /* Reduced from 72px */
+    height: 64px; /* Reduced from 72px */
+    background: linear-gradient(135deg, #ffffff, #f0f0f0);
+    color: black;
+    font-size: 28px; /* Reduced from 32px */
+    box-shadow:
+            0 8px 32px rgba(0, 0, 0, 0.3),
+            0 2px 8px rgba(0, 0, 0, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    border: none;
+}
+
+.player-control-large.play-pause:hover {
+    transform: scale(1.12);
+    box-shadow:
+            0 12px 40px rgba(0, 0, 0, 0.4),
+            0 4px 12px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    background: linear-gradient(135deg, #ffffff, #fafafa);
+}
+
+/* WAVEFORM STYLES - NEW INTEGRATION */
+.player-waveform-section {
+    width: 100%;
+    margin: 0 auto 20px;
+    position: relative; /* Ensure proper positioning context */
+    min-width: 0; /* Allow proper flexbox shrinking */
+    display: block; /* Ensure proper display */
+    box-sizing: border-box; /* Include any padding/border in width */
+}
+
+.waveform-container {
+    position: relative;
+    height: 40px; /* Sufficient height for click area */
+    margin: auto;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1; /* Ensure clickability */
+    /* Ensure full width and clickability */
+    width: 100%;
+    min-width: 0; /* Allow shrinking if needed */
+    overflow: visible;
+    /* Debug: background to see actual clickable area */
+    /* background: rgba(255, 255, 255, 0.02); */
+}
+
+.waveform-wave {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%; /* Ensure full width */
+    height: 20px;
+    background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 0, 64, 0.4) 5%,
+    #ff0040 50%,
+    rgba(255, 0, 64, 0.4) 95%,
+    transparent 100%
+    );
+    transform: translateY(-50%);
+    clip-path: polygon(
+            0% 50%, 1% 32%, 2% 78%, 3% 15%, 4% 91%, 5% 23%, 6% 67%, 7% 8%, 8% 85%, 9% 41%,
+            10% 72%, 11% 19%, 12% 93%, 13% 37%, 14% 61%, 15% 12%, 16% 88%, 17% 45%, 18% 73%, 19% 27%,
+            20% 82%, 21% 16%, 22% 69%, 23% 38%, 24% 84%, 25% 9%, 26% 76%, 27% 33%, 28% 65%, 29% 21%,
+            30% 89%, 31% 44%, 32% 58%, 33% 17%, 34% 95%, 35% 29%, 36% 71%, 37% 13%, 38% 87%, 39% 42%,
+            40% 74%, 41% 26%, 42% 83%, 43% 11%, 44% 77%, 45% 35%, 46% 63%, 47% 18%, 48% 92%, 49% 46%,
+            50% 59%, 51% 24%, 52% 81%, 53% 14%, 54% 86%, 55% 39%, 56% 66%, 57% 22%, 58% 79%, 59% 31%,
+            60% 68%, 61% 16%, 62% 94%, 63% 43%, 64% 57%, 65% 20%, 66% 75%, 67% 34%, 68% 64%, 69% 28%,
+            70% 85%, 71% 7%, 72% 90%, 73% 47%, 74% 53%, 75% 25%, 76% 80%, 77% 18%, 78% 89%, 79% 36%,
+            80% 62%, 81% 19%, 82% 96%, 83% 30%, 84% 70%, 85% 15%, 86% 91%, 87% 40%, 88% 60%, 89% 23%,
+            90% 77%, 91% 32%, 92% 68%, 93% 17%, 94% 83%, 95% 41%, 96% 59%, 97% 26%, 98% 74%, 99% 38%, 100% 50%
+    );
+    filter: drop-shadow(0 0 15px rgba(255, 0, 64, 0.6));
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+.waveform-wave::after {
+    content: '';
+    position: absolute;
+    top: -25px;
+    bottom: -25px;
+    left: 0;
+    right: 0;
+    background: inherit;
+    opacity: 0.3;
+    filter: blur(8px);
+    pointer-events: none; /* Ensure clicks pass through */
+}
+
+/* White version of waveform that gets revealed as progress */
+.waveform-played {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%; /* Ensure full width */
+    height: 20px;
+    background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 5%,
+    #ffffff 50%,
+    rgba(255, 255, 255, 0.4) 95%,
+    transparent 100%
+    );
+    transform: translateY(-50%);
+    clip-path: polygon(
+            0% 50%, 1% 32%, 2% 78%, 3% 15%, 4% 91%, 5% 23%, 6% 67%, 7% 8%, 8% 85%, 9% 41%,
+            10% 72%, 11% 19%, 12% 93%, 13% 37%, 14% 61%, 15% 12%, 16% 88%, 17% 45%, 18% 73%, 19% 27%,
+            20% 82%, 21% 16%, 22% 69%, 23% 38%, 24% 84%, 25% 9%, 26% 76%, 27% 33%, 28% 65%, 29% 21%,
+            30% 89%, 31% 44%, 32% 58%, 33% 17%, 34% 95%, 35% 29%, 36% 71%, 37% 13%, 38% 87%, 39% 42%,
+            40% 74%, 41% 26%, 42% 83%, 43% 11%, 44% 77%, 45% 35%, 46% 63%, 47% 18%, 48% 92%, 49% 46%,
+            50% 59%, 51% 24%, 52% 81%, 53% 14%, 54% 86%, 55% 39%, 56% 66%, 57% 22%, 58% 79%, 59% 31%,
+            60% 68%, 61% 16%, 62% 94%, 63% 43%, 64% 57%, 65% 20%, 66% 75%, 67% 34%, 68% 64%, 69% 28%,
+            70% 85%, 71% 7%, 72% 90%, 73% 47%, 74% 53%, 75% 25%, 76% 80%, 77% 18%, 78% 89%, 79% 36%,
+            80% 62%, 81% 19%, 82% 96%, 83% 30%, 84% 70%, 85% 15%, 86% 91%, 87% 40%, 88% 60%, 89% 23%,
+            90% 77%, 91% 32%, 92% 68%, 93% 17%, 94% 83%, 95% 41%, 96% 59%, 97% 26%, 98% 74%, 99% 38%, 100% 50%
+    );
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.3));
+    mask: linear-gradient(90deg, black 0%, black var(--progress, 0%), transparent var(--progress, 0%));
+    -webkit-mask: linear-gradient(90deg, black 0%, black var(--progress, 0%), transparent var(--progress, 0%));
+    pointer-events: none;
+    z-index: 2;
+}
+
+.waveform-played::after {
+    content: '';
+    position: absolute;
+    top: -25px;
+    bottom: -25px;
+    left: 0;
+    right: 0;
+    background: inherit;
+    opacity: 0.2;
+    filter: blur(8px);
+    pointer-events: none; /* Ensure clicks pass through */
+}
+
+/* Minimal progress indicator */
+.progress-indicator {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 3px;
+    height: 30px; /* Taller for more presence */
+    background: linear-gradient(to bottom,
+    transparent 0%,
+    rgba(255, 255, 255, 0.8) 20%,
+    #ffffff 50%,
+    rgba(255, 255, 255, 0.8) 80%,
+    transparent 100%);
+    transform: translate(-50%, -50%);
+    transition: left 0.1s ease-out;
+    pointer-events: none;
+    z-index: 3;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.6));
+    box-shadow: 0 0 20px rgba(255, 0, 64, 0.8);
+    padding: 0.8rem .07rem;
+}
+
+/* Pulsing glow effect for progress indicator */
+.progress-indicator::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 2px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: progressPulse 2s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+    0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
+    50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+/* Animation when playing */
+.waveform-wave.playing {
+    animation: waveFlow 3s ease-in-out infinite;
+}
+
+@keyframes waveFlow {
+    0%, 100% {
+        clip-path: polygon(0% 50%, 1% 32%, 2% 78%, 3% 15%, 4% 91%, 5% 23%, 6% 67%, 7% 8%, 8% 85%, 9% 41%, 10% 72%, 11% 19%, 12% 93%, 13% 37%, 14% 61%, 15% 12%, 16% 88%, 17% 45%, 18% 73%, 19% 27%, 20% 82%, 21% 16%, 22% 69%, 23% 38%, 24% 84%, 25% 9%, 26% 76%, 27% 33%, 28% 65%, 29% 21%, 30% 89%, 31% 44%, 32% 58%, 33% 17%, 34% 95%, 35% 29%, 36% 71%, 37% 13%, 38% 87%, 39% 42%, 40% 74%, 41% 26%, 42% 83%, 43% 11%, 44% 77%, 45% 35%, 46% 63%, 47% 18%, 48% 92%, 49% 46%, 50% 59%, 51% 24%, 52% 81%, 53% 14%, 54% 86%, 55% 39%, 56% 66%, 57% 22%, 58% 79%, 59% 31%, 60% 68%, 61% 16%, 62% 94%, 63% 43%, 64% 57%, 65% 20%, 66% 75%, 67% 34%, 68% 64%, 69% 28%, 70% 85%, 71% 7%, 72% 90%, 73% 47%, 74% 53%, 75% 25%, 76% 80%, 77% 18%, 78% 89%, 79% 36%, 80% 62%, 81% 19%, 82% 96%, 83% 30%, 84% 70%, 85% 15%, 86% 91%, 87% 40%, 88% 60%, 89% 23%, 90% 77%, 91% 32%, 92% 68%, 93% 17%, 94% 83%, 95% 41%, 96% 59%, 97% 26%, 98% 74%, 99% 38%, 100% 50%);
+    }
+    25% {
+        clip-path: polygon(0% 50%, 1% 67%, 2% 23%, 3% 84%, 4% 16%, 5% 72%, 6% 28%, 7% 91%, 8% 9%, 9% 58%, 10% 42%, 11% 76%, 12% 24%, 13% 89%, 14% 11%, 15% 63%, 16% 37%, 17% 85%, 18% 15%, 19% 69%, 20% 31%, 21% 93%, 22% 7%, 23% 54%, 24% 46%, 25% 78%, 26% 22%, 27% 87%, 28% 13%, 29% 65%, 30% 35%, 31% 81%, 32% 19%, 33% 95%, 34% 5%, 35% 59%, 36% 41%, 37% 83%, 38% 17%, 39% 71%, 40% 29%, 41% 88%, 42% 12%, 43% 66%, 44% 34%, 45% 79%, 46% 21%, 47% 92%, 48% 8%, 49% 57%, 50% 43%, 51% 75%, 52% 25%, 53% 86%, 54% 14%, 55% 62%, 56% 38%, 57% 80%, 58% 20%, 59% 94%, 60% 6%, 61% 68%, 62% 32%, 63% 74%, 64% 26%, 65% 90%, 66% 10%, 67% 56%, 68% 44%, 69% 82%, 70% 18%, 71% 96%, 72% 4%, 73% 61%, 74% 39%, 75% 77%, 76% 23%, 77% 85%, 78% 15%, 79% 70%, 80% 30%, 81% 87%, 82% 13%, 83% 64%, 84% 36%, 85% 91%, 86% 9%, 87% 55%, 88% 45%, 89% 79%, 90% 21%, 91% 93%, 92% 7%, 93% 58%, 94% 42%, 95% 76%, 96% 24%, 97% 84%, 98% 16%, 99% 67%, 100% 50%);
+    }
+    50% {
+        clip-path: polygon(0% 50%, 1% 81%, 2% 19%, 3% 68%, 4% 32%, 5% 89%, 6% 11%, 7% 56%, 8% 44%, 9% 75%, 10% 25%, 11% 93%, 12% 7%, 13% 64%, 14% 36%, 15% 82%, 16% 18%, 17% 71%, 18% 29%, 19% 87%, 20% 13%, 21% 59%, 22% 41%, 23% 78%, 24% 22%, 25% 95%, 26% 5%, 27% 62%, 28% 38%, 29% 84%, 30% 16%, 31% 73%, 32% 27%, 33% 91%, 34% 9%, 35% 57%, 36% 43%, 37% 76%, 38% 24%, 39% 88%, 40% 12%, 41% 65%, 42% 35%, 43% 83%, 44% 17%, 45% 70%, 46% 30%, 47% 86%, 48% 14%, 49% 61%, 50% 39%, 51% 79%, 52% 21%, 53% 92%, 54% 8%, 55% 58%, 56% 42%, 57% 74%, 58% 26%, 59% 90%, 60% 10%, 61% 63%, 62% 37%, 63% 77%, 64% 23%, 65% 85%, 66% 15%, 67% 69%, 68% 31%, 69% 94%, 70% 6%, 71% 54%, 72% 46%, 73% 80%, 74% 20%, 75% 87%, 76% 13%, 77% 66%, 78% 34%, 79% 83%, 80% 17%, 81% 72%, 82% 28%, 83% 89%, 84% 11%, 85% 60%, 86% 40%, 87% 78%, 88% 22%, 89% 96%, 90% 4%, 91% 55%, 92% 45%, 93% 81%, 94% 19%, 95% 68%, 96% 32%, 97% 75%, 98% 25%, 99% 82%, 100% 50%);
+    }
+    75% {
+        clip-path: polygon(0% 50%, 1% 43%, 2% 57%, 3% 87%, 4% 13%, 5% 64%, 6% 36%, 7% 79%, 8% 21%, 9% 92%, 10% 8%, 11% 56%, 12% 44%, 13% 83%, 14% 17%, 15% 68%, 16% 32%, 17% 91%, 18% 9%, 19% 58%, 20% 42%, 21% 75%, 22% 25%, 23% 86%, 24% 14%, 25% 61%, 26% 39%, 27% 94%, 28% 6%, 29% 52%, 30% 48%, 31% 77%, 32% 23%, 33% 88%, 34% 12%, 35% 65%, 36% 35%, 37% 80%, 38% 20%, 39% 96%, 40% 4%, 41% 59%, 42% 41%, 43% 74%, 44% 26%, 45% 85%, 46% 15%, 47% 67%, 48% 33%, 49% 81%, 50% 19%, 51% 93%, 52% 7%, 53% 55%, 54% 45%, 55% 78%, 56% 22%, 57% 89%, 58% 11%, 59% 62%, 60% 38%, 61% 84%, 62% 16%, 63% 70%, 64% 30%, 65% 95%, 66% 5%, 67% 53%, 68% 47%, 69% 76%, 70% 24%, 71% 87%, 72% 13%, 73% 66%, 74% 34%, 75% 82%, 76% 18%, 77% 73%, 78% 27%, 79% 90%, 80% 10%, 81% 57%, 82% 43%, 83% 79%, 84% 21%, 85% 86%, 86% 14%, 87% 63%, 88% 37%, 89% 91%, 90% 9%, 91% 54%, 92% 46%, 93% 81%, 94% 19%, 95% 68%, 96% 32%, 97% 77%, 98% 23%, 99% 64%, 100% 50%);
+    }
+}
+
+/* Additional Controls Popup Styles */
+.additional-controls-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.additional-controls-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.control-group-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 600;
+}
+
+.control-button {
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.control-button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.control-button.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
+    box-shadow: 0 4px 20px rgba(255, 0, 64, 0.4);
+}
+
+.speed-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.speed-button {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.speed-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.speed-display {
+    font-size: 14px;
+    min-width: 45px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Beautiful Queue Panel */
+.queue-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 380px;
+    height: 100%;
+    background: linear-gradient(to left, rgba(18, 18, 18, 0.98), rgba(24, 24, 24, 0.98));
+    backdrop-filter: blur(20px);
+    z-index: 2001;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+    box-shadow: -4px 0 30px rgba(0, 0, 0, 0.5);
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.queue-panel.active {
+    transform: translateX(0);
+}
+
+.queue-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: inherit;
+    z-index: 10;
+}
+
+.queue-title {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.queue-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.queue-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+.queue-list {
+    padding: 12px;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 12px;
+    margin: 0 12px 8px;
+    position: relative;
+}
+
+.queue-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 0, 64, 0.1));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    border-radius: 12px;
+}
+
+.queue-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateX(-4px);
+}
+
+.queue-item.active {
+    background: rgba(255, 0, 64, 0.1);
+    border: 1px solid rgba(255, 0, 64, 0.3);
+}
+
+.queue-item.active::before {
+    opacity: 1;
+}
+
+.queue-item-cover {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.8);
+    overflow: hidden;
+}
+
+.queue-item-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.queue-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.queue-item-title {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.queue-item-artist {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-item-duration {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.player-queue-button {
+    font-size: 18px;
+    color: var(--text-secondary);
+    padding: 8px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    background: none;
+    border: none;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-queue-button:hover {
+    color: var(--text-primary);
+}
+
+.queue-count {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: var(--accent-primary);
+    color: white;
+    font-size: 10px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+/* Comments Section Enhanced */
+.comments-section {
+    width: 100%;
+    max-width: 800px;
+    margin: 40px auto 0;
+    padding: 30px 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.comments-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.comments-title {
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.comments-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.comment-form {
+    margin-bottom: 28px;
+}
+
+.comment-input {
+    width: 100%;
+    padding: 16px 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    color: white;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 100px;
+    transition: all 0.2s ease;
+}
+
+.comment-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 4px rgba(255, 0, 64, 0.1);
+}
+
+.comment-submit {
+    margin-top: 12px;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+    border: none;
+    border-radius: 24px;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+}
+
+.comment-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 0, 64, 0.4);
+}
+
+.comment-submit:active {
+    transform: translateY(0);
+}
+
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.comment {
+    display: flex;
+    gap: 16px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 14px;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.comment:hover {
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.comment-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: white;
+}
+
+.comment-content {
+    flex: 1;
+}
+
+.comment-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.comment-author {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.comment-time {
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+
+.comment-text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.player-time-large {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 8px; /* Space before waveform */
+}
+
+.control-group-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+/* Volume icons */
+.volume-icon {
+    font-size: 14px;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Empty queue state */
+.empty-queue-message {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+}
+
+.empty-queue-message .icon {
+    font-size: 64px;
+    opacity: 0.3;
+    margin-bottom: 16px;
+}
+
+.empty-queue-message p {
+    font-size: 16px;
+    margin: 0;
+}
+
+/* NEW: Add to Playlist Popup */
+.add-to-playlist-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    z-index: 2005;
+}
+
+.add-to-playlist-popup.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.add-to-playlist-content {
+    background: rgba(24, 24, 24, 0.98);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.add-to-playlist-popup.active .add-to-playlist-content {
+    transform: scale(1);
+}
+
+.add-to-playlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.add-to-playlist-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.add-to-playlist-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.add-to-playlist-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
+}
+
+.playlist-selection-list {
+    margin-bottom: 20px;
+}
+
+.playlist-selection-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.playlist-selection-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.playlist-selection-item.selected {
+    background: rgba(157, 0, 255, 0.1);
+    border-color: rgba(157, 0, 255, 0.3);
+}
+
+.playlist-checkbox {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.playlist-checkbox svg {
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.2s ease;
+    width: 14px;
+    height: 14px;
+}
+
+.playlist-selection-item.selected .playlist-checkbox {
+    background: var(--accent-purple);
+    border-color: var(--accent-purple);
+}
+
+.playlist-selection-item.selected .playlist-checkbox svg {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.playlist-color-indicator {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 16px;
+    color: white;
+}
+
+.playlist-selection-info {
+    flex: 1;
+}
+
+.playlist-selection-name {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.playlist-selection-count {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.create-new-playlist-btn {
+    width: 100%;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.create-new-playlist-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--text-primary);
+}
+
+.create-new-playlist-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.add-to-playlist-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.add-to-playlist-cancel,
+.add-to-playlist-confirm {
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.add-to-playlist-cancel {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.add-to-playlist-cancel:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.add-to-playlist-confirm {
+    background: var(--accent-purple);
+    color: white;
+}
+
+.add-to-playlist-confirm:hover {
+    background: #8000d4;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(157, 0, 255, 0.3);
+}
+
+.add-to-playlist-confirm:disabled {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Scrollbar Styling for Modals */
+.episode-description::-webkit-scrollbar,
+.additional-controls-content::-webkit-scrollbar,
+.add-to-playlist-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.episode-description::-webkit-scrollbar-track,
+.additional-controls-content::-webkit-scrollbar-track,
+.add-to-playlist-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+
+.episode-description::-webkit-scrollbar-thumb,
+.additional-controls-content::-webkit-scrollbar-thumb,
+.add-to-playlist-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+.episode-description::-webkit-scrollbar-thumb:hover,
+.additional-controls-content::-webkit-scrollbar-thumb:hover,
+.add-to-playlist-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Prevent body scroll when modals are open */
+body.modal-open {
+    overflow: hidden;
+}
+
+/* Playing animation */
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.03); opacity: 0.95; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes likeAnimation {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .queue-panel {
+        width: 100%;
+    }
+
+    .player-cover-large {
+        width: 240px;
+        height: 240px;
+    }
+
+    .player-episode-title {
+        font-size: 22px;
+        padding: 0 8px; /* Slightly less padding on mobile */
+    }
+
+    .player-show-name {
+        font-size: 16px;
+    }
+
+    .player-control-large {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+
+    .player-control-large.seek-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    .player-control-large.play-pause {
+        width: 54px;
+        height: 54px;
+        font-size: 24px;
+    }
+
+    .player-like-overlay,
+    .player-playlist-overlay {
+        width: 40px;
+        height: 40px;
+        top: 12px;
+        right: 12px;
+    }
+
+    .player-playlist-overlay {
+        top: 58px;
+        /* Mobile centering fix */
+        font-size: 26px;
+        font-weight: 400;
+    }
+
+    .player-action-buttons {
+        gap: 8px;
+    }
+
+    .episode-description-toggle-btn,
+    .episode-download-btn,
+    .sleep-timer-indicator,
+    .rating-badge {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+
+    .more-options-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    .player-controls-section {
+        padding: 0 15px; /* Less padding on mobile */
+    }
+
+    .player-waveform-section {
+        padding: 0; /* Remove extra padding on mobile */
+    }
+
+    .waveform-container {
+        height: 40px;
+        margin: auto;
+    }
+}

@@ -1,0 +1,579 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { User as UserAPI, UserLibrary } from "@/api/entities";
+import { djangoClient } from '@/api/djangoClient';
+import PropTypes from 'prop-types';
+
+const UserContext = React.createContext();
+
+const UserProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [favoriteEpisodeIds, setFavoriteEpisodeIds] = useState(() => new Set());
+  const [favoritePodcastIds, setFavoritePodcastIds] = useState(() => new Set());
+  const [favoritePodcasts, setFavoritePodcasts] = useState(() => []);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [followedPodcastIds, setFollowedPodcastIds] = useState(() => new Set());
+  const [followingsLoading, setFollowingsLoading] = useState(false);
+  const [notifications, setNotifications] = useState(() => []);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const lastFavoritesForUserRef = useRef(null);
+  const lastFollowingsForUserRef = useRef(null);
+  const lastNotificationsForUserRef = useRef(null);
+
+  // Fetch favorites for a specific user id (stable, no dependency on user state)
+  const fetchFavoritesForUser = useCallback(async (uid) => {
+    if (!uid) {
+      setFavoriteEpisodeIds(new Set());
+      setFavoritePodcastIds(new Set());
+      setFavoritePodcasts([]);
+      return { episodes: new Set(), podcasts: new Set(), podcastsList: [] };
+    }
+    setFavoritesLoading(true);
+    try {
+      const summary = await UserLibrary.getFavoritesSummary();
+
+      // Normalize into an array of items shaped like { podcast, episodes, favorited_episode_ids?, all_episodes_favorited? }
+      let resultsArray = [];
+      if (Array.isArray(summary?.results)) {
+        resultsArray = summary.results;
+      } else if (Array.isArray(summary)) {
+        resultsArray = summary;
+      } else if (summary && typeof summary === 'object' && (summary.podcast || summary.episodes)) {
+        // API sometimes returns a single item (not wrapped in results)
+        resultsArray = [summary];
+      } else if (Array.isArray(summary?.favorites?.results)) {
+        resultsArray = summary.favorites.results;
+      } else if (Array.isArray(summary?.favorites)) {
+        resultsArray = summary.favorites;
+      }
+
+      // Legacy fallbacks
+      const legacyPodcastsList = Array.isArray(summary?.podcasts)
+        ? summary.podcasts
+        : Array.isArray(summary?.podcasts?.results)
+          ? summary.podcasts.results
+          : [];
+      const legacyFavoritesList = Array.isArray(summary?.favorites)
+        ? summary.favorites
+        : Array.isArray(summary?.favorites?.results)
+          ? summary.favorites.results
+          : [];
+
+      let episodeIdSet = new Set();
+      const podcastsDisplayList = [];
+      const podcastsAllFavdList = [];
+
+      if (resultsArray.length > 0) {
+        for (const item of resultsArray) {
+          if (!item) continue;
+          // Favorited episode ids per podcast (for Play All)
+          const favIds = Array.isArray(item.favorited_episode_ids) ? item.favorited_episode_ids : [];
+          for (const id of favIds) {
+            const n = Number(id);
+            if (Number.isFinite(n)) episodeIdSet.add(n);
+          }
+
+          // Build podcast object for UI (always include all items under results)
+          const basePodcast = item.podcast || {};
+          const podcastObj = { ...basePodcast };
+          // Ensure episodes exist for duration/count in UI - prefer the favorited subset if provided on item
+          if (Array.isArray(item.episodes) && item.episodes.length > 0) {
+            podcastObj.episodes = item.episodes;
+          } else if (Array.isArray(basePodcast?.episodes)) {
+            podcastObj.episodes = basePodcast.episodes;
+          } else if (!Array.isArray(podcastObj.episodes)) {
+            podcastObj.episodes = [];
+          }
+          // Keep a hint flag if provided
+          if (typeof item.all_episodes_favorited === 'boolean') {
+            podcastObj.all_episodes_favorited = item.all_episodes_favorited;
+          }
+          podcastsDisplayList.push(podcastObj);
+
+          // Track shows where all episodes are favorited (for id set semantics)
+          if (item.all_episodes_favorited && basePodcast) {
+            podcastsAllFavdList.push(podcastObj);
+          }
+        }
+      } else {
+        // Legacy mapping
+        for (const fav of legacyFavoritesList) {
+          if (!fav) continue;
+          const id = fav?.object_id || fav?.episode_id || fav?.episode?.id || fav?.id;
+          const n = Number(id);
+          if (Number.isFinite(n)) episodeIdSet.add(n);
+        }
+        // Display: legacy podcasts list if present
+        if (legacyPodcastsList.length > 0) {
+          for (const p of legacyPodcastsList) {
+            const pod = { ...(p?.podcast || p) };
+            if (!Array.isArray(pod.episodes)) pod.episodes = Array.isArray(p?.episodes) ? p.episodes : [];
+            podcastsDisplayList.push(pod);
+            podcastsAllFavdList.push(pod);
+          }
+        }
+      }
+
+      // Derive podcast ids set (for podcasts with all episodes favorited)
+      const podcastIdSet = new Set();
+      for (const p of podcastsAllFavdList) {
+        const id = p?.id || p?.podcast_id;
+        const n = Number(id);
+        if (Number.isFinite(n)) podcastIdSet.add(n);
+      }
+
+      setFavoriteEpisodeIds(episodeIdSet);
+      setFavoritePodcastIds(podcastIdSet);
+      // UI expects an array of podcast-like objects with .episodes
+      setFavoritePodcasts(podcastsDisplayList);
+
+      return { episodes: episodeIdSet, podcasts: podcastIdSet, podcastsList: podcastsDisplayList };
+    } catch (e) {
+      console.warn('Failed to fetch favorites summary', e);
+      setFavoriteEpisodeIds(new Set());
+      setFavoritePodcastIds(new Set());
+      setFavoritePodcasts([]);
+      return { episodes: new Set(), podcasts: new Set(), podcastsList: [] };
+    } finally {
+      setFavoritesLoading(false);
+    }
+  }, []);
+
+  // Fetch followed podcasts for a specific user id
+  const fetchFollowingsForUser = useCallback(async (uid) => {
+    if (!uid) {
+      setFollowedPodcastIds(new Set());
+      return new Set();
+    }
+    setFollowingsLoading(true);
+    try {
+      const response = await UserLibrary.getFollowedPodcasts();
+      const followedList = Array.isArray(response) ? response : (response?.results || []);
+      const podcastIds = new Set(
+        followedList
+          .map((item) => item?.podcast?.id || item?.podcast_id || item?.id)
+          .filter((v) => Number.isFinite(Number(v)))
+          .map((v) => Number(v))
+      );
+      setFollowedPodcastIds(podcastIds);
+      return podcastIds;
+    } catch {
+      setFollowedPodcastIds(new Set());
+      return new Set();
+    } finally {
+      setFollowingsLoading(false);
+    }
+  }, []);
+
+  // Fetch notifications for a specific user id
+  const fetchNotificationsForUser = useCallback(async (uid) => {
+    if (!uid) {
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      return [];
+    }
+    setNotificationsLoading(true);
+    try {
+      const resp = await UserLibrary.getNotifications();
+      const list = Array.isArray(resp) ? resp : (resp?.results || []);
+      setNotifications(list);
+      const unread = list.reduce((acc, n) => acc + (n && n.is_read === false ? 1 : 0), 0);
+      setUnreadNotificationCount(unread);
+      return list;
+    } catch {
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      return [];
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
+
+  // Fetch user (stable), only called on mount or explicit refresh
+  const fetchUser = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await UserAPI.me();
+      setUser(data);
+      return data;
+    } catch {
+      setUser(null); // not authenticated
+      setFavoriteEpisodeIds(new Set());
+      setFavoritePodcastIds(new Set());
+      setFavoritePodcasts([]);
+      setFollowedPodcastIds(new Set());
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const login = useCallback(
+    async (credentials) => {
+      setError(null);
+      try {
+        await UserAPI.login(credentials);
+        await fetchUser();
+        // favorites/followings/notifications will be fetched by the effects below (once per user id)
+        return true;
+      } catch (err) {
+        setError(err?.data?.message || err.message || "Login failed");
+        return false;
+      }
+    },
+    [fetchUser]
+  );
+
+  const register = useCallback(
+    async (payload) => {
+      setError(null);
+      try {
+        await UserAPI.register(payload);
+        // Auto login after registration (if backend returns token) else attempt login
+        if (!(await fetchUser())) {
+          await login({ email: payload.email, password: payload.password });
+        }
+        return true;
+      } catch (err) {
+        setError(err?.data?.message || err.message || "Registration failed");
+        return false;
+      }
+    },
+    [fetchUser, login]
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      // Remove token so future calls and refreshes are unauthenticated
+      if (djangoClient && typeof djangoClient.removeToken === 'function') {
+        djangoClient.removeToken();
+      }
+    } catch { /* no-op */ }
+
+    setUser(null);
+    setFavoriteEpisodeIds(new Set());
+    setFavoritePodcastIds(new Set());
+    setFavoritePodcasts([]);
+    setFollowedPodcastIds(new Set());
+    setNotifications([]);
+    setUnreadNotificationCount(0);
+    lastFavoritesForUserRef.current = null;
+    lastFollowingsForUserRef.current = null;
+    lastNotificationsForUserRef.current = null;
+  }, []);
+
+  // On initial mount, check current user once
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
+
+  // When user id becomes available, fetch favorites ONCE per user id
+  useEffect(() => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    if (uid && lastFavoritesForUserRef.current !== uid) {
+      lastFavoritesForUserRef.current = uid;
+      fetchFavoritesForUser(uid);
+    }
+  }, [user, fetchFavoritesForUser]);
+
+  // When user id becomes available, fetch followings ONCE per user id
+  useEffect(() => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    if (uid && lastFollowingsForUserRef.current !== uid) {
+      lastFollowingsForUserRef.current = uid;
+      fetchFollowingsForUser(uid);
+    }
+  }, [user, fetchFollowingsForUser]);
+
+  // When user id becomes available, fetch notifications ONCE per user id
+  useEffect(() => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    if (uid && lastNotificationsForUserRef.current !== uid) {
+      lastNotificationsForUserRef.current = uid;
+      fetchNotificationsForUser(uid);
+    }
+  }, [user, fetchNotificationsForUser]);
+
+  // Public method to force refresh favorites for current user
+  const refreshFavorites = useCallback(async () => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    return fetchFavoritesForUser(uid);
+  }, [user, fetchFavoritesForUser]);
+
+  // Public method to force refresh followings for current user
+  const refreshFollowings = useCallback(async () => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    return fetchFollowingsForUser(uid);
+  }, [user, fetchFollowingsForUser]);
+
+  // Public method to force refresh notifications for current user
+  const refreshNotifications = useCallback(async () => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    return fetchNotificationsForUser(uid);
+  }, [user, fetchNotificationsForUser]);
+
+  // Mark notification read (optimistic)
+  const markNotificationRead = useCallback(async (notificationId) => {
+    if (!notificationId) return null;
+    // Find existing notification
+    const idx = notifications.findIndex((n) => n && Number(n.id) === Number(notificationId));
+    if (idx === -1) {
+      try {
+        // Fall back to direct call (no optimistic state)
+        const updated = await UserLibrary.markNotificationRead(notificationId);
+        // If response includes updated notification, merge into list
+        if (updated && updated.id) {
+          setNotifications((prev) => {
+            const copy = Array.isArray(prev) ? [...prev] : [];
+            const i2 = copy.findIndex((n) => n && Number(n.id) === Number(updated.id));
+            if (i2 >= 0) copy[i2] = { ...copy[i2], ...updated };
+            else copy.unshift(updated);
+            return copy;
+          });
+          if (updated.is_read === true) setUnreadNotificationCount((c) => Math.max(0, c - 1));
+        }
+        return updated || null;
+      } catch {
+        return null;
+      }
+    }
+
+    const prevList = notifications;
+    const wasUnread = prevList[idx]?.is_read === false;
+    // Optimistic update
+    const nextList = [...prevList];
+    nextList[idx] = { ...nextList[idx], is_read: true };
+    setNotifications(nextList);
+    if (wasUnread) setUnreadNotificationCount((c) => Math.max(0, c - 1));
+
+    try {
+      const updated = await UserLibrary.markNotificationRead(notificationId);
+      if (updated && updated.id) {
+        setNotifications((curr) => {
+          const copy = Array.isArray(curr) ? [...curr] : [];
+          const i3 = copy.findIndex((n) => n && Number(n.id) === Number(updated.id));
+          if (i3 >= 0) copy[i3] = { ...copy[i3], ...updated };
+          return copy;
+        });
+      }
+      return updated || null;
+    } catch {
+      // Roll back on failure
+      setNotifications(prevList);
+      if (wasUnread) setUnreadNotificationCount((c) => c + 1);
+      return null;
+    }
+  }, [notifications]);
+
+  // Derived flag: whether the user has an active premium subscription
+  const isPremium = useMemo(() => {
+    const u = user;
+    if (!u) return false;
+    const flag = !!u.is_premium;
+    const exp = u.subscription_expires ? new Date(u.subscription_expires) : null;
+    const notExpired = !exp || exp.getTime() > Date.now();
+    return flag && notExpired;
+  }, [user]);
+
+  // --- Favorite management helpers (episodes & podcasts) ---
+  // Track inflight operations to avoid duplicate calls per (type,id)
+  const inflightFavoriteOpsRef = useRef(new Set());
+
+  const setFavorite = useCallback(async (contentType, contentId, shouldFavorite, { refresh = true } = {}) => {
+    // Validate inputs
+    if (!contentType || !contentId) return false;
+    const type = contentType === 'episode' ? 'episode' : contentType === 'podcast' ? 'podcast' : null;
+    if (!type) return false;
+    const idNum = Number(contentId);
+    if (!Number.isFinite(idNum)) return false;
+
+    const key = `${type}:${idNum}`;
+    if (inflightFavoriteOpsRef.current.has(key)) {
+      // Prevent overlapping operations
+      return false;
+    }
+    inflightFavoriteOpsRef.current.add(key);
+
+    // Optimistic update
+    let rollbackFn = () => {};
+    if (type === 'episode') {
+      setFavoriteEpisodeIds(prev => {
+        const next = new Set(prev);
+        const existed = next.has(idNum);
+        if (shouldFavorite && !existed) next.add(idNum);
+        if (!shouldFavorite && existed) next.delete(idNum);
+        // Prepare rollback
+        rollbackFn = () => setFavoriteEpisodeIds(existed ? prev : (shouldFavorite ? new Set([...prev]) : new Set([...prev, idNum])));
+        return next;
+      });
+    } else if (type === 'podcast') {
+      setFavoritePodcastIds(prev => {
+        const next = new Set(prev);
+        const existed = next.has(idNum);
+        if (shouldFavorite && !existed) next.add(idNum);
+        if (!shouldFavorite && existed) next.delete(idNum);
+        rollbackFn = () => setFavoritePodcastIds(existed ? prev : (shouldFavorite ? new Set([...prev]) : new Set([...prev, idNum])));
+        return next;
+      });
+    }
+
+    try {
+      if (shouldFavorite) {
+        await UserLibrary.addFavorite(type, idNum);
+      } else {
+        await UserLibrary.removeFavorite(type, idNum);
+      }
+      if (refresh) {
+        // Refresh summary to sync derived lists (e.g., favoritePodcasts)
+        await refreshFavorites();
+      }
+      return true;
+    } catch {
+      // Roll back optimistic update on failure
+      rollbackFn();
+      return false;
+    } finally {
+      inflightFavoriteOpsRef.current.delete(key);
+    }
+  }, [refreshFavorites]);
+
+  const addFavorite = useCallback((contentType, contentId, opts) => setFavorite(contentType, contentId, true, opts), [setFavorite]);
+  const removeFavorite = useCallback((contentType, contentId, opts) => setFavorite(contentType, contentId, false, opts), [setFavorite]);
+
+  // Toggle favorite; if desiredState passed, acts like setFavorite
+  const toggleFavorite = useCallback(async (contentType, contentId, desiredState = null, opts) => {
+    const type = contentType === 'episode' ? 'episode' : contentType === 'podcast' ? 'podcast' : null;
+    if (!type) return false;
+    const idNum = Number(contentId);
+    if (!Number.isFinite(idNum)) return false;
+    const isFav = type === 'episode' ? favoriteEpisodeIds.has(idNum) : favoritePodcastIds.has(idNum);
+    const target = desiredState === null ? !isFav : !!desiredState;
+    return setFavorite(type, idNum, target, opts);
+  }, [favoriteEpisodeIds, favoritePodcastIds, setFavorite]);
+
+  // Convenience: unfavorite an object (episode or podcast) or a (type,id) pair
+  const unfavoriteItem = useCallback(async (target, maybeId = null) => {
+    // (1) If given a type string and id
+    if (typeof target === 'string') {
+      const type = target;
+      const id = Number(maybeId);
+      if (!['episode', 'podcast'].includes(type) || !Number.isFinite(id)) return false;
+      return removeFavorite(type, id);
+    }
+
+    // (2) If given an object try to infer
+    const obj = target || {};
+    const inferredId = Number(obj.id || obj.object_id || obj.episode_id || obj.podcast_id);
+    // Heuristics for type
+    let inferredType = null;
+    if (obj.object_type === 'episode' || obj.content_type === 'episode') inferredType = 'episode';
+    if (obj.object_type === 'podcast' || obj.content_type === 'podcast') inferredType = 'podcast';
+    if (!inferredType) {
+      if (Array.isArray(obj.episodes)) inferredType = 'podcast';
+      else if (typeof obj.podcast === 'number' || obj.audio_url) inferredType = 'episode';
+      else if (obj.total_episodes != null || (obj.slug && !obj.audio_url)) inferredType = 'podcast';
+    }
+
+    if (inferredType === 'episode') {
+      if (!Number.isFinite(inferredId)) return false;
+      return removeFavorite('episode', inferredId);
+    }
+
+    if (inferredType === 'podcast') {
+      // If the podcast is fully favorited, remove at podcast level; otherwise bulk remove favorited episodes
+      const allFav = obj.all_episodes_favorited === true;
+      if (allFav && Number.isFinite(inferredId)) {
+        return removeFavorite('podcast', inferredId);
+      }
+      // Bulk remove episodes from this group
+      const eps = Array.isArray(obj.episodes) ? obj.episodes : [];
+      if (eps.length === 0) return false;
+      for (const ep of eps) {
+        const eid = Number(ep?.id);
+        if (Number.isFinite(eid)) {
+          // Avoid N calls with refresh; refresh once at end
+          await setFavorite('episode', eid, false, { refresh: false });
+        }
+      }
+      await refreshFavorites();
+      return true;
+    }
+
+    return false;
+  }, [removeFavorite, setFavorite, refreshFavorites]);
+  // --- End favorite helpers ---
+
+  // Remove episode from a playlist helper
+  const removeEpisodeFromPlaylist = useCallback(async (playlistId, episodeId) => {
+    if (!Number.isFinite(Number(playlistId)) || !Number.isFinite(Number(episodeId))) return false;
+    try {
+      // Use Playlist entity service for consistency
+      const { Playlist } = await import('@/api/entities');
+      const pl = await Playlist.get(playlistId);
+      if (!pl) return false;
+      const current = Array.isArray(pl.episodes) ? pl.episodes : [];
+      if (!current.length) return false; // nothing to remove
+      const next = current.filter(id => Number(id) !== Number(episodeId));
+      if (next.length === current.length) return false; // id not found
+      await Playlist.update(playlistId, { episodes: next });
+      return true;
+    } catch (e) {
+      console.warn('Failed to remove episode from playlist', e);
+      return false;
+    }
+  }, []);
+
+  return (
+    <UserContext.Provider
+      value={{
+        user,
+        setUser,
+        loading,
+        error,
+        fetchUser,
+        login,
+        register,
+        logout,
+        isAuthenticated: !!user || !!djangoClient.getToken(),
+        isPremium,
+        // favorites
+        favoriteEpisodeIds,
+        favoritePodcastIds,
+        favoritePodcasts,
+        favoritesLoading,
+        refreshFavorites,
+        addFavorite,
+        removeFavorite,
+        toggleFavorite,
+        setFavorite, // direct setter if needed
+        unfavoriteItem,
+        // followings
+        followedPodcastIds,
+        followingsLoading,
+        refreshFollowings,
+        // notifications
+        notifications,
+        notificationsLoading,
+        unreadNotificationCount,
+        refreshNotifications,
+        markNotificationRead,
+        removeEpisodeFromPlaylist,
+      }}
+    >
+      {children}
+    </UserContext.Provider>
+  );
+};
+
+UserProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
+export { UserContext, UserProvider };
+
+export const useUser = () => React.useContext(UserContext);

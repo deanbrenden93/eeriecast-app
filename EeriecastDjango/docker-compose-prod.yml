@@ -1,0 +1,129 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:14
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: eeriecast
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: webtest123
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d eeriecast"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn EeriecastDjango.wsgi:application --bind 0.0.0.0:8000"
+    volumes:
+      - .:/app
+      - staticfiles_volume:/app/staticfiles
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.connect(('127.0.0.1', 8000))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
+      DEBUG: "False"
+      SECRET_KEY: "change-me-in-prod"
+      ALLOWED_HOSTS: "*"
+      DB_NAME: eeriecast
+      DB_USER: postgres
+      DB_PASSWORD: webtest123
+      DB_HOST: db
+      DB_PORT: 5432
+      REACT_URL: https://www.example.com
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+  celery_worker:
+    build: .
+    command: celery -A EeriecastDjango worker -l info
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
+      DEBUG: "False"
+      DB_NAME: eeriecast
+      DB_USER: postgres
+      DB_PASSWORD: webtest123
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+  celery_beat:
+    build: .
+    command: celery -A EeriecastDjango beat -l info
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
+      DEBUG: "False"
+      DB_NAME: eeriecast
+      DB_USER: postgres
+      DB_PASSWORD: webtest123
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+  nginx:
+    image: nginx:latest
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - staticfiles_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+
+  # This is the new service required for renewal
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - /var/www/certbot:/var/www/certbot:rw
+      - /etc/letsencrypt:/etc/letsencrypt:rw
+
+volumes:
+  postgres_data:
+  staticfiles_volume:
+  media_volume:

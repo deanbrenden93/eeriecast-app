@@ -1,0 +1,173 @@
+import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useUser } from '@/context/UserContext.jsx';
+import { Check } from 'lucide-react';
+
+export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
+  const { login, register, error, isAuthenticated, loading } = useUser();
+  const [tab, setTab] = useState(defaultTab);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState(null);
+
+  const FEATURES = [
+    'Favorites & Playlists',
+    'Listening History Sync',
+    'Follow Creators',
+    'Download Episodes',
+    'Exclusive Audiobooks & Ebooks',
+    'Members-only Shows',
+    'Listen to All Eeriecast Podcasts Ad-Free'
+  ];
+
+  useEffect(() => {
+    if (isAuthenticated && isOpen) onClose();
+  }, [isAuthenticated, isOpen, onClose]);
+
+  useEffect(() => { setTab(defaultTab); }, [defaultTab, isOpen]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setLocalError(null);
+    const success = await login(loginForm);
+    if (!success) setLocalError('Invalid credentials');
+    setSubmitting(false);
+    if (success) onClose();
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setLocalError(null);
+    if (registerForm.password !== registerForm.confirm_password) {
+      setLocalError('Passwords do not match');
+      setSubmitting(false);
+      return;
+    }
+    const success = await register(registerForm);
+    if (!success) setLocalError('Registration failed');
+    setSubmitting(false);
+    if (success) onClose();
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-[95vw] sm:max-w-[500px] md:max-w-[760px] bg-gradient-to-br from-black via-[#121316] to-[#1f2128] text-white border border-red-600/40 shadow-2xl shadow-red-900/40 p-0 overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="flex flex-col md:flex-row w-full">
+          {/* Left / Main Form Section */}
+          <div className="flex-1 p-4 sm:p-6 md:p-8">
+            <div className="flex flex-col items-center mb-4 sm:mb-6">
+              <img
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e37bc9c15_logo.png"
+                alt="EERIECAST"
+                className="h-8 sm:h-10 md:h-12 mb-2 sm:mb-3 invert opacity-90"
+              />
+              <div className="text-center space-y-1">
+                {tab === 'login' ? (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-semibold tracking-wide">Welcome Back</h2>
+                    <p className="text-xs sm:text-sm text-gray-400 px-2">Log in to continue your eerie listening journey.</p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-semibold tracking-wide">Create Your Account</h2>
+                    <p className="text-xs sm:text-sm text-gray-400 px-2">Sign up for members-only features like favorites, history, playlists, follows and downloads!</p>
+                  </>
+                )}
+              </div>
+            </div>
+            <Tabs value={tab} onValueChange={setTab} className="w-full">
+              <TabsList className="grid grid-cols-2 w-full mb-4 sm:mb-6 bg-[#2a2d36] text-gray-300">
+                <TabsTrigger value="login" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Login</TabsTrigger>
+                <TabsTrigger value="register" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Register</TabsTrigger>
+              </TabsList>
+              <TabsContent value="login">
+                <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
+                  <div>
+                    <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
+                    <Input type="email" required autoComplete="email" value={loginForm.email} onChange={e=>setLoginForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>
+                    <Input type="password" required autoComplete="current-password" value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                  </div>
+                  {(localError || error) && <p className="text-red-400 text-xs sm:text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{localError || error}</p>}
+                  <Button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base" disabled={submitting || loading}>{submitting ? 'Logging in...' : 'Login'}</Button>
+                  <p className="text-xs text-center text-gray-400">Don&apos;t have an account? <button type="button" onClick={()=>setTab('register')} className="text-red-400 hover:text-red-300 underline-offset-2 hover:underline">Create one free</button></p>
+                </form>
+              </TabsContent>
+              <TabsContent value="register">
+                <form onSubmit={handleRegister} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="md:col-span-2">
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Username</label>
+                      <Input required value={registerForm.username} onChange={e=>setRegisterForm(f=>({...f,username:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
+                      <Input type="email" required autoComplete="email" value={registerForm.email} onChange={e=>setRegisterForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>
+                      <Input type="password" required autoComplete="new-password" value={registerForm.password} onChange={e=>setRegisterForm(f=>({...f,password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Confirm Password</label>
+                      <Input type="password" required autoComplete="new-password" value={registerForm.confirm_password} onChange={e=>setRegisterForm(f=>({...f,confirm_password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                    </div>
+                  </div>
+                  {(localError || error) && <p className="text-red-400 text-xs sm:text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{localError || error}</p>}
+                  <Button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base" disabled={submitting || loading}>{submitting ? 'Creating...' : 'Create Account'}</Button>
+                  <p className="text-xs text-center text-gray-400">Already have an account? <button type="button" onClick={()=>setTab('login')} className="text-red-400 hover:text-red-300 underline-offset-2 hover:underline">Log in</button></p>
+                </form>
+              </TabsContent>
+            </Tabs>
+          </div>
+          {/* Right / Feature Panel (hidden on small screens) */}
+            <div className="hidden md:flex w-[240px] xl:w-[260px] flex-col justify-between bg-[#191b21] border-l border-gray-800/60 p-6 relative overflow-hidden">
+              <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/20 rounded-full blur-3xl" />
+              <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-600/40 to-transparent" />
+              <div>
+                {/* Pricing / Tagline */}
+                <div className="mb-8">
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-red-600/25 via-red-500/10 to-transparent rounded-lg blur-sm opacity-70 group-hover:opacity-100 transition" />
+                    <div className="relative rounded-lg border border-red-600/40 bg-[#201e22]/70 backdrop-blur-sm px-3 py-3 mt-3 text-center shadow-inner shadow-red-900/30">
+                      <p className="text-[10px] tracking-[0.25em] font-semibold uppercase text-red-300/90 mb-1">Endless Nightmares for only</p>
+                      <p className="text-xl font-extrabold leading-none text-white drop-shadow-sm">$7.99 <span className="text-[11px] font-medium text-gray-300">/mo</span></p>
+                    </div>
+                  </div>
+                  {/*<p className="mt-3 text-[11px] text-gray-400 leading-relaxed">*/}
+                  {/*  Unlock chilling exclusives, ad-free binges, offline downloads and a growing vault of members‑only shows. Cancel anytime.*/}
+                  {/*</p>*/}
+                </div>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-red-400 mb-4">Member Perks</h3>
+                <ul className="space-y-3">
+                  {FEATURES.map(f => (
+                    <li key={f} className="flex items-start gap-3 text-sm text-gray-300">
+                      <span className="mt-0.5 text-red-500"><Check className="w-4 h-4" /></span>{f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="mt-8 text-[11px] text-gray-500 leading-relaxed">
+                By continuing you agree to our <span className="text-gray-300">Terms</span> & <span className="text-gray-300">Privacy Policy</span>.
+              </div>
+            </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+AuthModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  defaultTab: PropTypes.string,
+};
