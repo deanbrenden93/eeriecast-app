@@ -142,13 +142,29 @@ export function useAudioPlayer({ onEnd } = {}) {
 
   const loadAndPlay = useCallback(async ({ podcast: p, episode: ep, resume }) => {
     const audio = audioRef.current;
-    if (!audio || !ep) return;
+    if (!audio || !ep) return false;
 
-    // Resolve audio URL first; if unavailable, do not update UI state
-    const url = getEpisodeAudioUrl(ep);
+    // Resolve audio URL first; if unavailable, try the history endpoint which
+    // uses a serializer that correctly returns audio_url.
+    let url = getEpisodeAudioUrl(ep);
+    if (!url && ep?.id) {
+      try {
+        const histResp = await UserLibrary.updateProgress(ep.id, {
+          progress: Math.floor(resume?.progress || 0),
+          duration: Math.floor(ep.duration || 0),
+          event: 'play',
+          source: 'web',
+          device_id: deviceId.current,
+        });
+        if (histResp?.episode_detail) {
+          url = getEpisodeAudioUrl(histResp.episode_detail);
+          if (url) ep = { ...ep, audio_url: url };
+        }
+      } catch { /* not authenticated or endpoint unavailable */ }
+    }
     if (!url) {
-      if (typeof console !== 'undefined') console.debug('No audio URL for episode', ep?.id || ep?.title || ep);
-      return;
+      console.warn('[Eeriecast] No audio URL for episode:', ep?.id, ep?.title);
+      return false;
     }
 
     try {
@@ -189,8 +205,10 @@ export function useAudioPlayer({ onEnd } = {}) {
         if (typeof console !== 'undefined') console.debug('autoplay blocked or play failed', e);
         // Leave paused; user interaction can trigger play
       }
+      return true;
     } catch (e) {
       if (typeof console !== 'undefined') console.debug('loadAndPlay failed', e);
+      return false;
     }
   }, [podcast]);
 

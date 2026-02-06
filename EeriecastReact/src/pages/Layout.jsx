@@ -10,6 +10,7 @@ import AuthModal from '@/components/auth/AuthModal.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 import { cn } from "@/lib/utils";
 import logo from '@/assets/logo.png';
+import { AnimatePresence, motion } from "framer-motion";
 
 // Bottom nav menu items configured here
 const menuItems = [
@@ -227,7 +228,10 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     </span>
                   )}
                 </button>
-                <NotificationsPopover open={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
+                {/* Notifications popover with enter/exit animation */}
+                <AnimatePresence>
+                  {isNotifOpen && <NotificationsPopover onClose={() => setIsNotifOpen(false)} />}
+                </AnimatePresence>
               </div>
               <div className="relative" ref={userMenuRef}>
                 <button 
@@ -243,7 +247,9 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   <User className="w-4 h-4 text-white" />
                 </button>
                 {isAuthenticated && (
-                  <UserMenu isOpen={isUserMenuOpen} onClose={() => setIsUserMenuOpen(false)} />
+                  <AnimatePresence>
+                    {isUserMenuOpen && <UserMenu isOpen={isUserMenuOpen} onClose={() => setIsUserMenuOpen(false)} />}
+                  </AnimatePresence>
                 )}
               </div>
             </div>
@@ -251,89 +257,90 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         </div>
       </header>
 
-      {/* Mobile overlay menu */}
-      {isMobileMenuOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-[4000] bg-[#0b0b0b]"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="flex h-full w-full flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
-              <Link
-                to={createPageUrl('Home')}
-                className="flex items-center"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <img
-                  src={logo}
-                  alt="EERIECAST"
-                  className="h-6 filter invert"
-                />
-              </Link>
-              <button
-                className="p-2 text-gray-300 hover:text-white"
-                aria-label="Close menu"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+      {/* Mobile overlay menu with enter/exit transition */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div
+            className="md:hidden fixed inset-0 z-[4000]"
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            {/* Backdrop */}
+            <motion.div
+              className="absolute inset-0 bg-[#0b0b0b]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            />
+            <motion.div
+              className="relative flex h-full w-full flex-col"
+              initial={{ x: -30, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -30, opacity: 0 }}
+              transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                <Link
+                  to={createPageUrl('Home')}
+                  className="flex items-center"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <img
+                    src={logo}
+                    alt="EERIECAST"
+                    className="h-6 filter invert"
+                  />
+                </Link>
+                <button
+                  className="p-2 text-gray-300 hover:text-white"
+                  aria-label="Close menu"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-            {/* Nav */}
-            <nav className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-1">
-              <Link
-                to={createPageUrl('Podcasts')}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`block px-3 py-3 rounded-md text-base font-medium ${
-                  currentPageName === 'Podcasts'
-                    ? 'text-red-500 bg:white/5'
-                    : 'text-gray-200 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                Home
-              </Link>
-              <Link
-                to={createPageUrl('Discover')}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`block px-3 py-3 rounded-md text-base font-medium ${
-                  currentPageName === 'Discover'
-                    ? 'text-red-500 bg-white/5'
-                    : 'text-gray-200 hover:text-white hover:bg:white/5'
-                }`}
-              >
-                Podcasts
-              </Link>
-              <Link
-                to={createPageUrl('Audiobooks')}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`block px-3 py-3 rounded-md text-base font-medium ${
-                  currentPageName === 'Audiobooks'
-                    ? 'text-red-500 bg-white/5'
-                    : 'text-gray-200 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                Audiobooks
-              </Link>
-              <Link
-                to={createPageUrl('Library')}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`block px-3 py-3 rounded-md text-base font-medium ${
-                  currentPageName === 'Library'
-                    ? 'text-red-500 bg-white/5'
-                    : 'text-gray-200 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                Library
-              </Link>
-            </nav>
+              {/* Nav */}
+              <nav className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-1">
+                {[
+                  { name: 'Home', route: 'Podcasts' },
+                  { name: 'Podcasts', route: 'Discover' },
+                  { name: 'Audiobooks', route: 'Audiobooks' },
+                  { name: 'Library', route: 'Library' },
+                ].map(({ name, route }, i) => (
+                  <motion.div
+                    key={route}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.05 + i * 0.06, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                  >
+                    <Link
+                      to={createPageUrl(route)}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`block px-3 py-3 rounded-md text-base font-medium ${
+                        currentPageName === route
+                          ? 'text-red-500 bg-white/5'
+                          : 'text-gray-200 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {name}
+                    </Link>
+                  </motion.div>
+                ))}
+              </nav>
 
-            {/* Footer (optional quick close safe-area spacer) */}
-            <div className="h-4" />
-          </div>
-        </div>
-      )}
+              {/* Footer spacer */}
+              <div className="h-4" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <main className={cn(
         "relative w-full pt-[72px] pb-16 max-[1000px]:pb-20",
@@ -354,25 +361,28 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   );
 }
 
-// Lightweight popover component anchored to bell
-function NotificationsPopover({ open, onClose }) {
+// Lightweight popover component anchored to bell — now animated with framer-motion
+function NotificationsPopover({ onClose }) {
   const { notifications, notificationsLoading, refreshNotifications, isAuthenticated, markNotificationRead } = useUser();
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (open && isAuthenticated) {
-      // Refresh notifications on open (but debounce initial mount)
+    if (isAuthenticated) {
       if (!initializedRef.current) {
         initializedRef.current = true;
       }
       refreshNotifications().catch(() => {});
     }
-  }, [open, isAuthenticated, refreshNotifications]);
-
-  if (!open) return null;
+  }, [isAuthenticated, refreshNotifications]);
 
   return (
-    <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-md bg-[#181d24] text:white shadow-xl shadow-black/40 ring-1 ring-black/60 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1">
+    <motion.div
+      className="absolute right-0 mt-2 w-80 sm:w-96 rounded-md bg-[#181d24] text-white shadow-xl shadow-black/40 ring-1 ring-black/60 overflow-hidden z-50"
+      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+    >
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
         <h3 className="text-sm font-semibold">Notifications</h3>
         <button onClick={onClose} className="text-gray-400 hover:text-white text-xs">Close</button>
@@ -412,12 +422,11 @@ function NotificationsPopover({ open, onClose }) {
           </ul>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 NotificationsPopover.propTypes = {
-  open: PropTypes.bool,
   onClose: PropTypes.func,
 };
 

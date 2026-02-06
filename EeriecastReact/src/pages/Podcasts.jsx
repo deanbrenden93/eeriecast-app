@@ -1,29 +1,31 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Podcast as PodcastApi, UserLibrary, Episode } from "@/api/entities";
-import { getEpisodeAudioUrl, isAudiobook, hasCategory } from "@/lib/utils";
+import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
+import { isAudiobook, hasCategory } from "@/lib/utils";
+import { toast } from "@/components/ui/use-toast";
 import PodcastModal from "../components/podcasts/PodcastModal";
 import FeaturedHero from "../components/podcasts/FeaturedHero";
 import CategoryExplorer from "../components/podcasts/CategoryExplorer";
 import PodcastRow from "../components/podcasts/PodcastRow";
+import NewReleasesRow from "../components/podcasts/NewReleasesRow";
 import KeepListeningSection from "../components/podcasts/KeepListeningSection";
 import MembersOnlySection from "../components/podcasts/MembersOnlySection";
 import FeaturedCreatorsSection from "../components/podcasts/FeaturedCreatorsSection";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
 import SubscribeModal from "@/components/auth/SubscribeModal";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
+import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 
 export default function Podcasts() {
   const { podcasts, isLoading } = usePodcasts();
-  const [keepListening, setKeepListening] = useState([]);
+  const [keepListeningItems, setKeepListeningItems] = useState([]); // { podcast, episode, progress (0-100) }
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [subscribeLabel, setSubscribeLabel] = useState("");
-  const [keepListeningProgress, setKeepListeningProgress] = useState({});
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -41,52 +43,84 @@ export default function Podcasts() {
     seek,
     skip,
     pause,
-    // new: queue api
     setPlaybackQueue,
   } = useAudioPlayerContext();
 
   const { isPremium } = useUser();
 
-  // Compute Keep Listening from localStorage when podcasts change
-  useEffect(() => {
-    const recentlyPlayedIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
-    if (!recentlyPlayedIds.length) { setKeepListening([]); return; }
-    const map = new Map(podcasts.map(p => [p.id, p]));
-    const list = recentlyPlayedIds.map(id => map.get(id)).filter(Boolean);
-    setKeepListening(list);
-  }, [podcasts]);
-
-  // Compute real progress percentages for Keep Listening podcasts using resumeForPodcast
+  // Build episode-level "keep listening" items from localStorage + resume API
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!keepListening.length) { setKeepListeningProgress({}); return; }
-      const entries = await Promise.all(
-        keepListening.map(async (p) => {
+      const recentlyPlayedIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
+      if (!recentlyPlayedIds.length || !podcasts.length) { setKeepListeningItems([]); return; }
+
+      const podcastMap = new Map(podcasts.map(p => [p.id, p]));
+      const recentPodcasts = recentlyPlayedIds.map(id => podcastMap.get(id)).filter(Boolean);
+
+      const items = await Promise.all(
+        recentPodcasts.map(async (p) => {
           try {
-            const resume = await UserLibrary.resumeForPodcast(p.id);
-            const progress = Math.max(0, Number(resume?.progress || resume?.percent_complete || 0));
-            const dur = Math.max(0, Number(resume?.episode_detail?.duration || resume?.duration || 0));
-            let percent = 0;
-            if (dur > 0) percent = Math.min(100, (progress / dur) * 100);
-            else if (resume?.percent_complete) percent = Math.min(100, Number(resume.percent_complete));
-            return [p.id, percent];
-          } catch { return [p.id, 0]; }
+            // Try the resume API first (authenticated users with server-side history)
+            let resume = null;
+            try { resume = await UserLibrary.resumeForPodcast(p.id); } catch { /* no history or not logged in */ }
+
+            if (resume?.episode_detail) {
+              const ep = resume.episode_detail;
+              const progressSec = Math.max(0, Number(resume?.progress || 0));
+              const dur = Math.max(0, Number(ep?.duration || resume?.duration || 0));
+              let percent = 0;
+              if (dur > 0) percent = Math.min(100, (progressSec / dur) * 100);
+              else if (resume?.percent_complete) percent = Math.min(100, Number(resume.percent_complete));
+
+              return {
+                podcast: ep.podcast && typeof ep.podcast === 'object' ? { ...p, ...ep.podcast } : p,
+                episode: ep,
+                progress: percent,
+                resumeData: resume,
+              };
+            }
+
+            // Fallback: fetch podcast detail to get its first episode
+            let episodes = Array.isArray(p.episodes) ? p.episodes : [];
+            if (!episodes.length) {
+              try {
+                const detail = await PodcastApi.get(p.id);
+                episodes = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
+              } catch { /* ignore */ }
+            }
+            const firstEp = episodes[0];
+            if (!firstEp) return null;
+
+            return {
+              podcast: p,
+              episode: firstEp,
+              progress: 0,
+              resumeData: null,
+            };
+          } catch { return null; }
         })
       );
+
       if (!cancelled) {
-        const map = Object.fromEntries(entries);
-        setKeepListeningProgress(map);
+        // Deduplicate by episode id (keep first occurrence)
+        const seen = new Set();
+        const unique = items.filter(Boolean).filter(item => {
+          if (!item.episode?.id) return false;
+          if (seen.has(item.episode.id)) return false;
+          seen.add(item.episode.id);
+          return true;
+        });
+        setKeepListeningItems(unique);
       }
     })();
     return () => { cancelled = true; };
-  }, [keepListening]);
+  }, [podcasts]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;
     const selected = selectedCategoryParam;
     if (!selected) return items;
-
     if (selected === 'audiobook' || selected === 'audiobooks') return items.filter(p => isAudiobook(p));
     if (selected === 'free') return items.filter(p => !p.is_exclusive);
     if (selected === 'members-only' || selected === 'members only' || selected === 'members_only') return items.filter(p => p.is_exclusive);
@@ -101,135 +135,75 @@ export default function Podcasts() {
 
   const handlePodcastPlay = async (podcast) => {
     try {
-      // For audiobooks: ALWAYS navigate to the show's page per client request
       if (isAudiobook(podcast)) {
         handleAudiobookNavigate(podcast);
         return;
       }
-
-      // For members-only shows: allow browsing by navigating to Episodes page for non-premium users
       if (podcast?.is_exclusive && !isPremium) {
         if (podcast?.id) navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
         return;
       }
-
-      // Ensure we have episodes: prefer embedded, optionally fetch detail (fallback)
       let episodes = podcast.episodes;
       if (!episodes || episodes.length === 0) {
         const detail = await PodcastApi.get(podcast.id);
         episodes = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
       }
-
       let resume;
       try { resume = await UserLibrary.resumeForPodcast(podcast.id); } catch { resume = null; }
-
       let ep;
       const resumeEp = resume && resume.episode_detail;
       if (resumeEp) {
-        // Prefer the full episode object to include audio URLs and metadata
         const found = episodes.find(e => e.id === resumeEp.id);
         ep = found ? { ...found, ...resumeEp } : resumeEp;
       } else {
         ep = episodes[0];
       }
-
       if (!ep) return;
-
-      // If audio URL is missing, hydrate from episode detail API
-      if (!getEpisodeAudioUrl(ep) && ep?.id) {
-        try {
-          const fullEp = await Episode.get(ep.id);
-          ep = fullEp || ep;
-        } catch { /* ignore */ }
-      }
-
       if (ep?.is_premium && !isPremium) {
         setSubscribeLabel(ep?.title || podcast?.title || 'Premium episode');
         setShowSubscribeModal(true);
         return;
       }
-
-      // Start playback; loadAndPlay will set podcast/episode state atomically
       await loadAndPlay({ podcast, episode: ep, resume });
-
-      // Update Keep Listening order
+      // Update localStorage recently played
       const recentlyPlayedIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
       const newIds = [podcast.id, ...recentlyPlayedIds.filter(id => id !== podcast.id)].slice(0, 10);
       localStorage.setItem('recentlyPlayed', JSON.stringify(newIds));
-      const map = new Map(podcasts.map(p => [p.id, p]));
-      setKeepListening(newIds.map(id => map.get(id)).filter(Boolean));
+      // Add this episode to the keep listening items immediately
+      setKeepListeningItems(prev => {
+        const newItem = { podcast, episode: ep, progress: 0, resumeData: resume };
+        const filtered = prev.filter(item => item.episode?.id !== ep.id);
+        return [newItem, ...filtered];
+      });
     } catch (err) {
       console.error('Failed to start playback:', err);
     }
   };
 
-  // Minimal: for Audiobooks section, clicking a card should navigate to Episodes page (no autoplay)
   const handleAudiobookNavigate = (podcast) => {
     if (podcast?.id) {
       navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
     }
   };
 
-  // New: build a global queue from Keep Listening and start playing from the first item
   const handleStartListening = async () => {
     try {
-      if (!Array.isArray(keepListening) || keepListening.length === 0) {
-        // Fallback to hero podcast if Keep Listening is empty
-        if (heroPodcast) {
-          await handlePodcastPlay(heroPodcast);
-        }
+      if (!Array.isArray(keepListeningItems) || keepListeningItems.length === 0) {
+        if (heroPodcast) await handlePodcastPlay(heroPodcast);
         return;
       }
-
-      // Build queue items in parallel (respect gating)
-      const items = await Promise.all(
-        keepListening.map(async (p) => {
-          try {
-            if (p?.is_exclusive && !isPremium) return null; // skip gated podcast
-            // ensure episodes available
-            let episodes = Array.isArray(p.episodes) ? p.episodes : [];
-            if (!episodes.length) {
-              const detail = await PodcastApi.get(p.id);
-              episodes = Array.isArray(detail?.episodes) ? detail.episodes : [];
-            }
-            // resume preferred
-            let resume;
-            try { resume = await UserLibrary.resumeForPodcast(p.id); } catch { resume = null; }
-            let ep;
-            const resumeEp = resume && resume.episode_detail;
-            if (resumeEp) {
-              const found = episodes.find(e => e.id === resumeEp.id);
-              ep = found ? { ...found, ...resumeEp } : resumeEp;
-            } else {
-              ep = episodes[0] || null;
-            }
-            if (!ep) return null;
-            // hydrate missing audio URL
-            if (!getEpisodeAudioUrl(ep) && ep?.id) {
-              try {
-                const fullEp = await Episode.get(ep.id);
-                ep = fullEp || ep;
-              } catch { /* ignore */ }
-            }
-            // gate premium episodes for non-premium users
-            if (ep?.is_premium && !isPremium) return null;
-            return { podcast: p, episode: ep, resume };
-          } catch {
-            return null;
-          }
+      const filtered = keepListeningItems
+        .filter(item => {
+          if (item.podcast?.is_exclusive && !isPremium) return false;
+          if (item.episode?.is_premium && !isPremium) return false;
+          return true;
         })
-      );
+        .map(item => ({ podcast: item.podcast, episode: item.episode, resume: item.resumeData }));
 
-      const filtered = items.filter(Boolean);
       if (!filtered.length) {
-        // Fallback: nothing playable in Keep Listening, try hero podcast
-        if (heroPodcast) {
-          await handlePodcastPlay(heroPodcast);
-        }
+        if (heroPodcast) await handlePodcastPlay(heroPodcast);
         return;
       }
-
-      // Set global queue and start at 0
       await setPlaybackQueue(filtered, 0);
     } catch (e) {
       console.error('Failed to start listening queue', e);
@@ -239,71 +213,75 @@ export default function Podcasts() {
   const handleCloseMobilePlayer = () => { pause(); };
   const handleCollapsePlayer = () => setShowExpandedPlayer(false);
 
+  // Skeleton loading block
+  const LoadingSkeleton = ({ height = "h-[200px]" }) => (
+    <div className={`${height} w-full bg-eeriecast-surface-light/50 rounded-xl animate-pulse`} />
+  );
+
   return (
-    <div className="min-h-screen bg-black w-full">
-      {/* Hero Section - Full Width */}
+    <div className="min-h-screen bg-eeriecast-surface w-full">
+      {/* Hero */}
       {isLoading ? (
-        <div className="h-[60vh] w-full bg-gray-900/50" />
+        <div className="h-[60vh] w-full bg-eeriecast-surface-light/30" />
       ) : (
         heroPodcast && <FeaturedHero podcast={heroPodcast} onPlay={handleStartListening} />
       )}
 
-      {/* Keep Listening Section - Small Cards */}
+      {/* Keep Listening */}
       {isLoading ? (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <div className="h-[180px] w-full bg-gray-900/50 rounded-lg" />
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <LoadingSkeleton height="h-[180px]" />
         </div>
       ) : (
-        keepListening.length > 0 && (
-          <div className="w-full bg-black px-2.5 lg:px-10 py-8">
+        keepListeningItems.length > 0 && (
+          <div className="w-full px-2.5 lg:px-10 py-8">
             <KeepListeningSection
-              podcasts={keepListening}
-              onPodcastPlay={handlePodcastPlay}
-              currentPodcastId={currentPodcast?.id}
+              items={keepListeningItems}
+              onEpisodePlay={async (item) => {
+                const played = await loadAndPlay({ podcast: item.podcast, episode: item.episode, resume: item.resumeData || { progress: 0 } });
+                if (played === false) {
+                  toast({ title: "Unable to play", description: "Please sign in to play episodes.", variant: "destructive" });
+                }
+              }}
+              currentEpisodeId={currentEpisode?.id}
               currentTime={currentTime}
               currentDuration={duration}
-              progressMap={keepListeningProgress}
             />
           </div>
         )
       )}
 
-      {/* Categories Section - Full Width Background with 40px Padding */}
-      <div className="w-full bg-black px-2.5 lg:px-10 py-16">
-        {isLoading ? (
-          <div className="h-[200px] w-full bg-gray-900/50 rounded-lg" />
-        ) : (
-          <CategoryExplorer />
-        )}
+      {/* Categories */}
+      <div className="w-full px-2.5 lg:px-10 py-12">
+        {isLoading ? <LoadingSkeleton /> : <CategoryExplorer />}
       </div>
       
-      {/* New Releases Section - Large Cards */}
+      {/* New Releases — latest episodes across all non-audiobook podcasts */}
       {isLoading ? (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <div className="h-[300px] w-full bg-gray-900/50 rounded-lg" />
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <PodcastRow
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">New Releases{selectedCategoryParam ? ` — ${selectedCategoryParam}` : ''}</h2>}
-            podcasts={visiblePodcasts}
-            onPodcastPlay={handlePodcastPlay}
             viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
+            categoryFilter={selectedCategoryParam || null}
           />
         </div>
       )}
 
-      {/* Audiobooks Section */}
+      {/* Audiobooks */}
       {isLoading ? (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <div className="h-[200px] w-full bg-gray-900/50 rounded-lg" />
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <LoadingSkeleton />
         </div>
       ) : (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-8">
           <PodcastRow
             title={
-              <h2 className="text-2xl font-bold bg-gradient-to-br from-blue-500 to-blue-400 bg-clip-text text-transparent">
-                📚 Audiobooks
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-300 bg-clip-text text-transparent">
+                Audiobooks
               </h2>
             }
             podcasts={podcasts.filter(p => isAudiobook(p))}
@@ -319,13 +297,13 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* Members Only Section */}
+      {/* Members Only */}
       {isLoading ? (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <div className="h-[300px] w-full bg-gray-900/50 rounded-lg" />
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-8">
           <MembersOnlySection
             podcasts={podcasts.filter(p => p.is_exclusive)}
             onPodcastPlay={handlePodcastPlay}
@@ -333,13 +311,13 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* Trending Now Section */}
+      {/* Trending */}
       {isLoading ? (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <div className="h-[300px] w-full bg-gray-900/50 rounded-lg" />
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-8">
           <PodcastRow
             title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
             podcasts={podcasts.filter(p => p.is_trending)}
@@ -350,41 +328,52 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* Featured Creators Section */}
+      {/* Featured Creators */}
       {isLoading ? (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8">
-          <div className="h-[300px] w-full bg-gray-900/50 rounded-lg" />
+        <div className="w-full px-2.5 lg:px-10 py-8">
+          <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full bg-black px-2.5 lg:px-10 py-8 pb-32">
+        <div className="w-full px-2.5 lg:px-10 py-8 pb-32">
           <FeaturedCreatorsSection />
         </div>
       )}
       
-      {selectedPodcast && (
-        <PodcastModal
-          podcast={selectedPodcast}
-          onClose={() => setSelectedPodcast(null)}
-        />
-      )}
+      <AnimatePresence>
+        {selectedPodcast && (
+          <PodcastModal
+            podcast={selectedPodcast}
+            onClose={() => setSelectedPodcast(null)}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Expanded Player */}
-      {showExpandedPlayer && currentPodcast && currentEpisode && (
-        <ExpandedPlayer
-          podcast={currentPodcast}
-          episode={currentEpisode}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          onToggle={toggle}
-          onCollapse={handleCollapsePlayer}
-          onClose={handleCloseMobilePlayer}
-          onSeek={seek}
-          onSkip={skip}
-        />
-      )}
+      <AnimatePresence>
+        {showExpandedPlayer && currentPodcast && currentEpisode && (
+          <motion.div
+            key="podcasts-expanded-player"
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 3000 }}
+          >
+            <ExpandedPlayer
+              podcast={currentPodcast}
+              episode={currentEpisode}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              onToggle={toggle}
+              onCollapse={handleCollapsePlayer}
+              onClose={handleCloseMobilePlayer}
+              onSeek={seek}
+              onSkip={skip}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Subscribe / Premium gating modal */}
       <SubscribeModal
         open={showSubscribeModal}
         onOpenChange={setShowSubscribeModal}

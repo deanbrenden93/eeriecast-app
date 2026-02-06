@@ -44,3 +44,4 @@ class EpisodeSerializer(serializers.ModelSerializer):
         # Otherwise prefer ad-supported if available
         if getattr(obj, 'ad_supported_audio_url', None):
             return obj.ad_supported_audio_url
+        return getattr(obj, 'audio_url', None)

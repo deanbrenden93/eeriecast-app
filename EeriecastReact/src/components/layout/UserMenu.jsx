@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useUser } from '@/context/UserContext.jsx';
 import PropTypes from 'prop-types';
+import { motion } from 'framer-motion';
 
 export default function UserMenu({ isOpen, onClose }) {
   const { user, logout } = useUser();
@@ -19,7 +20,13 @@ export default function UserMenu({ isOpen, onClose }) {
   const accountType = isPremium ? 'Premium Member' : 'Free Account';
 
   return (
-    <div className="absolute top-full right-0 mt-2 w-56 rounded-md bg-[#181d24] text-white shadow-xl shadow-black/40 ring-1 ring-black/60 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1">
+    <motion.div
+      className="absolute top-full right-0 mt-2 w-56 rounded-md bg-[#181d24] text-white shadow-xl shadow-black/40 ring-1 ring-black/60 overflow-hidden z-50"
+      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+    >
       <div className="px-4 pt-3 pb-2">
         <h3 className="font-semibold text-[13px] leading-tight truncate">{displayName}</h3>
         {email && <p className="text-[11px] text-gray-400 truncate">{email}</p>}
@@ -58,7 +65,7 @@ export default function UserMenu({ isOpen, onClose }) {
       >
         Log out
       </button>
-    </div>
+    </motion.div>
   );
 }
 

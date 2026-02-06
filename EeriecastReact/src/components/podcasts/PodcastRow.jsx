@@ -32,84 +32,84 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
 
   return (
     <div className="relative">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-5">
         {title}
-        <Link to={viewAllTo || createPageUrl("Podcasts")} className="text-sm text-gray-400 hover:text-white transition-colors">
+        <Link to={viewAllTo || createPageUrl("Podcasts")} className="text-sm text-zinc-500 hover:text-red-400 transition-colors duration-300">
           View all
         </Link>
       </div>
 
-      <div className="absolute top-1/2 -left-4 -translate-y-1/2 z-10 hidden md:block">
-        <button onClick={() => scroll(-1)} className="p-2 bg-black/50 hover:bg-black/80 rounded-full transition-colors">
-          <ChevronLeft className="w-6 h-6 text-white" />
+      <div className="absolute top-1/2 -left-3 -translate-y-1/2 z-10 hidden md:block">
+        <button onClick={() => scroll(-1)} className="p-2 bg-eeriecast-surface-light/80 hover:bg-eeriecast-surface-lighter border border-white/[0.06] rounded-full transition-all shadow-lg hover:shadow-xl backdrop-blur-sm">
+          <ChevronLeft className="w-5 h-5 text-white" />
         </button>
       </div>
-      <div className="absolute top-1/2 -right-4 -translate-y-1/2 z-10 hidden md:block">
-        <button onClick={() => scroll(1)} className="p-2 bg-black/50 hover:bg-black/80 rounded-full transition-colors">
-          <ChevronRight className="w-6 h-6 text-white" />
+      <div className="absolute top-1/2 -right-3 -translate-y-1/2 z-10 hidden md:block">
+        <button onClick={() => scroll(1)} className="p-2 bg-eeriecast-surface-light/80 hover:bg-eeriecast-surface-lighter border border-white/[0.06] rounded-full transition-all shadow-lg hover:shadow-xl backdrop-blur-sm">
+          <ChevronRight className="w-5 h-5 text-white" />
         </button>
       </div>
 
       <div
         ref={scrollRef}
-        className="flex space-x-4 overflow-x-auto pb-4 scroll-smooth"
+        className="flex space-x-3 overflow-x-auto pb-4 scroll-smooth"
         style={{ scrollbarWidth: 'none', 'msOverflowStyle': 'none' }}
       >
         {Array.isArray(podcastList) && podcastList.map((podcast) => (
           <div key={podcast.id} className="flex-shrink-0 w-44">
             <div 
-              className="group cursor-pointer bg-gray-800/60 hover:bg-gray-700/80 border border-gray-700/50 rounded-lg transition-all duration-300 h-full flex flex-col overflow-hidden"
+              className="eeriecast-card group cursor-pointer h-full flex flex-col overflow-hidden"
               onClick={() => handleCardClick(podcast)}
             >
-              <div className="relative aspect-square bg-gray-800">
+              <div className="relative aspect-square bg-eeriecast-surface-light overflow-hidden rounded-t-lg">
                 {podcast.cover_image ? (
                   <img
                     src={podcast.cover_image}
                     alt={podcast.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-900">
-                    <span className="text-4xl">🎧</span>
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-eeriecast-surface-light to-eeriecast-surface">
+                    <span className="text-3xl opacity-40">🎧</span>
                   </div>
                 )}
                 
-                {/* Play Icon Overlay for Trending */}
+                {/* Play overlay */}
                 {showPlayIcon && (
-                  <div className="absolute top-2 left-2 w-6 h-6 bg-white rounded-full flex items-center justify-center">
-                    <Play className="w-3 h-3 text-black fill-black ml-0.5" />
+                  <div className="absolute top-2 left-2 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(220,38,38,0.3)]">
+                    <Play className="w-3 h-3 text-white fill-white ml-0.5" />
                   </div>
                 )}
                 
-                {/* Hover Overlay */}
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                {/* Hover overlay */}
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
                   <button 
-                    className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shadow-xl"
+                    className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition-all shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:scale-105"
                     onClick={(e) => handlePlayClick(e, podcast)}
                   >
-                    <Play className="w-4 h-4 text-black ml-0.5 fill-black" />
+                    <Play className="w-4 h-4 text-white ml-0.5 fill-white" />
                   </button>
                 </div>
 
-                {/* Badges (right side) */}
+                {/* Badges */}
                 <div className="absolute top-2 right-2 flex gap-1 items-start">
                   {showAudiobookPill && (
-                    <div className="px-2 py-0.5 rounded-full bg-blue-400 text-white text-[10px] font-bold uppercase tracking-wider shadow">AUDIOBOOK</div>
+                    <div className="px-2 py-0.5 rounded-full bg-cyan-500/80 text-white text-[9px] font-bold uppercase tracking-wider shadow backdrop-blur-sm">AUDIOBOOK</div>
                   )}
                   {podcast.is_exclusive && (
-                    <div className="px-1.5 py-0.5 bg-pink-500 rounded text-xs font-bold text-white uppercase tracking-wider">
+                    <div className="px-1.5 py-0.5 bg-gradient-to-r from-red-600 to-red-700 rounded text-[9px] font-bold text-white uppercase tracking-wider shadow-[0_0_8px_rgba(220,38,38,0.3)]">
                       Exclusive
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Info - Fixed height container for consistent card sizes */}
+              {/* Info */}
               <div className="p-3 space-y-1 mt-auto min-h-[3.5rem] flex flex-col justify-end">
-                <h3 className="text-white font-semibold text-sm line-clamp-2 leading-tight group-hover:text-blue-400 transition-colors">
+                <h3 className="text-white/90 font-semibold text-sm line-clamp-2 leading-tight group-hover:text-red-400 transition-colors duration-300">
                   {podcast.title}
                 </h3>
-                <p className="text-gray-400 text-xs leading-tight">
+                <p className="text-zinc-500 text-xs leading-tight">
                   {podcast.author}
                 </p>
               </div>

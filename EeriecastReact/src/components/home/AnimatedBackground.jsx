@@ -19,8 +19,6 @@ export default function AnimatedBackground() {
       let allPodcasts = await Podcast.list();
       allPodcasts = allPodcasts.results || [];
 
-      console.log('Fetched podcasts for background:', allPodcasts);
-
       if (allPodcasts.length === 0) return;
 
       const podcastItems = allPodcasts.map(p => ({
@@ -49,17 +47,17 @@ export default function AnimatedBackground() {
     setupGrid();
   }, []);
 
-  const animationDurations = [60, 75, 55, 80, 70, 65, 72];
+  const animationDurations = [65, 80, 58, 85, 72, 68, 78];
 
   return (
     <div
       id="albumGrid"
-      className="absolute top-[-20%] left-[-10%] w-[120%] h-[140%] transform -rotate-[15deg] opacity-30 z-0 overflow-hidden"
+      className="absolute top-[-20%] left-[-10%] w-[120%] h-[140%] transform -rotate-[15deg] opacity-20 z-0 overflow-hidden"
     >
       {rows.map((row, rowIndex) => (
         <div
           key={rowIndex}
-          className="flex gap-5 mb-5"
+          className="flex gap-4 mb-4"
           style={{
             animation: `float-row ${animationDurations[rowIndex % animationDurations.length]}s linear infinite`,
             animationDirection: rowIndex % 2 === 0 ? 'normal' : 'reverse',
@@ -68,17 +66,17 @@ export default function AnimatedBackground() {
           {row.map((podcast) => (
             <div
               key={podcast.uniqueId}
-              className="w-48 h-48 rounded-lg bg-gray-900 flex-shrink-0 shadow-lg"
+              className="w-44 h-44 rounded-xl bg-eeriecast-surface-light flex-shrink-0 overflow-hidden"
             >
               {podcast.cover_image ? (
                 <img
                   src={podcast.cover_image}
                   alt={podcast.title}
-                  className="w-full h-full object-cover rounded-lg filter grayscale brightness-75"
+                  className="w-full h-full object-cover rounded-xl filter grayscale brightness-[0.4] contrast-[1.1]"
                   loading="lazy"
                 />
               ) : (
-                <div className="w-full h-full rounded-lg bg-gray-800" />
+                <div className="w-full h-full rounded-xl bg-eeriecast-surface-light" />
               )}
             </div>
           ))}
@@ -86,12 +84,8 @@ export default function AnimatedBackground() {
       ))}
       <style>{`
         @keyframes float-row {
-          from {
-            transform: translateX(0%);
-          }
-          to {
-            transform: translateX(-33.333%);
-          }
+          from { transform: translateX(0%); }
+          to { transform: translateX(-33.333%); }
         }
       `}</style>
     </div>

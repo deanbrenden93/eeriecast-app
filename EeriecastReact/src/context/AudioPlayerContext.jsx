@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const AudioPlayerContext = createContext();
 
@@ -193,59 +194,80 @@ export const AudioPlayerProvider = ({ children }) => {
     >
       {children}
 
-      {/* Expanded Player - shows when user expands */}
-      {showExpandedPlayer && episode && podcast && (
-        <ExpandedPlayer
-          podcast={podcast}
-          episode={episode}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          onToggle={toggle}
-          onCollapse={handleCollapsePlayer}
-          onClose={handleClosePlayer}
-          onSeek={seek}
-          onSkip={skip}
-          onPlay={play}
-          onPause={pause}
-          // shuffle/repeat props
-          isShuffling={isShuffling}
-          repeatMode={repeatMode}
-          onShuffleToggle={toggleShuffle}
-          onRepeatToggle={cycleRepeat}
-          // queue props
-          queue={queue}
-          queueIndex={queueIndex}
-          playQueueIndex={playQueueIndex}
-          loadAndPlay={loadAndPlay}
-        />
-      )}
+      {/* Expanded Player - shows when user expands (slide-up enter/exit) */}
+      <AnimatePresence>
+        {showExpandedPlayer && episode && podcast && (
+          <motion.div
+            key="expanded-player"
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 3000 }}
+          >
+            <ExpandedPlayer
+              podcast={podcast}
+              episode={episode}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              onToggle={toggle}
+              onCollapse={handleCollapsePlayer}
+              onClose={handleClosePlayer}
+              onSeek={seek}
+              onSkip={skip}
+              onPlay={play}
+              onPause={pause}
+              // shuffle/repeat props
+              isShuffling={isShuffling}
+              repeatMode={repeatMode}
+              onShuffleToggle={toggleShuffle}
+              onRepeatToggle={cycleRepeat}
+              // queue props
+              queue={queue}
+              queueIndex={queueIndex}
+              playQueueIndex={playQueueIndex}
+              loadAndPlay={loadAndPlay}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Mobile Player - shows when audio is playing and not expanded */}
-      {showPlayer && !showExpandedPlayer && episode && podcast && (
-        <MobilePlayer
-          podcast={podcast}
-          episode={episode}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          volume={volume}
-          onToggle={toggle}
-          onExpand={handleExpandPlayer}
-          onSkip={skip}
-          onSeek={seek}
-          onClose={handleClosePlayer}
-          onVolumeChange={setVolume}
-          // queue props
-          queue={queue}
-          queueIndex={queueIndex}
-          // playback mode props
-          isShuffling={isShuffling}
-          repeatMode={repeatMode}
-          onShuffleToggle={toggleShuffle}
-          onRepeatToggle={cycleRepeat}
-        />
-      )}
+      {/* Mobile Player - shows when audio is playing and not expanded (slide-up enter/exit) */}
+      <AnimatePresence>
+        {showPlayer && !showExpandedPlayer && episode && podcast && (
+          <motion.div
+            key="mobile-player"
+            initial={{ opacity: 0, y: 80 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 80 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+          >
+            <MobilePlayer
+              podcast={podcast}
+              episode={episode}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              volume={volume}
+              onToggle={toggle}
+              onExpand={handleExpandPlayer}
+              onSkip={skip}
+              onSeek={seek}
+              onClose={handleClosePlayer}
+              onVolumeChange={setVolume}
+              // queue props
+              queue={queue}
+              queueIndex={queueIndex}
+              // playback mode props
+              isShuffling={isShuffling}
+              repeatMode={repeatMode}
+              onShuffleToggle={toggleShuffle}
+              onRepeatToggle={cycleRepeat}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </AudioPlayerContext.Provider>
   );
 };
