@@ -7,6 +7,7 @@ import { Episode as EpisodeApi } from "@/api/entities";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { isAudiobook, formatDate } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
+import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
 
 function formatDuration(raw) {
@@ -31,11 +32,12 @@ function formatDuration(raw) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
+export default function NewReleasesRow({ title, viewAllTo, categoryFilter, ordering = "-published_at", maxItems = 20 }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
   const { podcasts, getById } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
+  const { episodeProgressMap } = useUser() || {};
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +47,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
     (async () => {
       setLoading(true);
       try {
-        const resp = await EpisodeApi.list("-published_at", 40);
+        const resp = await EpisodeApi.list(ordering, 40);
         const allEps = Array.isArray(resp) ? resp : (resp?.results || []);
 
         // Filter out audiobook episodes and enrich with podcast data
@@ -83,7 +85,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
         }
 
         if (!cancelled) {
-          setEpisodes(enriched.slice(0, 20));
+          setEpisodes(enriched.slice(0, maxItems));
         }
       } catch (err) {
         console.error("Failed to load new releases:", err);
@@ -93,7 +95,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [podcasts, getById, categoryFilter]);
+  }, [podcasts, getById, categoryFilter, ordering, maxItems]);
 
   const scroll = (direction) => {
     const { current } = scrollRef;
@@ -162,6 +164,10 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
         {episodes.map((ep) => {
           const podName = ep.podcast_data?.title || "";
           const dur = formatDuration(ep.duration);
+          const prog = episodeProgressMap?.get(Number(ep.id));
+          const progPct = prog && prog.duration > 0 ? Math.min(100, Math.max(0, (prog.progress / prog.duration) * 100)) : 0;
+          const isCompleted = prog?.completed || progPct >= 95;
+          const hasProgress = progPct > 0;
 
           return (
             <div key={ep.id} className="flex-shrink-0 w-44">
@@ -183,6 +189,15 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
                     </div>
                   )}
 
+                  {/* Completed overlay */}
+                  {isCompleted && (
+                    <div className="absolute top-2 left-2">
+                      <div className="w-5 h-5 rounded-full bg-green-500/90 flex items-center justify-center shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Hover play overlay */}
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
                     <button
@@ -200,6 +215,16 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter }) {
                         <Lock className="w-2.5 h-2.5" />
                         <span>Members</span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Progress bar at bottom of artwork */}
+                  {hasProgress && !isCompleted && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/[0.06]">
+                      <div
+                        className="h-full bg-gradient-to-r from-red-600 to-red-500 transition-all duration-300 shadow-[0_0_6px_rgba(220,38,38,0.3)]"
+                        style={{ width: `${Math.round(progPct)}%` }}
+                      />
                     </div>
                   )}
                 </div>
@@ -239,4 +264,6 @@ NewReleasesRow.propTypes = {
   title: PropTypes.node,
   viewAllTo: PropTypes.string,
   categoryFilter: PropTypes.string,
+  ordering: PropTypes.string,
+  maxItems: PropTypes.number,
 };

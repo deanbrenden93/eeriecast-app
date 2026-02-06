@@ -26,6 +26,9 @@ export function useAudioPlayer({ onEnd } = {}) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.7); // Default 70% volume
+  const [playbackRate, setPlaybackRateState] = useState(() => {
+    try { return parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { return 1; }
+  });
   const deviceId = useRef(getDeviceId());
 
   // init audio element once
@@ -33,6 +36,7 @@ export function useAudioPlayer({ onEnd } = {}) {
     audioRef.current = new Audio();
     audioRef.current.preload = 'metadata';
     audioRef.current.volume = 0.7; // Set initial volume
+    try { audioRef.current.playbackRate = parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { /* */ }
   }
 
   // bind events
@@ -175,6 +179,8 @@ export function useAudioPlayer({ onEnd } = {}) {
 
       // Swap in the new source and resume position
       audio.src = url;
+      // Preserve playback rate across tracks
+      try { audio.playbackRate = parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { /* */ }
 
       const resumeSeconds = Math.max(0, Math.floor(resume?.progress || 0));
       // Best-effort: set immediately (may be ignored until metadata loads)
@@ -268,6 +274,14 @@ export function useAudioPlayer({ onEnd } = {}) {
     setVolumeState(newVolume);
   }, []);
 
+  const setPlaybackRate = useCallback((rate) => {
+    const audio = audioRef.current;
+    const r = Math.max(0.5, Math.min(3, rate));
+    if (audio) audio.playbackRate = r;
+    setPlaybackRateState(r);
+    try { localStorage.setItem('eeriecast_playback_rate', String(r)); } catch { /* */ }
+  }, []);
+
   return {
     audioRef,
     episode,
@@ -277,6 +291,8 @@ export function useAudioPlayer({ onEnd } = {}) {
     duration,
     volume,
     setVolume,
+    playbackRate,
+    setPlaybackRate,
     loadAndPlay,
     toggle,
     play,

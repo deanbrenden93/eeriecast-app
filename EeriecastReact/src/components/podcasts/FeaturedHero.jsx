@@ -26,12 +26,13 @@ export default function FeaturedHero({ podcast, onPlay }) {
 
           {/* Title */}
           <h1
-            className="hero-title font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-white via-red-200 to-red-400"
+            className="hero-title font-display font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-white via-red-200 to-red-400 italic"
             style={{
               fontSize: 'clamp(40px, 7vw, 68px)',
               animation: 'gradient-shift 8s ease infinite',
               backgroundSize: '200% 200%',
-              lineHeight: '1.1',
+              lineHeight: '1.05',
+              letterSpacing: '-0.02em',
             }}
           >
             Stories That<br />Haunt You

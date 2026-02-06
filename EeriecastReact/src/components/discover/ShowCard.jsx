@@ -1,4 +1,4 @@
-import { Play } from 'lucide-react';
+import { Play, Crown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import PropTypes from 'prop-types';
@@ -13,6 +13,8 @@ export default function ShowCard({ podcast, onPlay, subtext = "" }) {
     e.stopPropagation();
     if (typeof onPlay === 'function') onPlay(podcast);
   };
+
+  const isMembersOnly = !!podcast.is_exclusive;
 
   return (
     <div 
@@ -32,6 +34,14 @@ export default function ShowCard({ podcast, onPlay, subtext = "" }) {
           </div>
         )}
 
+        {/* Members badge */}
+        {isMembersOnly && (
+          <div className="absolute top-2 left-2 flex items-center gap-1 bg-gradient-to-r from-amber-600/90 to-amber-700/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-lg">
+            <Crown className="w-2.5 h-2.5" />
+            <span>Members</span>
+          </div>
+        )}
+
         {/* Hover play overlay */}
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
           <button 
@@ -43,11 +53,11 @@ export default function ShowCard({ podcast, onPlay, subtext = "" }) {
         </div>
       </div>
       <div className="p-3 mt-auto">
-        <h3 className="text-red-400/90 font-semibold text-sm line-clamp-2 leading-tight uppercase mb-1 group-hover:text-red-300 transition-colors duration-300">
+        <h3 className="text-white font-semibold text-sm line-clamp-2 leading-tight mb-1 group-hover:text-zinc-300 transition-colors duration-300">
           <Link
             to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`}
             onClick={(e) => e.stopPropagation()}
-            className="hover:text-red-300 transition-colors"
+            className="hover:text-zinc-300 transition-colors"
             title={podcast.title}
           >
             {podcast.title}

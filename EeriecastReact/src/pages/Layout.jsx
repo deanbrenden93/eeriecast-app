@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search, Bell, User, Menu, X } from "lucide-react";
+import { Search, Bell, User, Menu, X, Home, Library, Compass, Settings } from "lucide-react";
 import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
 import UserMenu from "../components/layout/UserMenu";
@@ -12,15 +12,14 @@ import { cn } from "@/lib/utils";
 import logo from '@/assets/logo.png';
 import { AnimatePresence, motion } from "framer-motion";
 
-// Bottom nav menu items configured here
+// Bottom nav menu items
 const menuItems = [
-  { id: 'home', icon: '🏠', label: 'Home', page: 'home' },
-  { id: 'library', icon: '📚', label: 'Library', page: 'library' },
-  { id: 'browse', icon: '🔮', label: 'Browse', page: 'browse' },
-  { id: 'settings', icon: '⚙️', label: 'Settings', page: 'settings' }
+  { id: 'home', Icon: Home, label: 'Home', page: 'home' },
+  { id: 'library', Icon: Library, label: 'Library', page: 'library' },
+  { id: 'browse', Icon: Compass, label: 'Browse', page: 'browse' },
+  { id: 'settings', Icon: Settings, label: 'Settings', page: 'settings' }
 ];
 
-// Map config.page -> app route name used by createPageUrl and currentPageName
 const PAGE_ROUTE_MAP = {
   home: 'Podcasts',
   library: 'Library',
@@ -31,13 +30,13 @@ const PAGE_ROUTE_MAP = {
 function BottomNav({ currentPageName }) {
   return (
     <nav
-      className="hidden max-[1000px]:flex fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-b from-[#0d1320]/95 to-[#05070d]/95 backdrop-blur-md border-t border-white/10 overflow-x-hidden"
+      className="hidden max-[1000px]:flex fixed bottom-0 left-0 right-0 z-40 bg-[#08080e]/80 backdrop-blur-xl border-t border-white/[0.04] overflow-x-hidden"
       role="navigation"
       aria-label="Bottom Navigation"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <ul className="flex w-full max-w-full justify-between items-stretch px-2 py-3">
-        {menuItems.map(({ id, icon, label, page }) => {
+      <ul className="flex w-full max-w-full justify-around items-stretch px-1 py-1.5">
+        {menuItems.map(({ id, Icon, label, page }) => {
           const routeName = PAGE_ROUTE_MAP[page] || 'Home';
           const to = createPageUrl(routeName);
           const active = currentPageName === routeName;
@@ -45,11 +44,15 @@ function BottomNav({ currentPageName }) {
             <li key={id} className="flex-1 min-w-0">
               <Link
                 to={to}
-                className={`flex flex-col items-center justify-center gap-1.5 py-2 rounded-md transition-colors ${active ? 'text-white' : 'text-gray-300 hover:text-white'}`}
+                className="flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl transition-all duration-300 group"
                 aria-current={active ? 'page' : undefined}
               >
-                <span className={`text-2xl leading-none ${active ? 'opacity-100' : 'opacity-90'}`}>{icon}</span>
-                <span className={`text-[13px] leading-none whitespace-nowrap ${active ? 'font-semibold' : 'font-medium text-gray-300'}`}>{label}</span>
+                <div className={`relative p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-white/[0.08]' : 'group-hover:bg-white/[0.04]'}`}>
+                  <Icon className={`w-[18px] h-[18px] transition-all duration-300 ${active ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-300'}`} strokeWidth={active ? 2.2 : 1.8} />
+                </div>
+                <span className={`text-[10px] leading-none transition-all duration-300 ${active ? 'text-white font-semibold' : 'text-zinc-500 font-medium group-hover:text-zinc-400'}`}>
+                  {label}
+                </span>
               </Link>
             </li>
           );
@@ -94,14 +97,13 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
     };
   }, [userMenuRef]);
 
-  // Close mobile menu on route changes or ESC
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') setIsMobileMenuOpen(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // The new homepage design and Premium signup page are full-screen experiences and do not use the standard header.
+  // Full-screen pages without standard header
   if (currentPageName === "Home" || currentPageName === "Premium") {
     return (
       <div className="m-0 p-0 w-full h-full">
@@ -114,7 +116,6 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
           }
         `}</style>
         <main className="pb-0">{children}</main>
-        {/* BottomNav intentionally hidden on Home and Premium */}
       </div>
     );
   }
@@ -123,49 +124,40 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
     setIsSearchModalOpen(true);
   };
 
+  const navLinks = [
+    { name: 'Home', route: 'Podcasts' },
+    { name: 'Podcasts', route: 'Discover' },
+    { name: 'Audiobooks', route: 'Audiobooks' },
+    { name: 'Library', route: 'Library' },
+  ];
+
   const NavLinks = ({ onClick }) => (
     <>
-      <Link
-        to={createPageUrl("Podcasts")}
-        onClick={onClick}
-        className={`text-sm font-medium transition-colors hover:text-red-500 ${
-          currentPageName === "Podcasts" ? "text-red-500 border-b-2 border-red-500 pb-1" : "text-gray-300"
-        }`}
-      >
-        Home
-      </Link>
-      <Link
-        to={createPageUrl("Discover")}
-        onClick={onClick}
-        className={`text-sm font-medium transition-colors hover:text-red-500 ${
-          currentPageName === "Discover" ? "text-red-500 border-b-2 border-red-500 pb-1" : "text-gray-300"
-        }`}
-      >
-        Podcasts
-      </Link>
-      <Link
-        to={createPageUrl("Audiobooks")}
-        onClick={onClick}
-        className={`text-sm font-medium transition-colors hover:text-red-500 ${
-          currentPageName === "Audiobooks" ? "text-red-500 border-b-2 border-red-500 pb-1" : "text-gray-300"
-        }`}
-      >
-        Audiobooks
-      </Link>
-      <Link
-        to={createPageUrl("Library")}
-        onClick={onClick}
-        className={`text-sm font-medium transition-colors hover:text-red-500 ${
-          currentPageName === "Library" ? "text-red-500 border-b-2 border-red-500 pb-1" : "text-gray-300"
-        }`}
-      >
-        Library
-      </Link>
+      {navLinks.map(({ name, route }) => {
+        const active = currentPageName === route;
+        return (
+          <Link
+            key={route}
+            to={createPageUrl(route)}
+            onClick={onClick}
+            className={`relative text-[13px] font-medium tracking-wide transition-all duration-300 py-1 ${
+              active
+                ? "text-white"
+                : "text-zinc-500 hover:text-zinc-200"
+            }`}
+          >
+            {name}
+            {active && (
+              <span className="absolute -bottom-[13px] left-1/2 -translate-x-1/2 w-4 h-[2px] rounded-full bg-white" />
+            )}
+          </Link>
+        );
+      })}
     </>
   );
 
   return (
-    <div className="min-h-screen bg-black text-white w-full">
+    <div className="min-h-screen bg-eeriecast-surface text-white w-full">
       <style>{`
         html, body {
           margin: 0 !important;
@@ -175,48 +167,53 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         }
       `}</style>
 
-      <header className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-gray-800">
-        <div className="w-full px-5 py-4">
+      {/* ─── Top bar ─── */}
+      <header className="fixed top-0 left-0 right-0 z-50 isolate bg-[#08080e]/70 backdrop-blur-xl border-b border-white/[0.04]">
+        <div className="w-full px-4 md:px-6 py-3">
           <div className="flex items-center justify-between">
-            {/* Left: Mobile menu button + Logo */}
-            <div className="flex items-center gap-3">
+            {/* Left: Mobile menu + Logo */}
+            <div className="flex items-center gap-2.5">
               <button
                 type="button"
-                className="md:hidden p-2 text-gray-300 hover:text-white transition-colors"
+                className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.04] transition-all duration-300"
                 aria-label="Open menu"
                 onClick={() => setIsMobileMenuOpen(true)}
               >
-                <Menu className="w-6 h-6" />
+                <Menu className="w-5 h-5" />
               </button>
               <Link to={createPageUrl("Home")} className="flex items-center">
                 <img
                   src={logo}
                   alt="EERIECAST"
-                  className="h-6 md:h-8 filter invert"
+                  className="h-5 md:h-6 filter invert opacity-90"
                 />
               </Link>
             </div>
 
-            {/* Navigation (desktop only) */}
-            <nav className="hidden md:flex items-center space-x-8">
+            {/* Center: Navigation (desktop) */}
+            <nav className="hidden md:flex items-center gap-7">
               <NavLinks />
             </nav>
 
-            {/* Actions */}
-            <div className="flex items-center space-x-4">
-              <button 
+            {/* Right: Actions */}
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
                 onClick={handleSearchClick}
-                className="p-2 text-gray-400 hover:text-white transition-colors"
+                className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all duration-300"
+                aria-label="Search"
               >
                 <Search className="w-5 h-5" />
               </button>
+
               <div className="relative" ref={notifRef}>
                 <button
+                  type="button"
                   onClick={() => {
                     if (!isAuthenticated) return;
                     setIsNotifOpen((open) => !open);
                   }}
-                  className={`relative p-2 transition-colors ${isAuthenticated ? 'text-gray-400 hover:text-white' : 'text-gray-600 cursor-default'}`}
+                  className={`relative p-2 rounded-lg transition-all duration-300 ${isAuthenticated ? 'text-zinc-500 hover:text-white hover:bg-white/[0.04]' : 'text-zinc-700 cursor-default'}`}
                   aria-haspopup="true"
                   aria-expanded={isNotifOpen}
                   aria-label="Notifications"
@@ -228,13 +225,14 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     </span>
                   )}
                 </button>
-                {/* Notifications popover with enter/exit animation */}
                 <AnimatePresence>
                   {isNotifOpen && <NotificationsPopover onClose={() => setIsNotifOpen(false)} />}
                 </AnimatePresence>
               </div>
+
               <div className="relative" ref={userMenuRef}>
-                <button 
+                <button
+                  type="button"
                   onClick={() => {
                     if (isAuthenticated) {
                       setIsUserMenuOpen(prev => !prev);
@@ -242,9 +240,9 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                       setIsAuthModalOpen(true);
                     }
                   }}
-                  className="relative w-8 h-8 bg-red-600 rounded-full flex items-center justify-center"
+                  className="w-8 h-8 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 border border-white/[0.06] flex items-center justify-center hover:border-white/[0.12] transition-all duration-300"
                 >
-                  <User className="w-4 h-4 text-white" />
+                  <User className="w-4 h-4 text-zinc-300" />
                 </button>
                 {isAuthenticated && (
                   <AnimatePresence>
@@ -257,7 +255,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         </div>
       </header>
 
-      {/* Mobile overlay menu with enter/exit transition */}
+      {/* ─── Mobile slide-out menu ─── */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
@@ -269,9 +267,8 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
-            {/* Backdrop */}
             <motion.div
-              className="absolute inset-0 bg-[#0b0b0b]"
+              className="absolute inset-0 bg-[#08080e]/95 backdrop-blur-lg"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -279,71 +276,62 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
             />
             <motion.div
               className="relative flex h-full w-full flex-col"
-              initial={{ x: -30, opacity: 0 }}
+              initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -30, opacity: 0 }}
+              exit={{ x: -20, opacity: 0 }}
               transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+              <div className="flex items-center justify-between px-4 h-14 border-b border-white/[0.04]">
                 <Link
                   to={createPageUrl('Home')}
                   className="flex items-center"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  <img
-                    src={logo}
-                    alt="EERIECAST"
-                    className="h-6 filter invert"
-                  />
+                  <img src={logo} alt="EERIECAST" className="h-5 filter invert opacity-90" />
                 </Link>
                 <button
-                  className="p-2 text-gray-300 hover:text-white"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.04] transition-all duration-300"
                   aria-label="Close menu"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Nav */}
-              <nav className="flex-1 overflow-y-auto px-5 py-3 flex flex-col gap-1">
-                {[
-                  { name: 'Home', route: 'Podcasts' },
-                  { name: 'Podcasts', route: 'Discover' },
-                  { name: 'Audiobooks', route: 'Audiobooks' },
-                  { name: 'Library', route: 'Library' },
-                ].map(({ name, route }, i) => (
-                  <motion.div
-                    key={route}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.05 + i * 0.06, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                  >
-                    <Link
-                      to={createPageUrl(route)}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={`block px-3 py-3 rounded-md text-base font-medium ${
-                        currentPageName === route
-                          ? 'text-red-500 bg-white/5'
-                          : 'text-gray-200 hover:text-white hover:bg-white/5'
-                      }`}
+              {/* Nav links */}
+              <nav className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-0.5">
+                {navLinks.map(({ name, route }, i) => {
+                  const active = currentPageName === route;
+                  return (
+                    <motion.div
+                      key={route}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.04 + i * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                     >
-                      {name}
-                    </Link>
-                  </motion.div>
-                ))}
+                      <Link
+                        to={createPageUrl(route)}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+                          active
+                            ? 'text-white bg-white/[0.06]'
+                            : 'text-zinc-400 hover:text-white hover:bg-white/[0.03]'
+                        }`}
+                      >
+                        {name}
+                      </Link>
+                    </motion.div>
+                  );
+                })}
               </nav>
-
-              {/* Footer spacer */}
-              <div className="h-4" />
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <main className={cn(
-        "relative w-full pt-[72px] pb-16 max-[1000px]:pb-20",
+        "relative w-full pt-16 pb-16 max-[1000px]:pb-20",
         hasPlayer && "pb-32 max-[1000px]:pb-48"
       )}>
         {children}
@@ -351,17 +339,17 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
 
       <BottomNav currentPageName={currentPageName} />
 
-      {/* Search Modal */}
-      <SearchModal 
-        isOpen={isSearchModalOpen} 
-        onClose={() => setIsSearchModalOpen(false)} 
+      <SearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
       />
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }
 
-// Lightweight popover component anchored to bell — now animated with framer-motion
+/* ─── Notifications popover ─── */
+
 function NotificationsPopover({ onClose }) {
   const { notifications, notificationsLoading, refreshNotifications, isAuthenticated, markNotificationRead } = useUser();
   const initializedRef = useRef(false);
@@ -377,27 +365,27 @@ function NotificationsPopover({ onClose }) {
 
   return (
     <motion.div
-      className="absolute right-0 mt-2 w-80 sm:w-96 rounded-md bg-[#181d24] text-white shadow-xl shadow-black/40 ring-1 ring-black/60 overflow-hidden z-50"
-      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+      className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl bg-[#12121a] text-white shadow-2xl shadow-black/50 ring-1 ring-white/[0.06] overflow-hidden z-50"
+      initial={{ opacity: 0, y: -6, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+      exit={{ opacity: 0, y: -6, scale: 0.97 }}
       transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
     >
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
-        <h3 className="text-sm font-semibold">Notifications</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-white text-xs">Close</button>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.04]">
+        <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Notifications</h3>
+        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors">Close</button>
       </div>
       <div className="max-h-80 overflow-auto">
         {notificationsLoading ? (
-          <div className="px-4 py-6 text-center text-gray-400">Loading…</div>
+          <div className="px-4 py-8 text-center text-zinc-600 text-sm">Loading...</div>
         ) : !notifications || notifications.length === 0 ? (
-          <div className="px-4 py-6 text-center text-gray-400">No notifications</div>
+          <div className="px-4 py-8 text-center text-zinc-600 text-sm">No notifications</div>
         ) : (
-          <ul className="divide-y divide-white/5">
+          <ul className="divide-y divide-white/[0.03]">
             {notifications.map((n) => (
               <li
                 key={n.id}
-                className={`px-4 py-3 hover:bg-white/5 cursor-pointer ${n.is_read ? 'opacity-80' : ''}`}
+                className={`px-4 py-3 hover:bg-white/[0.03] cursor-pointer transition-colors ${n.is_read ? 'opacity-60' : ''}`}
                 onClick={() => markNotificationRead(n.id)}
                 role="button"
                 tabIndex={0}
@@ -405,13 +393,13 @@ function NotificationsPopover({ onClose }) {
                 aria-label={`Notification: ${n?.message || ''}`}
               >
                 <div className="flex items-start gap-3">
-                  <span className={`mt-1 inline-block w-2 h-2 rounded-full ${n.is_read ? 'bg-gray-600' : 'bg-red-500'}`} />
+                  <span className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${n.is_read ? 'bg-zinc-700' : 'bg-red-500'}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm leading-snug break-words">
+                    <p className="text-sm leading-snug break-words text-zinc-300">
                       {n.message || 'You have a new notification.'}
                     </p>
                     {n.created_at && (
-                      <p className="text-[11px] text-gray-400 mt-1">
+                      <p className="text-[11px] text-zinc-600 mt-1">
                         {new Date(n.created_at).toLocaleString()}
                       </p>
                     )}

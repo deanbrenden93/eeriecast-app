@@ -35,7 +35,7 @@ export default function EpisodesTable({
   removingEpisodeId, // id currently being removed
   className = '',
 }) {
-  const { favoriteEpisodeIds, user, refreshFavorites, isAuthenticated, isPremium } = useUser();
+  const { favoriteEpisodeIds, user, refreshFavorites, isAuthenticated, isPremium, episodeProgressMap } = useUser();
   const { openAuth } = useAuthModal();
 
   const rows = useMemo(() => Array.isArray(episodes) ? episodes : [], [episodes]);
@@ -72,19 +72,34 @@ export default function EpisodesTable({
       {rows.map((ep) => {
         const fav = favoriteEpisodeIds.has(ep.id);
         const isRemoving = onRemoveFromPlaylist && removingEpisodeId === ep.id;
-        const isGated = (!isPremium) && (ep?.is_premium || show?.is_exclusive);
+        const isGated = (!isPremium) && (ep?.is_premium || show?.is_exclusive || ep?.podcast?.is_exclusive);
+        const prog = episodeProgressMap?.get(Number(ep.id));
+        const progPct = prog && prog.duration > 0 ? Math.min(100, Math.max(0, (prog.progress / prog.duration) * 100)) : 0;
+        const isCompleted = prog?.completed || progPct >= 95;
+        const hasProgress = progPct > 0;
         return (
           <div
             key={ep.id || ep.slug || ep.title}
             className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg hover:bg-gray-800/50 transition-colors group"
           >
             <div className="flex items-start sm:items-center gap-4 flex-1 min-w-0">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
+              {/* Artwork with progress overlay */}
+              <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
                 {getArtwork(ep) ? (
                   <img src={getArtwork(ep)} alt={ep.title} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <span className="text-2xl">🎧</span>
+                  </div>
+                )}
+                {isCompleted && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                )}
+                {hasProgress && !isCompleted && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10">
+                    <div className="h-full bg-red-500 transition-all" style={{ width: `${progPct}%` }} />
                   </div>
                 )}
               </div>
@@ -101,6 +116,18 @@ export default function EpisodesTable({
                   <span>{formatDuration(ep.duration || ep.length_seconds)}</span>
                   <span>•</span>
                   <span>{formatDate(ep.created_date || ep.published_at || ep.release_date)}</span>
+                  {hasProgress && !isCompleted && (
+                    <>
+                      <span>•</span>
+                      <span className="text-red-400 text-xs">{Math.round(progPct)}% played</span>
+                    </>
+                  )}
+                  {isCompleted && (
+                    <>
+                      <span>•</span>
+                      <span className="text-green-400 text-xs">Played</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

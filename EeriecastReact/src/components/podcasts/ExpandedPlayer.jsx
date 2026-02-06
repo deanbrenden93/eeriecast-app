@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { Heart, X, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@/context/UserContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
+import { useAudioPlayerContext } from "@/context/AudioPlayerContext.jsx";
 import { Podcast, Episode, UserLibrary, Playlist } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +63,19 @@ function formatTime(s) {
   const r = sec % 60;
   return `${m}:${r.toString().padStart(2, '0')}`;
 }
+
+function formatTimerDisplay(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return '0:00';
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+const ClockIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+  </svg>
+);
 
 // Inline modal that overlays within the ExpandedPlayer container (no portals)
 function InlineAddToPlaylistModal({ open, episode, onClose, playlists = [], onAdded, resolving = false }) {
@@ -280,6 +295,11 @@ export default function ExpandedPlayer({
   const [isPostingComment, setIsPostingComment] = useState(false);
   const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium } = useUser();
   const { openAuth } = useAuthModal();
+
+  // Sleep timer & playback speed from context
+  const { sleepTimerRemaining, setSleepTimer, cancelSleepTimer, playbackRate, setPlaybackRate } = useAudioPlayerContext();
+  const sleepTimerActive = sleepTimerRemaining > 0;
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
 
   // New: Queue sheet state
@@ -579,9 +599,53 @@ export default function ExpandedPlayer({
   };
 
   return (
-    <div className="fixed inset-0 bg-[#141414] z-[3000] flex flex-col overflow-y-auto overscroll-contain touch-pan-y">
+    <div className="fixed inset-0 z-[3000] flex flex-col overflow-y-auto overscroll-contain touch-pan-y" style={{ background: '#0a0a0f' }}>
+      {/* Animated atmospheric background */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        {/* Slow-drifting gradient orbs */}
+        <div className="absolute w-[40rem] h-[40rem] rounded-full blur-[160px] opacity-[0.07]"
+          style={{
+            background: 'radial-gradient(circle, #dc2626, transparent 70%)',
+            top: '-10%', left: '-15%',
+            animation: 'ep-drift-1 25s ease-in-out infinite alternate',
+          }}
+        />
+        <div className="absolute w-[35rem] h-[35rem] rounded-full blur-[140px] opacity-[0.05]"
+          style={{
+            background: 'radial-gradient(circle, #7c3aed, transparent 70%)',
+            bottom: '-10%', right: '-10%',
+            animation: 'ep-drift-2 30s ease-in-out infinite alternate',
+          }}
+        />
+        <div className="absolute w-[25rem] h-[25rem] rounded-full blur-[120px] opacity-[0.04]"
+          style={{
+            background: 'radial-gradient(circle, #0ea5e9, transparent 70%)',
+            top: '40%', left: '50%',
+            animation: 'ep-drift-3 20s ease-in-out infinite alternate',
+          }}
+        />
+        {/* Subtle noise texture overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
+      </div>
+
+      {/* Keyframes for background animation */}
+      <style>{`
+        @keyframes ep-drift-1 {
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(60px, 40px) scale(1.15); }
+        }
+        @keyframes ep-drift-2 {
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(-50px, -30px) scale(1.1); }
+        }
+        @keyframes ep-drift-3 {
+          0% { transform: translate(-50%, -50%) scale(1); }
+          100% { transform: translate(calc(-50% + 40px), calc(-50% - 30px)) scale(1.2); }
+        }
+      `}</style>
+
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-5">
+      <div className="relative z-[1] flex items-center justify-between px-6 py-5">
         <button 
           onClick={onCollapse} 
           className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
@@ -606,7 +670,7 @@ export default function ExpandedPlayer({
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col justify-center items-center px-6 pb-8">
+      <div className="relative z-[1] flex-1 flex flex-col justify-center items-center px-6 pb-8">
         {/* Album Art */}
         <div className="relative w-[340px] h-[340px] mx-auto mb-6 rounded-lg overflow-hidden shadow-2xl">
           {cover ? (
@@ -665,11 +729,28 @@ export default function ExpandedPlayer({
               <span>Download</span>
             </button>
 
-            <button className="sleep-timer-indicator" style={{ display: 'none' }}>
-              <span className="icon" style={{ fontSize: 16 }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              </span>
-              <span className="sleep-timer-remaining">15:00</span>
+            <button
+              className={`player-options-btn ${sleepTimerActive || playbackRate !== 1 ? 'has-indicators' : ''}`}
+              onClick={() => setShowOptionsModal(true)}
+              aria-haspopup="dialog"
+              aria-expanded={showOptionsModal}
+            >
+              {/* Show active indicators inline */}
+              {sleepTimerActive && (
+                <span className="inline-flex items-center gap-1 text-amber-400">
+                  <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" /></span>
+                  <span className="text-[11px] font-mono font-semibold tabular-nums">{formatTimerDisplay(sleepTimerRemaining)}</span>
+                </span>
+              )}
+              {playbackRate !== 1 && (
+                <span className="text-[11px] font-semibold text-indigo-400 tabular-nums">{playbackRate}x</span>
+              )}
+              {!sleepTimerActive && playbackRate === 1 && (
+                <span className="icon" style={{ fontSize: 16 }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </span>
+              )}
+              {!sleepTimerActive && playbackRate === 1 && <span>More</span>}
             </button>
           </div>
 
@@ -733,6 +814,8 @@ export default function ExpandedPlayer({
       {/* Comments Section (inline styles matching original) */}
       <div
         style={{
+          position: 'relative',
+          zIndex: 1,
           width: '100%',
           maxWidth: 800,
           margin: '40px auto 0',
@@ -862,6 +945,143 @@ export default function ExpandedPlayer({
         </div>
       )}
 
+      {/* Player Options Modal (Sleep Timer + Playback Speed) */}
+      <AnimatePresence>
+        {showOptionsModal && (
+          <div className="fixed inset-0 z-[3500] flex items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setShowOptionsModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative w-[92vw] max-w-[400px] max-h-[85vh] bg-gradient-to-br from-[#0d0d12] via-[#141418] to-[#1a1a22] text-white border border-white/[0.06] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
+            >
+              {/* Subtle glows */}
+              <div className="absolute -top-20 -right-20 w-56 h-56 bg-amber-500/8 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-indigo-500/6 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative p-6 overflow-y-auto max-h-[85vh]" style={{ scrollbarWidth: 'none' }}>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-bold tracking-tight">Player Options</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowOptionsModal(false)}
+                    className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                    aria-label="Close options"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* ── Sleep Timer Section ── */}
+                <div className="mb-6">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-7 h-7 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400">
+                      <ClockIcon />
+                    </div>
+                    <h3 className="text-sm font-semibold text-white/90 uppercase tracking-wider">Sleep Timer</h3>
+                  </div>
+
+                  {sleepTimerActive && (
+                    <div className="mb-3 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/[0.12] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
+                        </span>
+                        <span className="text-sm text-white/80">Timer active</span>
+                      </div>
+                      <span className="text-sm font-mono font-semibold text-amber-400 tabular-nums">{formatTimerDisplay(sleepTimerRemaining)}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: '15m', minutes: 15 },
+                      { label: '30m', minutes: 30 },
+                      { label: '45m', minutes: 45 },
+                      { label: '60m', minutes: 60 },
+                      { label: 'End of ep', minutes: null },
+                      ...(sleepTimerActive ? [{ label: 'Off', minutes: -1 }] : []),
+                    ].map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => {
+                          if (opt.minutes === null) {
+                            const remaining = duration - currentTime;
+                            if (remaining > 0) setSleepTimer(remaining / 60);
+                          } else if (opt.minutes === -1) {
+                            cancelSleepTimer();
+                          } else {
+                            setSleepTimer(opt.minutes);
+                          }
+                          setShowOptionsModal(false);
+                        }}
+                        className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 ${
+                          opt.minutes === -1
+                            ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20'
+                            : 'bg-white/[0.04] border-white/[0.06] text-white/90 hover:bg-white/[0.08] hover:border-white/[0.1]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/[0.06] mb-6" />
+
+                {/* ── Playback Speed Section ── */}
+                <div>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-7 h-7 rounded-full bg-indigo-500/10 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    </div>
+                    <h3 className="text-sm font-semibold text-white/90 uppercase tracking-wider">Playback Speed</h3>
+                    {playbackRate !== 1 && <span className="text-xs font-semibold text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded-full">{playbackRate}x</span>}
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3].map((rate) => (
+                      <button
+                        key={rate}
+                        onClick={() => { setPlaybackRate(rate); setShowOptionsModal(false); }}
+                        className={`px-2 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-200 ${
+                          playbackRate === rate
+                            ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'
+                            : 'bg-white/[0.03] border-white/[0.06] text-white/70 hover:bg-white/[0.08] hover:border-white/[0.1]'
+                        }`}
+                      >
+                        {rate === 1 ? '1x' : `${rate}x`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {playbackRate !== 1 && (
+                    <button
+                      onClick={() => { setPlaybackRate(1); setShowOptionsModal(false); }}
+                      className="w-full mt-2.5 px-4 py-2 rounded-xl text-sm font-medium bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-all text-white/60"
+                    >
+                      Reset to Normal
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Add to Playlist Modal (inline) */}
       <InlineAddToPlaylistModal
         open={showAddModal}
@@ -875,17 +1095,28 @@ export default function ExpandedPlayer({
         }}
       />
 
-      {/* Queue Overlay (Drawer) */}
-      {showQueue && (
-        <div className="fixed inset-0 z-[4000] flex justify-end">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" 
-            onClick={() => setShowQueue(false)} 
-          />
-          
-          {/* Drawer Content */}
-          <div className="relative bg-[#141414] border-l border-white/10 w-full max-w-[400px] h-full overflow-hidden flex flex-col rounded-l-[32px] animate-in slide-in-from-right duration-300">
+      {/* Queue Overlay (Drawer) — animated enter/exit */}
+      <AnimatePresence>
+        {showQueue && (
+          <div className="fixed inset-0 z-[4000] flex justify-end">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowQueue(false)}
+            />
+            
+            {/* Drawer Content */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="relative bg-[#141414] border-l border-white/10 w-full max-w-[400px] h-full overflow-hidden flex flex-col rounded-l-[32px]"
+            >
             <div className="w-full flex justify-between items-center p-6 pb-0">
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">Playing from</span>
@@ -974,9 +1205,10 @@ export default function ExpandedPlayer({
                 </div>
               </div>
             </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

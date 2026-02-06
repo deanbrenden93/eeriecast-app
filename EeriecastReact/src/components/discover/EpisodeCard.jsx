@@ -98,7 +98,7 @@ export default function EpisodeCard({ podcast, onPlay, onAddToPlaylist, initialF
 
           {/* Text */}
           <div className="flex-1 min-w-0">
-            <p className="text-red-400/80 text-[13px] sm:text-sm font-bold uppercase mb-1 line-clamp-1">{podcast.author}</p>
+            <p className="text-zinc-400 text-[13px] sm:text-sm font-medium mb-1 line-clamp-1">{podcast.author}</p>
             <h3 className="text-white font-semibold text-[16px] sm:text-lg leading-snug truncate">
               <Link
                 to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`}

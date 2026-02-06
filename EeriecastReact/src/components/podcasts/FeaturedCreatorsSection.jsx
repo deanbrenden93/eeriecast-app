@@ -22,7 +22,7 @@ export default function FeaturedCreatorsSection() {
   return (
     <div className="relative">
       <div className="flex justify-between items-center mb-5">
-        <h2 className="text-2xl font-bold text-white">Featured Creators</h2>
+        <h2 className="text-2xl font-bold text-white">All Shows</h2>
       </div>
 
       <div className="absolute top-1/2 -left-3 -translate-y-1/2 z-10 hidden md:block">

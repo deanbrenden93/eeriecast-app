@@ -18,9 +18,12 @@ const UserProvider = ({ children }) => {
   const [notifications, setNotifications] = useState(() => []);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  // Listening history — Map<episodeId, { progress, duration, completed }>
+  const [episodeProgressMap, setEpisodeProgressMap] = useState(() => new Map());
   const lastFavoritesForUserRef = useRef(null);
   const lastFollowingsForUserRef = useRef(null);
   const lastNotificationsForUserRef = useRef(null);
+  const lastHistoryForUserRef = useRef(null);
 
   // Fetch favorites for a specific user id (stable, no dependency on user state)
   const fetchFavoritesForUser = useCallback(async (uid) => {
@@ -191,6 +194,32 @@ const UserProvider = ({ children }) => {
     }
   }, []);
 
+  // Fetch listening history to build episode progress map
+  const fetchHistoryForUser = useCallback(async (uid) => {
+    if (!uid) {
+      setEpisodeProgressMap(new Map());
+      return new Map();
+    }
+    try {
+      const resp = await UserLibrary.getHistory();
+      const list = Array.isArray(resp) ? resp : (resp?.results || []);
+      const map = new Map();
+      for (const item of list) {
+        const eid = Number(item?.episode?.id || item?.episode_id || item?.id);
+        if (!Number.isFinite(eid)) continue;
+        const progress = Number(item?.progress) || 0;
+        const duration = Number(item?.duration || item?.episode?.duration) || 0;
+        const completed = item?.completed === true || (duration > 0 && progress >= duration * 0.95);
+        map.set(eid, { progress, duration, completed });
+      }
+      setEpisodeProgressMap(map);
+      return map;
+    } catch {
+      setEpisodeProgressMap(new Map());
+      return new Map();
+    }
+  }, []);
+
   // Fetch user (stable), only called on mount or explicit refresh
   const fetchUser = useCallback(async () => {
     setLoading(true);
@@ -262,9 +291,11 @@ const UserProvider = ({ children }) => {
     setFollowedPodcastIds(new Set());
     setNotifications([]);
     setUnreadNotificationCount(0);
+    setEpisodeProgressMap(new Map());
     lastFavoritesForUserRef.current = null;
     lastFollowingsForUserRef.current = null;
     lastNotificationsForUserRef.current = null;
+    lastHistoryForUserRef.current = null;
   }, []);
 
   // On initial mount, check current user once
@@ -299,6 +330,15 @@ const UserProvider = ({ children }) => {
     }
   }, [user, fetchNotificationsForUser]);
 
+  // When user id becomes available, fetch listening history ONCE per user id
+  useEffect(() => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    if (uid && lastHistoryForUserRef.current !== uid) {
+      lastHistoryForUserRef.current = uid;
+      fetchHistoryForUser(uid);
+    }
+  }, [user, fetchHistoryForUser]);
+
   // Public method to force refresh favorites for current user
   const refreshFavorites = useCallback(async () => {
     const uid = user?.id || user?.user?.id || user?.pk;
@@ -316,6 +356,24 @@ const UserProvider = ({ children }) => {
     const uid = user?.id || user?.user?.id || user?.pk;
     return fetchNotificationsForUser(uid);
   }, [user, fetchNotificationsForUser]);
+
+  // Public method to force refresh listening history for current user
+  const refreshHistory = useCallback(async () => {
+    const uid = user?.id || user?.user?.id || user?.pk;
+    return fetchHistoryForUser(uid);
+  }, [user, fetchHistoryForUser]);
+
+  // Update a single episode's progress in the local map (called by AudioPlayerContext in real-time)
+  const updateEpisodeProgress = useCallback((episodeId, progress, dur) => {
+    const eid = Number(episodeId);
+    if (!Number.isFinite(eid) || eid <= 0) return;
+    setEpisodeProgressMap(prev => {
+      const next = new Map(prev);
+      const completed = dur > 0 && progress >= dur * 0.95;
+      next.set(eid, { progress, duration: dur, completed });
+      return next;
+    });
+  }, []);
 
   // Mark notification read (optimistic)
   const markNotificationRead = useCallback(async (notificationId) => {
@@ -563,6 +621,10 @@ const UserProvider = ({ children }) => {
         refreshNotifications,
         markNotificationRead,
         removeEpisodeFromPlaylist,
+        // listening history / episode progress
+        episodeProgressMap,
+        refreshHistory,
+        updateEpisodeProgress,
       }}
     >
       {children}

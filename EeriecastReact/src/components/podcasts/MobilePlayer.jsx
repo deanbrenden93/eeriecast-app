@@ -85,7 +85,9 @@ export default function MobilePlayer({
   const [localShuffle, setLocalShuffle] = useState(false);
   const [localRepeatMode, setLocalRepeatMode] = useState('off');
   const [showQueue, setShowQueue] = useState(false);
-  const { loadAndPlay, playQueueIndex, pause } = useAudioPlayerContext() || {};
+  const { loadAndPlay, playQueueIndex, pause, sleepTimerRemaining, playbackRate } = useAudioPlayerContext() || {};
+  const sleepTimerActive = sleepTimerRemaining > 0;
+  const speedActive = playbackRate != null && playbackRate !== 1;
 
   const shuffleActive = onShuffleToggle ? !!isShuffling : localShuffle;
   const effectiveRepeat = onRepeatToggle ? (repeatMode || 'off') : localRepeatMode;
@@ -147,7 +149,7 @@ export default function MobilePlayer({
     <>
       {podcast && episode && (
         <div 
-          className="fixed left-0 right-0 z-[2000] min-[1001px]:max-w-[1600px] min-[1001px]:left-1/2 min-[1001px]:-translate-x-1/2 min-[1001px]:rounded-t-xl bottom-[calc(80px_+_env(safe-area-inset-bottom,0px))] min-[1001px]:bottom-0"
+          className="fixed left-0 right-0 z-[2000] min-[1001px]:max-w-[1600px] min-[1001px]:left-1/2 min-[1001px]:-translate-x-1/2 min-[1001px]:rounded-t-xl bottom-[calc(var(--bottom-nav-h,70px)_+_env(safe-area-inset-bottom,0px))] min-[1001px]:bottom-0 animate-mini-player-in"
         >
           <div
             className="group relative h-[clamp(80px,10vh,100px)] eeriecast-glass border-t border-white/[0.06] flex items-center px-[clamp(8px,2vw,20px)] gap-[clamp(4px,1vw,12px)]"
@@ -166,25 +168,50 @@ export default function MobilePlayer({
             {/* Swipe indicator */}
             <div onClick={onExpand} style={{cursor: 'pointer'}} className="absolute top-[5px] left-1/2 -translate-x-1/2 w-8 h-0.5 bg-white/15 rounded-full" />
 
-            {/* Album Art */}
+            {/* Clickable left zone: art + info → opens expanded player */}
             <div
               onClick={onExpand}
-              className="relative w-[clamp(36px,6vw,50px)] h-[clamp(36px,6vw,50px)] rounded-lg overflow-hidden shadow-[0_4px_15px_rgba(0,0,0,0.4)] transition-transform hover:scale-105 flex-shrink-0 cursor-pointer bg-gradient-to-br from-red-600/20 to-eeriecast-violet/20 flex items-center justify-center ring-1 ring-white/[0.06]"
+              className="flex items-center gap-[clamp(4px,1vw,12px)] flex-1 min-w-0 cursor-pointer"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onExpand?.(); }}
+              aria-label="Expand player"
             >
-              {cover ? (
-                <img src={cover} alt={episode.title} className="w-full h-full object-cover object-center" />
-              ) : (
-                <Headphones className="w-[clamp(18px,3vw,24px)] h-[clamp(18px,3vw,24px)] text-white/50" />
-              )}
-            </div>
-
-            {/* Track Info */}
-            <div className="flex-1 min-w-0 pr-[clamp(4px,1vw,12px)] mr-[clamp(4px,1vw,8px)]">
-              <div className="text-white/90 font-semibold text-[clamp(12px,1.8vw,14px)] mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
-                {episode.title}
+              {/* Album Art */}
+              <div
+                className="relative w-[clamp(36px,6vw,50px)] h-[clamp(36px,6vw,50px)] rounded-lg overflow-hidden shadow-[0_4px_15px_rgba(0,0,0,0.4)] transition-transform hover:scale-105 flex-shrink-0 bg-gradient-to-br from-red-600/20 to-eeriecast-violet/20 flex items-center justify-center ring-1 ring-white/[0.06]"
+              >
+                {cover ? (
+                  <img src={cover} alt={episode.title} className="w-full h-full object-cover object-center" />
+                ) : (
+                  <Headphones className="w-[clamp(18px,3vw,24px)] h-[clamp(18px,3vw,24px)] text-white/50" />
+                )}
               </div>
-              <div className="text-zinc-500 text-[clamp(10px,1.5vw,12px)] whitespace-nowrap overflow-hidden text-ellipsis">
-                {podcast.title}
+
+              {/* Track Info */}
+              <div className="flex-1 min-w-0 pr-[clamp(4px,1vw,12px)] mr-[clamp(4px,1vw,8px)]">
+                <div className="text-white/90 font-semibold text-[clamp(12px,1.8vw,14px)] mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                  {episode.title}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-zinc-500 text-[clamp(10px,1.5vw,12px)] whitespace-nowrap overflow-hidden text-ellipsis">
+                    {podcast.title}
+                  </div>
+                  {speedActive && (
+                    <span className="inline-flex items-center text-[10px] font-semibold text-indigo-400 bg-indigo-400/10 border border-indigo-400/20 rounded-full px-1.5 py-0.5 flex-shrink-0 tabular-nums">
+                      {playbackRate}x
+                    </span>
+                  )}
+                  {sleepTimerActive && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-full px-1.5 py-0.5 font-mono flex-shrink-0 tabular-nums">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400" />
+                      </span>
+                      {(() => { const m = Math.floor(sleepTimerRemaining / 60); const s = sleepTimerRemaining % 60; return `${m}:${s.toString().padStart(2, '0')}`; })()}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

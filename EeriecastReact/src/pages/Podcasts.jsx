@@ -1,8 +1,18 @@
 import { useState, useEffect, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
 import { isAudiobook, hasCategory } from "@/lib/utils";
+
+// TODO [PRE-LAUNCH]: These frontend overrides for is_exclusive must be migrated to the
+// Django backend (set is_exclusive=True on podcast IDs 10 & 4 in the admin panel) and
+// this client-side workaround removed. The backend currently returns is_exclusive=false
+// for these podcasts despite them being members-only content.
+const MEMBERS_ONLY_OVERRIDES = new Set([10, 4]); // After Hours, Manmade Monsters
+function applyExclusiveOverrides(list) {
+  return list.map(p => (p && MEMBERS_ONLY_OVERRIDES.has(p.id) && !p.is_exclusive) ? { ...p, is_exclusive: true } : p);
+}
+import { Crown } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import PodcastModal from "../components/podcasts/PodcastModal";
 import FeaturedHero from "../components/podcasts/FeaturedHero";
@@ -20,7 +30,8 @@ import { useUser } from "@/context/UserContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 
 export default function Podcasts() {
-  const { podcasts, isLoading } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading } = usePodcasts();
+  const podcasts = useMemo(() => applyExclusiveOverrides(rawPodcasts), [rawPodcasts]);
   const [keepListeningItems, setKeepListeningItems] = useState([]); // { podcast, episode, progress (0-100) }
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
@@ -46,76 +57,87 @@ export default function Podcasts() {
     setPlaybackQueue,
   } = useAudioPlayerContext();
 
-  const { isPremium } = useUser();
+  const { isPremium, episodeProgressMap } = useUser();
 
-  // Build episode-level "keep listening" items from localStorage + resume API
+  // Build "Keep Listening" items from the real-time episodeProgressMap.
+  // This picks up both server-side history and current-session plays.
   useEffect(() => {
+    if (!podcasts.length) { setKeepListeningItems([]); return; }
+    const podcastMap = new Map(podcasts.map(p => [p.id, p]));
+
+    // Also merge with localStorage recentlyPlayed for ordering
+    const recentPodcastIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
+
+    // Build items from episodeProgressMap (partially played episodes)
+    const items = [];
+    if (episodeProgressMap && episodeProgressMap.size > 0) {
+      // We need episode details, but the map only has IDs + progress.
+      // Scan podcast episodes to find matches.
+      for (const p of podcasts) {
+        const eps = Array.isArray(p.episodes) ? p.episodes : [];
+        for (const ep of eps) {
+          const prog = episodeProgressMap.get(Number(ep.id));
+          if (prog && prog.progress > 0 && !prog.completed) {
+            const pct = prog.duration > 0 ? Math.min(100, (prog.progress / prog.duration) * 100) : 0;
+            if (pct > 0 && pct < 95) {
+              items.push({
+                podcast: p,
+                episode: ep,
+                progress: pct,
+                resumeData: { progress: prog.progress },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Also fetch from resume API for episodes not in local podcasts data
     let cancelled = false;
     (async () => {
-      const recentlyPlayedIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
-      if (!recentlyPlayedIds.length || !podcasts.length) { setKeepListeningItems([]); return; }
-
-      const podcastMap = new Map(podcasts.map(p => [p.id, p]));
-      const recentPodcasts = recentlyPlayedIds.map(id => podcastMap.get(id)).filter(Boolean);
-
-      const items = await Promise.all(
-        recentPodcasts.map(async (p) => {
-          try {
-            // Try the resume API first (authenticated users with server-side history)
-            let resume = null;
-            try { resume = await UserLibrary.resumeForPodcast(p.id); } catch { /* no history or not logged in */ }
-
-            if (resume?.episode_detail) {
-              const ep = resume.episode_detail;
-              const progressSec = Math.max(0, Number(resume?.progress || 0));
-              const dur = Math.max(0, Number(ep?.duration || resume?.duration || 0));
-              let percent = 0;
-              if (dur > 0) percent = Math.min(100, (progressSec / dur) * 100);
-              else if (resume?.percent_complete) percent = Math.min(100, Number(resume.percent_complete));
-
-              return {
+      const apiItems = [];
+      for (const pid of recentPodcastIds.slice(0, 8)) {
+        const p = podcastMap.get(pid);
+        if (!p) continue;
+        // Check if we already have a progress item for this podcast
+        if (items.some(item => item.podcast.id === pid)) continue;
+        try {
+          const resume = await UserLibrary.resumeForPodcast(p.id);
+          if (resume?.episode_detail) {
+            const ep = resume.episode_detail;
+            const progressSec = Math.max(0, Number(resume?.progress || 0));
+            const dur = Math.max(0, Number(ep?.duration || resume?.duration || 0));
+            let pct = 0;
+            if (dur > 0) pct = Math.min(100, (progressSec / dur) * 100);
+            if (pct > 0 && pct < 95) {
+              apiItems.push({
                 podcast: ep.podcast && typeof ep.podcast === 'object' ? { ...p, ...ep.podcast } : p,
                 episode: ep,
-                progress: percent,
+                progress: pct,
                 resumeData: resume,
-              };
+              });
             }
-
-            // Fallback: fetch podcast detail to get its first episode
-            let episodes = Array.isArray(p.episodes) ? p.episodes : [];
-            if (!episodes.length) {
-              try {
-                const detail = await PodcastApi.get(p.id);
-                episodes = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
-              } catch { /* ignore */ }
-            }
-            const firstEp = episodes[0];
-            if (!firstEp) return null;
-
-            return {
-              podcast: p,
-              episode: firstEp,
-              progress: 0,
-              resumeData: null,
-            };
-          } catch { return null; }
-        })
-      );
+          }
+        } catch { /* not authenticated or not available */ }
+      }
 
       if (!cancelled) {
-        // Deduplicate by episode id (keep first occurrence)
+        const all = [...items, ...apiItems];
+        // Deduplicate by episode id
         const seen = new Set();
-        const unique = items.filter(Boolean).filter(item => {
+        const unique = all.filter(item => {
           if (!item.episode?.id) return false;
           if (seen.has(item.episode.id)) return false;
           seen.add(item.episode.id);
           return true;
         });
-        setKeepListeningItems(unique);
+        // Sort: most recently played first (higher progress = more recent activity)
+        unique.sort((a, b) => (b.progress || 0) - (a.progress || 0));
+        setKeepListeningItems(unique.slice(0, 15));
       }
     })();
     return () => { cancelled = true; };
-  }, [podcasts]);
+  }, [podcasts, episodeProgressMap]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;
@@ -229,12 +251,12 @@ export default function Podcasts() {
 
       {/* Keep Listening */}
       {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <LoadingSkeleton height="h-[180px]" />
         </div>
       ) : (
         keepListeningItems.length > 0 && (
-          <div className="w-full px-2.5 lg:px-10 py-8">
+          <div className="w-full px-2.5 lg:px-10 py-3">
             <KeepListeningSection
               items={keepListeningItems}
               onEpisodePlay={async (item) => {
@@ -251,33 +273,59 @@ export default function Podcasts() {
         )
       )}
 
-      {/* Categories */}
-      <div className="w-full px-2.5 lg:px-10 py-12">
-        {isLoading ? <LoadingSkeleton /> : <CategoryExplorer />}
-      </div>
-      
-      {/* New Releases — latest episodes across all non-audiobook podcasts */}
+      {/* For You — episodes from podcasts the user has listened to */}
+      {!isLoading && keepListeningItems.length > 0 && (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <NewReleasesRow
+            title={<h2 className="text-2xl font-bold text-white">For You</h2>}
+            viewAllTo={`${createPageUrl('Discover')}?tab=Recommended`}
+            categoryFilter={null}
+          />
+        </div>
+      )}
+
+      {/* Trending — episodes sorted by popularity */}
       {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <NewReleasesRow
+            title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
+            viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
+            ordering="-play_count"
+          />
+        </div>
+      )}
+
+      {/* New Releases — latest episodes across all non-audiobook podcasts */}
+      {isLoading ? (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <LoadingSkeleton height="h-[300px]" />
+        </div>
+      ) : (
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">New Releases{selectedCategoryParam ? ` — ${selectedCategoryParam}` : ''}</h2>}
-            viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
+            viewAllTo={`${createPageUrl('Discover')}?tab=Newest`}
             categoryFilter={selectedCategoryParam || null}
           />
         </div>
       )}
 
+      {/* Categories */}
+      <div className="w-full px-2.5 lg:px-10 py-5">
+        {isLoading ? <LoadingSkeleton /> : <CategoryExplorer />}
+      </div>
+
       {/* Audiobooks */}
       {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <LoadingSkeleton />
         </div>
       ) : (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <PodcastRow
             title={
               <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-300 bg-clip-text text-transparent">
@@ -299,11 +347,11 @@ export default function Podcasts() {
 
       {/* Members Only */}
       {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <MembersOnlySection
             podcasts={podcasts.filter(p => p.is_exclusive)}
             onPodcastPlay={handlePodcastPlay}
@@ -311,30 +359,61 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* Trending */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-8">
-          <LoadingSkeleton height="h-[300px]" />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-8">
-          <PodcastRow
-            title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
-            podcasts={podcasts.filter(p => p.is_trending)}
-            onPodcastPlay={handlePodcastPlay}
-            showPlayIcon={true}
-            viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
-          />
+      {/* ─── Membership promo banner (non-premium users only) ─── */}
+      {!isLoading && !isPremium && (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <div className="relative overflow-hidden rounded-2xl border border-white/[0.05]">
+            {/* Layered atmospheric background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#1a1028] via-[#12101c] to-[#0d0f18]" />
+            <div className="absolute top-0 right-0 w-[28rem] h-[28rem] bg-amber-500/[0.04] rounded-full blur-[100px] -translate-y-1/2 translate-x-1/4" />
+            <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-600/[0.04] rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-amber-400/[0.02] rounded-full blur-[60px] rotate-12" />
+
+            {/* Content */}
+            <div className="relative px-6 sm:px-10 lg:px-14 py-10 sm:py-14 flex flex-col sm:flex-row items-center gap-8 sm:gap-12">
+              <div className="flex-1 text-center sm:text-left">
+                {/* Badge */}
+                <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/15 to-amber-400/10 text-amber-400/90 text-[10px] font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-amber-400/[0.08] mb-5">
+                  <Crown className="w-3 h-3" />
+                  <span>Membership</span>
+                </div>
+
+                <h2 className="text-2xl sm:text-3xl lg:text-[2rem] font-bold text-white leading-[1.2] mb-3 tracking-tight">
+                  Unlock the full experience
+                </h2>
+                <p className="text-[15px] text-zinc-400 max-w-lg leading-relaxed">
+                  Exclusive shows, after-hours episodes, and the complete audiobook library.
+                  <span className="text-zinc-500"> Support the creators behind the stories you love.</span>
+                </p>
+              </div>
+
+              {/* CTA */}
+              <div className="flex-shrink-0">
+                <Link
+                  to={createPageUrl("Premium")}
+                  className="group relative inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-semibold transition-all duration-500 overflow-hidden"
+                >
+                  {/* Button glow */}
+                  <span className="absolute inset-0 bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-500 group-hover:from-amber-400 group-hover:to-amber-500" />
+                  <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.15),transparent_70%)]" />
+                  <span className="relative flex items-center gap-2.5 text-black">
+                    <Crown className="w-4 h-4" />
+                    Become a Member
+                  </span>
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Featured Creators */}
+      {/* All Shows */}
       {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-8">
+        <div className="w-full px-2.5 lg:px-10 py-3">
           <LoadingSkeleton height="h-[300px]" />
         </div>
       ) : (
-        <div className="w-full px-2.5 lg:px-10 py-8 pb-32">
+        <div className="w-full px-2.5 lg:px-10 py-3 pb-32">
           <FeaturedCreatorsSection />
         </div>
       )}

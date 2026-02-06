@@ -394,21 +394,29 @@ export default function Library() {
   return (
     <div className="min-h-screen bg-eeriecast-surface text-white">
       <div className="px-2.5 lg:px-10 py-8">
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          {tabs.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActiveTab(t)}
-              className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
-                activeTab === t
-                  ? 'bg-red-600 text-white shadow-[0_2px_12px_rgba(220,38,38,0.25)]'
-                  : 'bg-eeriecast-surface-lighter text-zinc-400 hover:bg-white/[0.06] hover:text-white border border-white/[0.06]'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl md:text-5xl font-bold mb-2 text-white">Library</h1>
+          <p className="text-zinc-500 text-lg">Your collection, all in one place</p>
+        </div>
+
+        {/* Tabs — underline style matching Discover */}
+        <div className="mb-8 border-b border-white/[0.06]">
+          <div className="flex space-x-4 sm:space-x-8 overflow-x-auto pb-px" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {tabs.map((t) => (
+              <button
+                key={t}
+                onClick={() => setActiveTab(t)}
+                className={`flex-shrink-0 pb-3 text-sm font-medium transition-all duration-300 border-b-2 ${
+                  activeTab === t
+                    ? 'text-white border-white'
+                    : 'text-zinc-500 hover:text-white border-transparent'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
 
         {renderContent()}
