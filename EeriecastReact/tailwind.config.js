@@ -6,7 +6,7 @@ module.exports = {
   	extend: {
   		fontFamily: {
   			sans: ['"DM Sans"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
-  			display: ['"Playfair Display"', 'Georgia', '"Times New Roman"', 'serif'],
+  			display: ['"Outfit"', 'system-ui', 'sans-serif'],
   		},
   		borderRadius: {
   			lg: 'var(--radius)',

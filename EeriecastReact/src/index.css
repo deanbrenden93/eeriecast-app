@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 /* ═══════════════════════════════════════════════════════
    EERIECAST — Dark Horror Theme
    ═══════════════════════════════════════════════════════ */
@@ -115,7 +116,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  /* Display headings automatically use Playfair Display */
+  /* Display headings automatically use Outfit */
   h1, h2 {
     @apply font-display;
   }
@@ -696,7 +697,7 @@
 
 /* Drop cap on the very first paragraph of the chapter */
 .ereader-body .ereader-para-first:first-child::first-letter {
-  font-family: 'Playfair Display', Georgia, serif;
+  font-family: 'Outfit', system-ui, sans-serif;
   font-size: 3.2em;
   float: left;
   line-height: 0.85;

@@ -26,7 +26,7 @@ export default function FeaturedHero({ podcast, onPlay }) {
 
           {/* Title */}
           <h1
-            className="hero-title font-display font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-white via-red-200 to-red-400 italic"
+            className="hero-title font-display font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-white via-red-200 to-red-400 italic pr-3"
             style={{
               fontSize: 'clamp(40px, 7vw, 68px)',
               animation: 'gradient-shift 8s ease infinite',
