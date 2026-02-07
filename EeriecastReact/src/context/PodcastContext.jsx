@@ -80,9 +80,9 @@ export function PodcastProvider({ children }) {
   const getById = useCallback((id) => byId[id], [byId]);
 
   const ensureDetail = useCallback(async (id) => {
-    // If we already have detailed episodes on the object, return it
+    // If we already have full detail (episodes + description), return cached
     const current = byId[id];
-    if (current && Array.isArray(current.episodes) && current.episodes.length > 0) {
+    if (current && Array.isArray(current.episodes) && current.episodes.length > 0 && current.description != null) {
       return current;
     }
     // Fetch detail and merge into state

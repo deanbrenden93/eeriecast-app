@@ -652,7 +652,7 @@
   column-fill: auto;
   height: 100%;
   overflow: hidden;
-  transition: transform 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* transition is controlled via inline style so chapter changes can be instant */
 }
 
 /* Prevent breaks inside key elements */
@@ -661,9 +661,15 @@
   -webkit-column-break-inside: avoid;
 }
 
+/* Scene break divider — keep it together, don't split across columns */
+.ereader-scene-break {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+}
+
 /* Body text styling for the reader */
+/* font-family is controlled via inline style (user-selectable) */
 .ereader-body {
-  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   text-align: justify;
@@ -675,7 +681,21 @@
   orphans: 3;
   widows: 3;
 }
-.ereader-body::first-letter {
+
+/* Novel-style paragraphs: no gap between, indent all but the first */
+.ereader-body p {
+  margin: 0;
+  padding: 0;
+}
+.ereader-para-indent {
+  text-indent: 1.5em;
+}
+.ereader-para-first {
+  text-indent: 0;
+}
+
+/* Drop cap on the very first paragraph of the chapter */
+.ereader-body .ereader-para-first:first-child::first-letter {
   font-family: 'Playfair Display', Georgia, serif;
   font-size: 3.2em;
   float: left;

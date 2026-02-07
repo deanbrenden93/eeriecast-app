@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Playlist, UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,8 @@ import SubscribeModal from '@/components/auth/SubscribeModal';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import EReader from '@/components/podcasts/EReader';
-import callOfCthulhu from '@/data/books/call-of-cthulhu';
+import { findBookForShow } from '@/data/books';
+import { getShowDescription } from '@/data/show-descriptions';
 
 function useQuery() {
   const { search } = useLocation();
@@ -143,9 +144,10 @@ export default function Episodes() {
   const isBook = show ? isAudiobook(show) : false;
   const isMembersOnly = !!show?.is_exclusive;
   const [descExpanded, setDescExpanded] = useState(false);
+  const descRef = useRef(null);
 
-  // Build a clean description snippet
-  const descriptionText = show?.description || '';
+  // Build a clean description snippet — prefer curated copy, fall back to API
+  const descriptionText = getShowDescription(show) || show?.description || '';
   const hasLongDesc = descriptionText.length > 200;
 
   // Format total duration nicely
@@ -204,14 +206,14 @@ export default function Episodes() {
               <div className="absolute inset-0 scale-110 rounded-2xl blur-2xl opacity-30"
                 style={{ background: show?.cover_image ? `url(${show.cover_image}) center/cover` : 'none' }}
               />
-              <div className={`relative overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/[0.06] ${
-                isBook ? 'w-36 sm:w-44 md:w-52 rounded-xl aspect-[3/4]' : 'w-32 sm:w-40 md:w-48 rounded-xl aspect-square'
+              <div className={`relative overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/[0.06] rounded-xl ${
+                isBook ? 'w-36 sm:w-44 md:w-52 aspect-[3/4]' : 'w-36 sm:w-44 md:w-52 aspect-square'
               }`}>
                 {show?.cover_image ? (
                   <img src={show.cover_image} alt={show?.title || 'Cover'} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-eeriecast-surface-light to-eeriecast-surface">
-                    {isBook ? <BookOpen className="w-12 h-12 text-zinc-600" /> : <Headphones className="w-12 h-12 text-zinc-600" />}
+                    {isBook ? <BookOpen className="w-12 h-12 text-zinc-600" /> : <Headphones className="w-12 h-12 text-zinc-700" />}
                   </div>
                 )}
               </div>
@@ -221,10 +223,15 @@ export default function Episodes() {
             <div className="flex-1 min-w-0">
               {/* Badges row */}
               <div className="flex items-center gap-2 mb-3 flex-wrap">
-                {isBook && (
+                {isBook ? (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400/90 bg-cyan-500/10 border border-cyan-400/[0.08] px-2.5 py-1 rounded-full">
                     <BookOpen className="w-3 h-3" />
                     Audiobook
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-red-400/90 bg-red-500/10 border border-red-400/[0.08] px-2.5 py-1 rounded-full">
+                    <Headphones className="w-3 h-3" />
+                    Podcast
                   </span>
                 )}
                 {isMembersOnly && (
@@ -236,8 +243,8 @@ export default function Episodes() {
               </div>
 
               {/* Title */}
-              <h1 className={`font-bold leading-[1.1] tracking-tight mb-3 ${
-                isBook ? 'text-3xl sm:text-4xl md:text-5xl italic' : 'text-2xl sm:text-3xl md:text-5xl'
+              <h1 className={`font-bold leading-[1.1] tracking-tight mb-3 text-3xl sm:text-4xl md:text-5xl ${
+                isBook ? 'italic' : ''
               }`}>
                 {show?.title || show?.name || 'Podcast'}
               </h1>
@@ -277,16 +284,32 @@ export default function Episodes() {
               {/* Description */}
               {descriptionText && (
                 <div className="mb-5 max-w-2xl">
-                  <p className={`text-[13px] sm:text-sm text-zinc-400 leading-relaxed whitespace-pre-line ${!descExpanded && hasLongDesc ? 'line-clamp-3' : ''}`}>
-                    {descriptionText}
-                  </p>
+                  <div
+                    className="relative overflow-hidden transition-all duration-500 ease-in-out"
+                    style={{
+                      maxHeight: descExpanded
+                        ? `${descRef.current?.scrollHeight || 500}px`
+                        : '4.5em',
+                    }}
+                  >
+                    <p ref={descRef} className="text-[13px] sm:text-sm text-zinc-400 leading-relaxed whitespace-pre-line">
+                      {descriptionText}
+                    </p>
+                    {/* Fade overlay when collapsed */}
+                    {hasLongDesc && !descExpanded && (
+                      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-eeriecast-surface to-transparent pointer-events-none" />
+                    )}
+                  </div>
                   {hasLongDesc && (
                     <button
                       type="button"
                       onClick={() => setDescExpanded(!descExpanded)}
-                      className="inline-flex items-center gap-1 mt-1.5 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+                      className="inline-flex items-center gap-1 mt-2 text-xs text-zinc-600 hover:text-zinc-300 transition-colors duration-300"
                     >
-                      {descExpanded ? <><ChevronUp className="w-3 h-3" /> Show less</> : <><ChevronDown className="w-3 h-3" /> Read more</>}
+                      <span className={`transition-transform duration-300 ${descExpanded ? 'rotate-180' : 'rotate-0'}`}>
+                        <ChevronDown className="w-3 h-3" />
+                      </span>
+                      {descExpanded ? 'Show less' : 'Read more'}
                     </button>
                   )}
                 </div>
@@ -384,9 +407,9 @@ export default function Episodes() {
       />
 
       {/* E-Reader overlay — audiobooks only */}
-      {showReader && isBook && (
+      {showReader && isBook && findBookForShow(show) && (
         <EReader
-          book={callOfCthulhu}
+          book={findBookForShow(show)}
           isPremium={true /* TODO: revert to isPremium before launch */}
           onClose={() => setShowReader(false)}
           onSubscribe={() => {

@@ -1,3 +1,4 @@
+import React from "react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -11,6 +12,8 @@ import {
   Plus,
   List,
   Bookmark,
+  BookmarkPlus,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,8 +31,49 @@ const LINE_HEIGHT_OPTIONS = [
   { label: "Normal", value: 1.8 },
   { label: "Relaxed", value: 2.0 },
 ];
+const FONT_OPTIONS = [
+  { label: "Sans", value: "'DM Sans', system-ui, -apple-system, sans-serif" },
+  { label: "Serif", value: "'Georgia', 'Times New Roman', serif" },
+  { label: "Mono", value: "'DM Mono', 'Roboto Mono', 'Courier New', monospace" },
+];
 const FREE_PREVIEW_WORDS = 300;
 const COLUMN_GAP = 60;
+
+/**
+ * Render chapter text with:
+ *  - `---` scene-break markers → elegant ornamental dividers
+ *  - Paragraphs formatted like a professional novel (no gap, indent instead)
+ */
+function renderContent(text) {
+  if (!text) return null;
+
+  // Split on scene breaks first
+  const scenes = text.split(/\n---\n/);
+
+  return scenes.map((scene, si) => {
+    // Split scene into paragraphs (double newline)
+    const paragraphs = scene.split(/\n\n+/).filter(p => p.trim());
+
+    return (
+      <React.Fragment key={si}>
+        {paragraphs.map((p, pi) => (
+          <p key={pi} className={pi > 0 ? "ereader-para-indent" : "ereader-para-first"}>
+            {p.trim()}
+          </p>
+        ))}
+        {si < scenes.length - 1 && (
+          <span className="ereader-scene-break block my-6 flex items-center justify-center gap-3" aria-hidden="true">
+            <span className="block w-8 h-px bg-zinc-700" />
+            <span className="block w-1.5 h-1.5 rounded-full bg-zinc-600" />
+            <span className="block w-1.5 h-1.5 rounded-full bg-zinc-600" />
+            <span className="block w-1.5 h-1.5 rounded-full bg-zinc-600" />
+            <span className="block w-8 h-px bg-zinc-700" />
+          </span>
+        )}
+      </React.Fragment>
+    );
+  });
+}
 
 /* ── localStorage helpers ────────────────────────────────────────── */
 function loadSettings(bookId) {
@@ -44,6 +88,12 @@ function loadProgress(bookId) {
 function saveProgress(bookId, p) {
   try { localStorage.setItem(`ereader-progress-${bookId}`, JSON.stringify(p)); } catch { /* */ }
 }
+function loadBookmarks(bookId) {
+  try { const r = localStorage.getItem(`ereader-bookmarks-${bookId}`); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+function saveBookmarks(bookId, b) {
+  try { localStorage.setItem(`ereader-bookmarks-${bookId}`, JSON.stringify(b)); } catch { /* */ }
+}
 
 export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   /* ─── State ──────────────────────────────────────────────── */
@@ -51,19 +101,29 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   const saved = useMemo(() => loadSettings(book?.id), [book?.id]);
   const [fontSize, setFontSize] = useState(saved?.fontSize ?? 18);
   const [lineHeight, setLineHeight] = useState(saved?.lineHeight ?? 1.8);
+  const [fontFamily, setFontFamily] = useState(saved?.fontFamily ?? FONT_OPTIONS[0].value);
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
+  const [tocTab, setTocTab] = useState("contents"); // 'contents' | 'bookmarks'
 
   // Pagination state
   const [pageIndex, setPageIndex] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [containerWidth, setContainerWidth] = useState(0);
 
+  // Bookmarks — up to 10 per book, each stores { chapter, page, label }
+  const [bookmarks, setBookmarks] = useState(() => loadBookmarks(book?.id));
+
   const pagerRef = useRef(null);
   const columnsRef = useRef(null);
   const settingsRef = useRef(null);
   const tocRef = useRef(null);
   const restoredRef = useRef(false); // prevent double-restore
+
+  // Chapter-crossing transition: fade+slide the reading area
+  const [chapterFade, setChapterFade] = useState(null); // 'forward' | 'backward' | null
+  const pendingChapterRef = useRef(null);
+  const suppressColumnTransition = useRef(false); // kill column transition during invisible swap
 
   const chapter = book?.chapters?.[chapterIdx];
   const totalChapters = book?.chapters?.length || 0;
@@ -101,7 +161,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     const onResize = () => measurePages();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [measurePages, chapterIdx, fontSize, lineHeight]);
+  }, [measurePages, chapterIdx, fontSize, lineHeight, fontFamily]);
 
   // Re-measure after fonts load and after layout settles
   useEffect(() => {
@@ -110,7 +170,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     const t3 = setTimeout(measurePages, 600);
     document.fonts?.ready?.then(() => setTimeout(measurePages, 50));
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [measurePages, chapterIdx, fontSize, lineHeight]);
+  }, [measurePages, chapterIdx, fontSize, lineHeight, fontFamily]);
 
   /* ─── Restore saved chapter + page on mount ──────────────── */
   useEffect(() => {
@@ -130,28 +190,78 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
 
   /* ─── Persist settings ───────────────────────────────────── */
   useEffect(() => {
-    if (book?.id) saveSettings(book.id, { fontSize, lineHeight });
-  }, [book?.id, fontSize, lineHeight]);
+    if (book?.id) saveSettings(book.id, { fontSize, lineHeight, fontFamily });
+  }, [book?.id, fontSize, lineHeight, fontFamily]);
 
   /* ─── Persist progress ───────────────────────────────────── */
   useEffect(() => {
     if (book?.id) saveProgress(book.id, { chapter: chapterIdx, page: pageIndex });
   }, [book?.id, chapterIdx, pageIndex]);
 
-  /* ─── Reset page when font/line-height changes ──────────── */
+  /* ─── Reset page when font/line-height/font-family changes ─ */
   useEffect(() => {
     setPageIndex(0);
-  }, [fontSize, lineHeight]);
+  }, [fontSize, lineHeight, fontFamily]);
 
   /* ─── Reset page when chapter changes ────────────────────── */
   // (unless we're doing "go to last page of prev chapter" via sentinel)
   const pendingLastPage = useRef(false);
 
+  /* ─── Chapter-crossing transition logic ───────────────────── */
+  // Smoothly fades/slides the reading area out, swaps chapter while invisible,
+  // then fades/slides the new content in — avoids the column-sweep flicker.
+  const changeChapter = useCallback((newIdx, goToLastPage, direction) => {
+    if (chapterFade) return; // ignore while already transitioning
+    pendingChapterRef.current = { idx: newIdx, lastPage: goToLastPage };
+    setChapterFade(direction); // triggers fade-out
+  }, [chapterFade]);
+
+  useEffect(() => {
+    if (!chapterFade || !pendingChapterRef.current) return;
+
+    // After fade-out completes (~150ms), swap the chapter content
+    const t = setTimeout(() => {
+      const { idx, lastPage, targetPage } = pendingChapterRef.current;
+      pendingChapterRef.current = null;
+
+      // Suppress the column translateX transition during the invisible swap
+      // so the column container jumps instantly to its new position.
+      suppressColumnTransition.current = true;
+
+      if (lastPage) pendingLastPage.current = true;
+      setChapterIdx(idx);
+      if (typeof targetPage === "number") {
+        // Bookmark navigation — jump to specific page after measure
+        setTimeout(() => setPageIndex(targetPage), 120);
+      } else if (!lastPage) {
+        setPageIndex(0);
+      }
+
+      // Wait for React render + measurePages + pendingLastPage to fully settle,
+      // then re-enable column transitions and fade the new content in.
+      // Using a short timeout instead of rAF chains for reliability across
+      // React's async batching and measurePages' own rAF.
+      setTimeout(() => {
+        suppressColumnTransition.current = false;
+        setChapterFade(null);
+      }, 100);
+    }, 150);
+
+    return () => clearTimeout(t);
+  }, [chapterFade]);
+
   /* ─── Close panels on click outside ─────────────────────── */
+  const justClosedPanel = useRef(false);
   useEffect(() => {
     function handleClick(e) {
-      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target)) setShowSettings(false);
-      if (showToc && tocRef.current && !tocRef.current.contains(e.target)) setShowToc(false);
+      let closed = false;
+      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target)) { setShowSettings(false); closed = true; }
+      if (showToc && tocRef.current && !tocRef.current.contains(e.target)) { setShowToc(false); closed = true; }
+      if (closed) {
+        // Prevent the click from also triggering a page turn
+        justClosedPanel.current = true;
+        setTimeout(() => { justClosedPanel.current = false; }, 50);
+      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -192,19 +302,17 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     if (pageIndex < totalPages - 1) {
       setPageIndex(p => p + 1);
     } else if (chapterIdx < totalChapters - 1 && isPremium) {
-      setChapterIdx(c => c + 1);
-      setPageIndex(0);
+      changeChapter(chapterIdx + 1, false, 'forward');
     }
-  }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium]);
+  }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, changeChapter]);
 
   const prevPage = useCallback(() => {
     if (pageIndex > 0) {
       setPageIndex(p => p - 1);
     } else if (chapterIdx > 0) {
-      pendingLastPage.current = true;
-      setChapterIdx(c => c - 1);
+      changeChapter(chapterIdx - 1, true, 'backward');
     }
-  }, [pageIndex, chapterIdx]);
+  }, [pageIndex, chapterIdx, changeChapter]);
 
   /* ─── Keyboard navigation ───────────────────────────────── */
   useEffect(() => {
@@ -220,10 +328,43 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   /* ─── Chapter navigation (from TOC) ─────────────────────── */
   const goChapter = (idx) => {
     if (idx < 0 || idx >= totalChapters) return;
-    setChapterIdx(idx);
-    setPageIndex(0);
     setShowToc(false);
+    if (idx === chapterIdx) return; // already on this chapter
+    const direction = idx > chapterIdx ? 'forward' : 'backward';
+    changeChapter(idx, false, direction);
   };
+
+  /* ─── Bookmark management ─────────────────────────────────── */
+  const addBookmark = useCallback(() => {
+    if (bookmarks.length >= 10) return;
+    const ch = book?.chapters?.[chapterIdx];
+    const label = `Ch. ${ch?.number ?? chapterIdx + 1}, p. ${pageIndex + 1}`;
+    const newBm = { chapter: chapterIdx, page: pageIndex, label };
+    // Don't duplicate the exact same location
+    const exists = bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex);
+    if (exists) return;
+    const next = [...bookmarks, newBm];
+    setBookmarks(next);
+    saveBookmarks(book?.id, next);
+  }, [bookmarks, chapterIdx, pageIndex, book]);
+
+  const removeBookmark = useCallback((idx) => {
+    const next = bookmarks.filter((_, i) => i !== idx);
+    setBookmarks(next);
+    saveBookmarks(book?.id, next);
+  }, [bookmarks, book]);
+
+  const goBookmark = useCallback((bm) => {
+    setShowToc(false);
+    if (bm.chapter === chapterIdx) {
+      setPageIndex(bm.page);
+    } else {
+      // Use changeChapter for smooth transition, then set page after
+      const direction = bm.chapter > chapterIdx ? 'forward' : 'backward';
+      pendingChapterRef.current = { idx: bm.chapter, lastPage: false, targetPage: bm.page };
+      setChapterFade(direction);
+    }
+  }, [chapterIdx]);
 
   /* ─── Compute column transform ───────────────────────────── */
   const clampedPage = Math.max(0, Math.min(pageIndex, totalPages - 1));
@@ -271,7 +412,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             <button type="button" onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-zinc-400 hover:text-white transition-all">
               <X className="w-4 h-4" />
             </button>
-            <button type="button" onClick={() => { setShowToc(!showToc); setShowSettings(false); }}
+            <button type="button" onClick={() => { const next = !showToc; setShowToc(next); if (next) setTocTab("contents"); setShowSettings(false); }}
               className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all", showToc ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white")}>
               <List className="w-4 h-4" />
             </button>
@@ -281,6 +422,17 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             <p className="text-[10px] text-zinc-600 font-medium tracking-wide uppercase">{book.author}</p>
           </div>
           <div className="flex items-center gap-2">
+            {isPremium && (
+              <button type="button" onClick={addBookmark}
+                disabled={bookmarks.length >= 10 || bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)}
+                title={bookmarks.length >= 10 ? "Max 10 bookmarks" : bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex) ? "Page bookmarked" : "Bookmark this page"}
+                className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all",
+                  bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)
+                    ? "bg-red-500/10 border-red-500/20 text-red-400"
+                    : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed")}>
+                <BookmarkPlus className="w-4 h-4" />
+              </button>
+            )}
             <button type="button" onClick={() => { setShowSettings(!showSettings); setShowToc(false); }}
               className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all", showSettings ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white")}>
               <Settings className="w-4 h-4" />
@@ -308,6 +460,19 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                   </button>
                 </div>
               </div>
+              <div className="mb-4">
+                <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Font</label>
+                <div className="flex gap-1.5">
+                  {FONT_OPTIONS.map((opt) => (
+                    <button key={opt.label} type="button" onClick={() => setFontFamily(opt.value)}
+                      className={cn("flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
+                        fontFamily === opt.value ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.02] border-white/[0.04] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300")}
+                      style={{ fontFamily: opt.value }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Line Spacing</label>
                 <div className="flex gap-1.5">
@@ -324,27 +489,75 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
           )}
         </AnimatePresence>
 
-        {/* ═══════════════ TABLE OF CONTENTS ═════════════════════ */}
+        {/* ═══════════════ TABLE OF CONTENTS / BOOKMARKS ═════════ */}
         <AnimatePresence>
           {showToc && (
             <motion.div ref={tocRef} key="toc"
-              className="absolute top-[52px] left-4 sm:left-6 z-30 w-72 rounded-xl bg-[#141418] border border-white/[0.06] shadow-2xl shadow-black/60 overflow-hidden"
+              className="absolute top-[52px] left-4 sm:left-6 z-30 w-72 rounded-xl bg-[#141418] border border-white/[0.06] shadow-2xl shadow-black/60 overflow-hidden flex flex-col"
+              style={{ maxHeight: "calc(100vh - 120px)" }}
               initial={{ opacity: 0, x: -10, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: -10, scale: 0.95 }} transition={{ duration: 0.2 }}>
-              <div className="px-4 py-3 border-b border-white/[0.04]">
-                <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Contents</h3>
+              {/* ── Tab bar ── */}
+              <div className="flex border-b border-white/[0.04] flex-shrink-0">
+                <button type="button" onClick={() => setTocTab("contents")}
+                  className={cn("flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wider transition-all",
+                    tocTab === "contents" ? "text-white border-b-2 border-red-500" : "text-zinc-500 hover:text-zinc-300")}>
+                  Contents
+                </button>
+                <button type="button" onClick={() => setTocTab("bookmarks")}
+                  className={cn("flex-1 py-2.5 text-[11px] font-semibold uppercase tracking-wider transition-all relative",
+                    tocTab === "bookmarks" ? "text-white border-b-2 border-amber-500" : "text-zinc-500 hover:text-zinc-300")}>
+                  Bookmarks
+                  {bookmarks.length > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500/20 text-amber-400 text-[9px] font-bold">
+                      {bookmarks.length}
+                    </span>
+                  )}
+                </button>
               </div>
-              <div className="py-1">
-                {book.chapters.map((ch, i) => (
-                  <button key={i} type="button" onClick={() => goChapter(i)} disabled={isLocked && i > 0}
-                    className={cn("w-full text-left px-4 py-2.5 flex items-center gap-3 transition-all",
-                      i === chapterIdx ? "bg-white/[0.06] text-white" : isLocked && i > 0 ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200")}>
-                    <span className="text-[11px] font-bold text-zinc-600 w-5 text-right tabular-nums">{ch.number}</span>
-                    <span className="text-sm font-medium flex-1 truncate italic">{ch.title}</span>
-                    {isLocked && i > 0 && <Lock className="w-3 h-3 text-zinc-700 flex-shrink-0" />}
-                    {i === chapterIdx && <Bookmark className="w-3.5 h-3.5 text-red-500 fill-red-500 flex-shrink-0" />}
-                  </button>
-                ))}
-              </div>
+
+              {/* ── Contents list ── */}
+              {tocTab === "contents" && (
+                <div className="py-1 overflow-y-auto flex-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
+                  {book.chapters.map((ch, i) => (
+                    <button key={`ch-${i}`} type="button" onClick={() => goChapter(i)} disabled={isLocked && i > 0}
+                      className={cn("w-full text-left px-4 py-2.5 flex items-center gap-3 transition-all",
+                        i === chapterIdx ? "bg-white/[0.06] text-white" : isLocked && i > 0 ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200")}>
+                      <span className="text-[11px] font-bold text-zinc-600 w-5 text-right tabular-nums">{ch.number}</span>
+                      <span className="text-sm font-medium flex-1 truncate italic">{ch.title}</span>
+                      {isLocked && i > 0 && <Lock className="w-3 h-3 text-zinc-700 flex-shrink-0" />}
+                      {i === chapterIdx && <Bookmark className="w-3.5 h-3.5 text-red-500 fill-red-500 flex-shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Bookmarks list ── */}
+              {tocTab === "bookmarks" && (
+                <div className="py-1 overflow-y-auto flex-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
+                  {bookmarks.length === 0 ? (
+                    <div className="px-4 py-10 text-center">
+                      <BookmarkPlus className="w-6 h-6 text-zinc-700 mx-auto mb-2" />
+                      <p className="text-xs text-zinc-600">No bookmarks yet</p>
+                      <p className="text-[10px] text-zinc-700 mt-1">Tap the bookmark button to save your place</p>
+                    </div>
+                  ) : (
+                    bookmarks.map((bm, i) => (
+                      <div key={`bm-${i}`} className="flex items-center gap-1 pr-2">
+                        <button type="button" onClick={() => goBookmark(bm)}
+                          className="flex-1 text-left px-4 py-2.5 flex items-center gap-3 text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200 transition-all">
+                          <Bookmark className="w-3.5 h-3.5 text-amber-500 fill-amber-500 flex-shrink-0" />
+                          <span className="text-sm font-medium flex-1 truncate">{bm.label}</span>
+                        </button>
+                        <button type="button" onClick={() => removeBookmark(i)}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
+                          title="Remove bookmark">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -356,13 +569,13 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
           onTouchEnd={handleTouchEnd}
         >
           {/* Invisible tap zones for page turn */}
-          <button type="button" aria-label="Previous page" onClick={prevPage}
+          <button type="button" aria-label="Previous page" onClick={() => { if (!justClosedPanel.current) prevPage(); }}
             className="absolute left-0 top-0 bottom-0 w-[12%] z-20 cursor-w-resize opacity-0 hover:opacity-100 transition-opacity">
             <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-white/[0.02] to-transparent flex items-center pl-3">
               <ChevronLeft className="w-5 h-5 text-zinc-600" />
             </div>
           </button>
-          <button type="button" aria-label="Next page" onClick={nextPage}
+          <button type="button" aria-label="Next page" onClick={() => { if (!justClosedPanel.current) nextPage(); }}
             className="absolute right-0 top-0 bottom-0 w-[12%] z-20 cursor-e-resize opacity-0 hover:opacity-100 transition-opacity">
             <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-white/[0.02] to-transparent flex items-center justify-end pr-3">
               <ChevronRight className="w-5 h-5 text-zinc-600" />
@@ -392,12 +605,11 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                       <p className="text-xs text-zinc-600">&mdash;{book.epigraph.attribution}</p>
                     </div>
                   )}
-                  <div className="mb-8 text-center">
-                    <span className="text-[11px] text-zinc-600 uppercase tracking-[0.2em] font-semibold">Chapter {chapter?.number}</span>
-                    <h2 className="text-2xl sm:text-3xl font-display italic text-zinc-200 mt-2">{chapter?.title}</h2>
+                  <div className="ereader-no-break mb-8 text-center pt-[20vh]">
+                    <h2 className="text-2xl sm:text-3xl font-display italic text-zinc-200">{chapter?.title}</h2>
                     <div className="w-16 h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent mx-auto mt-4" />
                   </div>
-                  <div className="ereader-body text-zinc-400 whitespace-pre-line" style={{ fontSize: `${fontSize}px`, lineHeight }}>{freePreviewText}</div>
+                  <div className="ereader-body text-zinc-400" style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}>{renderContent(freePreviewText)}</div>
                 </div>
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-60 bg-gradient-to-t from-[#0a0a10] via-[#0a0a10]/95 to-transparent" />
@@ -410,7 +622,18 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             </div>
           ) : (
             /* ═══ Full paginated reading ═══ */
-            <div className="flex-1 flex flex-col overflow-hidden px-6 sm:px-10 lg:px-16 py-6 sm:py-10">
+            <div
+              className="flex-1 flex flex-col overflow-hidden px-6 sm:px-10 lg:px-16 py-6 sm:py-10"
+              style={{
+                opacity: chapterFade ? 0 : 1,
+                transform: chapterFade === 'forward'
+                  ? 'translateY(4%)'
+                  : chapterFade === 'backward'
+                    ? 'translateY(-4%)'
+                    : 'translateY(0)',
+                transition: 'opacity 0.15s ease, transform 0.15s ease',
+              }}
+            >
               <div ref={pagerRef} className="flex-1 max-w-[680px] w-full mx-auto overflow-hidden">
                 <div
                   ref={columnsRef}
@@ -418,9 +641,13 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                   style={{
                     fontSize: `${fontSize}px`,
                     lineHeight,
+                    fontFamily,
                     columnWidth: containerWidth > 0 ? `${containerWidth}px` : undefined,
                     columnGap: `${COLUMN_GAP}px`,
                     transform: `translateX(${translateX}px)`,
+                    transition: suppressColumnTransition.current
+                      ? "none"
+                      : "transform 0.35s cubic-bezier(0.25, 0.1, 0.25, 1)",
                   }}
                 >
                   {/* Chapter heading — flows naturally into column layout */}
@@ -431,14 +658,13 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                     </div>
                   )}
 
-                  <div className="ereader-no-break mb-8 text-center">
-                    <span className="text-[11px] text-zinc-600 uppercase tracking-[0.2em] font-semibold">Chapter {chapter?.number}</span>
-                    <h2 className="text-2xl sm:text-3xl font-display italic text-zinc-200 mt-2">{chapter?.title}</h2>
+                  <div className="ereader-no-break mb-8 text-center pt-[20vh]">
+                    <h2 className="text-2xl sm:text-3xl font-display italic text-zinc-200">{chapter?.title}</h2>
                     <div className="w-16 h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent mx-auto mt-4" />
                   </div>
 
-                  <div className="ereader-body text-zinc-400 whitespace-pre-line">
-                    {chapter?.content}
+                  <div className="ereader-body text-zinc-400">
+                    {renderContent(chapter?.content)}
                   </div>
                 </div>
               </div>
