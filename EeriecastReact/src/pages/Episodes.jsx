@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { Playlist, UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart } from 'lucide-react';
@@ -8,7 +9,7 @@ import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
 import { getPodcastCategoriesLower, isAudiobook } from '@/lib/utils';
-import SubscribeModal from '@/components/auth/SubscribeModal';
+import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT, FREE_EXCLUSIVE_EPISODE_LIMIT } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import EReader from '@/components/podcasts/EReader';
@@ -24,6 +25,7 @@ export default function Episodes() {
   const query = useQuery();
   const idParam = query.get('id') || query.get('podcast') || query.get('podcastId');
 
+  const navigate = useNavigate();
   const { ensureDetail } = usePodcasts();
   const [show, setShow] = useState(null);
   const [episodes, setEpisodes] = useState([]);
@@ -33,12 +35,12 @@ export default function Episodes() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [subscribeLabel, setSubscribeLabel] = useState('');
   const [showReader, setShowReader] = useState(false);
 
-  const { loadAndPlay } = useAudioPlayerContext();
-  const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium } = useUser();
+  const goToPremium = () => navigate(createPageUrl('Premium'));
+
+  const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
+  const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium, episodeProgressMap } = useUser();
   const { openAuth } = useAuthModal();
 
   const isFollowing = useMemo(() => {
@@ -109,16 +111,47 @@ export default function Episodes() {
     }
   };
 
+  const isBook = show ? isAudiobook(show) : false;
+  const isExclusive = !!show?.is_exclusive;
+
+  // Episode order (oldest-first) for audiobooks and exclusive shows — needed for free-tier gating
+  const episodeOrder = useMemo(() => {
+    if ((!isBook && !isExclusive) || !episodes.length) return [];
+    return [...episodes].sort((a, b) => {
+      const da = new Date(a.created_date || a.published_at || a.release_date || 0).getTime();
+      const db = new Date(b.created_date || b.published_at || b.release_date || 0).getTime();
+      return da - db;
+    });
+  }, [isBook, isExclusive, episodes]);
+
+  const getChapterIndex = (ep) => {
+    if ((!isBook && !isExclusive) || !ep) return -1;
+    return episodeOrder.findIndex(e => e.id === ep.id);
+  };
+
+  // Determine the free episode limit for this show
+  const freeEpisodeLimit = isBook ? FREE_LISTEN_CHAPTER_LIMIT : (isExclusive ? FREE_EXCLUSIVE_EPISODE_LIMIT : Infinity);
+
+  // Set of episode IDs that are locked behind the free-tier limit
+  const lockedEpisodeIds = useMemo(() => {
+    if (isPremium || !episodeOrder.length) return new Set();
+    const locked = new Set();
+    for (let i = freeEpisodeLimit; i < episodeOrder.length; i++) {
+      if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
+    }
+    return locked;
+  }, [isPremium, episodeOrder, freeEpisodeLimit]);
+
   const doPlay = async (ep) => {
     if (!ep) return;
-    if (show?.is_exclusive && !isPremium) {
-      setSubscribeLabel(show?.title || show?.name || 'Members-only podcast');
-      setShowSubscribeModal(true);
+    // Free-tier gate: check locked episode set (covers audiobooks + members-only shows)
+    if (lockedEpisodeIds.has(ep.id)) {
+      goToPremium();
       return;
     }
+    // Individual premium episode gate
     if (ep?.is_premium && !isPremium) {
-      setSubscribeLabel(ep?.title || 'Premium episode');
-      setShowSubscribeModal(true);
+      goToPremium();
       return;
     }
     try {
@@ -126,6 +159,75 @@ export default function Episodes() {
       try { await UserLibrary.addToHistory(ep.id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
     } catch (e) {
       console.error('Failed to play', e);
+    }
+  };
+
+  // ── Audiobook resume detection ────────────────────────────────────
+  // Find the chapter the user should resume from (the first non-completed
+  // chapter that has progress, or the first chapter after all completed ones).
+  const audiobookResume = useMemo(() => {
+    if (!isBook || !episodes.length) return null;
+    // Sort oldest-first (chapter order) regardless of the UI sort
+    const ordered = [...episodes].sort((a, b) => {
+      const da = new Date(a.created_date || a.published_at || a.release_date || 0).getTime();
+      const db = new Date(b.created_date || b.published_at || b.release_date || 0).getTime();
+      return da - db;
+    });
+
+    let hasAnyProgress = false;
+    let resumeIndex = 0;
+    let resumeProgress = 0;
+
+    for (let i = 0; i < ordered.length; i++) {
+      const eid = Number(ordered[i].id);
+      const saved = episodeProgressMap?.get(eid);
+      if (saved && saved.progress > 0) {
+        hasAnyProgress = true;
+        if (saved.completed) {
+          // This chapter is done — the resume candidate is the NEXT one
+          resumeIndex = Math.min(i + 1, ordered.length - 1);
+          resumeProgress = 0;
+        } else {
+          // In-progress chapter — this is the resume target
+          resumeIndex = i;
+          resumeProgress = saved.progress;
+          break; // First non-completed chapter with progress wins
+        }
+      }
+    }
+
+    if (!hasAnyProgress) return null;
+    return { ordered, index: resumeIndex, progress: resumeProgress, chapter: ordered[resumeIndex] };
+  }, [isBook, episodes, episodeProgressMap]);
+
+  const doPlayAudiobook = async () => {
+    // Sort oldest-first for chapter order
+    const ordered = [...episodes].sort((a, b) => {
+      const da = new Date(a.created_date || a.published_at || a.release_date || 0).getTime();
+      const db = new Date(b.created_date || b.published_at || b.release_date || 0).getTime();
+      return da - db;
+    });
+
+    // Build queue items for every chapter
+    const queueItems = ordered.map((ep) => ({
+      podcast: show,
+      episode: ep,
+      resume: { progress: 0 },
+    }));
+
+    // Determine start index
+    const startIdx = audiobookResume ? audiobookResume.index : 0;
+
+    // Embed saved progress for the resume chapter
+    if (audiobookResume && audiobookResume.progress > 0 && queueItems[startIdx]) {
+      queueItems[startIdx].resume = { progress: audiobookResume.progress };
+    }
+
+    try {
+      await setPlaybackQueue(queueItems, startIdx);
+      try { await UserLibrary.addToHistory(ordered[startIdx].id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
+    } catch (e) {
+      console.error('Failed to play audiobook', e);
     }
   };
 
@@ -141,7 +243,6 @@ export default function Episodes() {
   // Assign categories to each podcast via Django admin before launch so these pills populate.
   const categories = useMemo(() => getPodcastCategoriesLower(show || {}).slice(0, 6), [show]);
   const totalEpisodes = show?.episode_count || show?.episodes_count || show?.total_episodes || episodes?.length || 0;
-  const isBook = show ? isAudiobook(show) : false;
   const isMembersOnly = !!show?.is_exclusive;
   const [descExpanded, setDescExpanded] = useState(false);
   const descRef = useRef(null);
@@ -323,10 +424,14 @@ export default function Episodes() {
                       ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-white shadow-cyan-500/20'
                       : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white shadow-red-600/20'
                   }`}
-                  onClick={() => doPlay(sortedEpisodes[0])}
+                  onClick={isBook ? doPlayAudiobook : () => doPlay(sortedEpisodes[0])}
                 >
                   <Play className="w-4 h-4 fill-white" />
-                  {isBook ? 'Start Listening' : 'Play'}
+                  {isBook
+                    ? (audiobookResume
+                      ? `Continue · Ch. ${audiobookResume.chapter?.episode_number || audiobookResume.index + 1}`
+                      : 'Start Listening')
+                    : 'Play'}
                 </Button>
 
                 <Button
@@ -384,7 +489,7 @@ export default function Episodes() {
           </div>
         </div>
 
-        <EpisodesTable episodes={sortedEpisodes} show={show} onPlay={doPlay} onAddToPlaylist={handleOpenAddToPlaylist} />
+        <EpisodesTable episodes={sortedEpisodes} show={show} onPlay={doPlay} onAddToPlaylist={handleOpenAddToPlaylist} lockedEpisodeIds={lockedEpisodeIds} />
       </div>
 
       <AddToPlaylistModal
@@ -398,24 +503,15 @@ export default function Episodes() {
         }}
       />
 
-      <SubscribeModal
-        open={showSubscribeModal}
-        onOpenChange={setShowSubscribeModal}
-        itemLabel={subscribeLabel}
-        title="Subscribe to listen"
-        message="This content is available to members only. Subscribe to unlock all premium shows and episodes."
-      />
-
       {/* E-Reader overlay — audiobooks only */}
       {showReader && isBook && findBookForShow(show) && (
         <EReader
           book={findBookForShow(show)}
-          isPremium={true /* TODO: revert to isPremium before launch */}
+          isPremium={isPremium}
           onClose={() => setShowReader(false)}
           onSubscribe={() => {
             setShowReader(false);
-            setSubscribeLabel(show?.title || 'this audiobook');
-            setShowSubscribeModal(true);
+            goToPremium();
           }}
         />
       )}

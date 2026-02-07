@@ -129,6 +129,15 @@
     max-width: 100%;
     overflow-x: hidden;
   }
+  /* Hide the page-level scrollbar so modals/dropdowns can't cause layout
+     shift by removing it. Page remains scrollable via wheel/trackpad/touch.
+     Inner scroll containers (episode lists, etc.) keep their scrollbars. */
+  html {
+    scrollbar-width: none;           /* Firefox */
+  }
+  html::-webkit-scrollbar {
+    display: none;                   /* Chrome, Edge, Safari */
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -637,6 +646,17 @@
    E-READER STYLES
    ═══════════════════════════════════════════════════════ */
 
+/* When the e-reader is open, hide the layout header and bottom nav
+   so they can't intercept clicks or cause stacking-context conflicts.
+   These fixed elements sit in the same viewport space as the e-reader's
+   own chrome, and some browsers resolve their z-index in unexpected
+   ways depending on ancestor stacking contexts.  */
+html.ereader-active .layout-header,
+html.ereader-active .layout-bottom-nav {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* Vignette overlay — darkened edges for immersive reading */
 .ereader-vignette {
   background: radial-gradient(
@@ -796,3 +816,4 @@
   box-shadow: 0 12px 40px rgba(220, 38, 38, 0.2), 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   background: linear-gradient(135deg, #ffffff, #fafafa);
 }
+

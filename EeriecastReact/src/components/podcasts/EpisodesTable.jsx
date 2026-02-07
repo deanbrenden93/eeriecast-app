@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { Button } from '@/components/ui/button';
-import { Heart, Play, Plus, Trash2 } from 'lucide-react';
+import { Heart, Play, Plus, Trash2, Lock } from 'lucide-react';
 import { useUser } from '@/context/UserContext.jsx';
 import { UserLibrary } from '@/api/entities';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
@@ -33,6 +33,7 @@ export default function EpisodesTable({
   onAddToPlaylist,
   onRemoveFromPlaylist, // new optional handler
   removingEpisodeId, // id currently being removed
+  lockedEpisodeIds, // Set of episode IDs locked behind the free-tier chapter limit
   className = '',
 }) {
   const { favoriteEpisodeIds, user, refreshFavorites, isAuthenticated, isPremium, episodeProgressMap } = useUser();
@@ -72,7 +73,8 @@ export default function EpisodesTable({
       {rows.map((ep) => {
         const fav = favoriteEpisodeIds.has(ep.id);
         const isRemoving = onRemoveFromPlaylist && removingEpisodeId === ep.id;
-        const isGated = (!isPremium) && (ep?.is_premium || show?.is_exclusive || ep?.podcast?.is_exclusive);
+        const isChapterLocked = lockedEpisodeIds instanceof Set && lockedEpisodeIds.has(ep.id);
+        const isGated = isChapterLocked || ((!isPremium) && (ep?.is_premium || show?.is_exclusive || ep?.podcast?.is_exclusive));
         const prog = episodeProgressMap?.get(Number(ep.id));
         const progPct = prog && prog.duration > 0 ? Math.min(100, Math.max(0, (prog.progress / prog.duration) * 100)) : 0;
         const isCompleted = prog?.completed || progPct >= 95;
@@ -80,49 +82,70 @@ export default function EpisodesTable({
         return (
           <div
             key={ep.id || ep.slug || ep.title}
-            className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg hover:bg-gray-800/50 transition-colors group"
+            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg transition-colors group ${
+              isChapterLocked
+                ? 'opacity-50 hover:opacity-70'
+                : 'hover:bg-gray-800/50'
+            }`}
           >
             <div className="flex items-start sm:items-center gap-4 flex-1 min-w-0">
-              {/* Artwork with progress overlay */}
+              {/* Artwork with progress/lock overlay */}
               <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
                 {getArtwork(ep) ? (
-                  <img src={getArtwork(ep)} alt={ep.title} className="w-full h-full object-cover" />
+                  <img src={getArtwork(ep)} alt={ep.title} className={`w-full h-full object-cover ${isChapterLocked ? 'grayscale' : ''}`} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <span className="text-2xl">🎧</span>
                   </div>
                 )}
-                {isCompleted && (
+                {isChapterLocked && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                    <Lock className="w-4 h-4 text-zinc-400" />
+                  </div>
+                )}
+                {isCompleted && !isChapterLocked && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
                 )}
-                {hasProgress && !isCompleted && (
+                {hasProgress && !isCompleted && !isChapterLocked && (
                   <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10">
                     <div className="h-full bg-red-500 transition-all" style={{ width: `${progPct}%` }} />
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h3
-                  className="text-white font-semibold text-base truncate mb-1 hover:text-blue-400 cursor-pointer"
-                  onClick={() => onPlay && onPlay(ep)}
-                >
-                  {ep.title}
-                </h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3
+                    className={`font-semibold text-base truncate cursor-pointer ${
+                      isChapterLocked
+                        ? 'text-zinc-500'
+                        : 'text-white hover:text-blue-400'
+                    }`}
+                    onClick={() => onPlay && onPlay(ep)}
+                  >
+                    {ep.title}
+                  </h3>
+                  {isChapterLocked && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-400/70 bg-amber-500/10 border border-amber-400/[0.06] px-1.5 py-0.5 rounded flex-shrink-0">
+                      <Lock className="w-2.5 h-2.5" />
+                      Premium
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-400">
                   <span className="text-purple-400 font-medium truncate max-w-[60%] sm:max-w-[40%]">{getShowName(ep)}</span>
                   <span>•</span>
                   <span>{formatDuration(ep.duration || ep.length_seconds)}</span>
                   <span>•</span>
                   <span>{formatDate(ep.created_date || ep.published_at || ep.release_date)}</span>
-                  {hasProgress && !isCompleted && (
+                  {hasProgress && !isCompleted && !isChapterLocked && (
                     <>
                       <span>•</span>
                       <span className="text-red-400 text-xs">{Math.round(progPct)}% played</span>
                     </>
                   )}
-                  {isCompleted && (
+                  {isCompleted && !isChapterLocked && (
                     <>
                       <span>•</span>
                       <span className="text-green-400 text-xs">Played</span>
@@ -166,13 +189,23 @@ export default function EpisodesTable({
               >
                 <Heart className={`w-5 h-5 ${fav ? 'text-red-500 fill-current' : ''}`} />
               </button>
-              <Button
-                size="icon"
-                onClick={() => onPlay && onPlay(ep)}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white w-9 h-9 rounded-lg"
-              >
-                <Play className="w-4 h-4 fill-white ml-0.5" />
-              </Button>
+              {isChapterLocked ? (
+                <Button
+                  size="icon"
+                  onClick={() => onPlay && onPlay(ep)}
+                  className="bg-white/[0.04] border border-white/[0.06] text-zinc-500 w-9 h-9 rounded-lg hover:bg-white/[0.08]"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  onClick={() => onPlay && onPlay(ep)}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white w-9 h-9 rounded-lg"
+                >
+                  <Play className="w-4 h-4 fill-white ml-0.5" />
+                </Button>
+              )}
             </div>
           </div>
         );
@@ -186,7 +219,8 @@ EpisodesTable.propTypes = {
   show: PropTypes.object,
   onPlay: PropTypes.func,
   onAddToPlaylist: PropTypes.func,
-  onRemoveFromPlaylist: PropTypes.func, // new prop type
+  onRemoveFromPlaylist: PropTypes.func,
   removingEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  lockedEpisodeIds: PropTypes.instanceOf(Set),
   className: PropTypes.string,
 };

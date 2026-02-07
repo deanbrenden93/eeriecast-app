@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FREE_READ_CHAPTER_LIMIT, canAccessChapter } from "@/lib/freeTier";
 
 /* ═══════════════════════════════════════════════════════════════════
    E-Reader — immersive full-screen paginated reader
@@ -36,7 +37,6 @@ const FONT_OPTIONS = [
   { label: "Serif", value: "'Georgia', 'Times New Roman', serif" },
   { label: "Mono", value: "'DM Mono', 'Roboto Mono', 'Courier New', monospace" },
 ];
-const FREE_PREVIEW_WORDS = 300;
 const COLUMN_GAP = 60;
 
 /**
@@ -134,7 +134,11 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     const el = columnsRef.current;
     if (!wrapper || !el) return;
 
-    const w = wrapper.clientWidth;
+    // Use getBoundingClientRect for sub-pixel precision.
+    // clientWidth rounds to an integer, which causes cumulative drift
+    // in the translateX offset — each page is off by ~0.5px, and by
+    // page 15-17 the text visibly clips on the right edge.
+    const w = wrapper.getBoundingClientRect().width;
     setContainerWidth(w);
 
     // Reset to natural (single-viewport) width so overflow:hidden
@@ -149,8 +153,10 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
 
       // Expand the container to fit ALL columns so overflow:hidden
       // no longer clips them. The parent (pagerRef) acts as the viewport.
+      // Compute from precise values rather than the integer scrollWidth.
       if (pages > 1 && w > 0) {
-        el.style.width = `${sw}px`;
+        const totalWidth = pages * w + (pages - 1) * COLUMN_GAP;
+        el.style.width = `${totalWidth}px`;
       }
     });
   }, []);
@@ -177,8 +183,12 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     if (!book?.id || restoredRef.current) return;
     const prog = loadProgress(book.id);
     if (prog && typeof prog.chapter === "number" && prog.chapter < totalChapters) {
-      setChapterIdx(prog.chapter);
-      if (typeof prog.page === "number" && prog.page > 0) {
+      // Clamp to last accessible chapter if user is no longer premium
+      const targetCh = canAccessChapter(prog.chapter, isPremium, FREE_READ_CHAPTER_LIMIT)
+        ? prog.chapter
+        : Math.max(0, FREE_READ_CHAPTER_LIMIT - 1);
+      setChapterIdx(targetCh);
+      if (targetCh === prog.chapter && typeof prog.page === "number" && prog.page > 0) {
         // Defer until pages are measured
         const t = setTimeout(() => setPageIndex(prog.page), 700);
         restoredRef.current = true;
@@ -186,7 +196,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
       }
     }
     restoredRef.current = true;
-  }, [book?.id, totalChapters]);
+  }, [book?.id, totalChapters, isPremium]);
 
   /* ─── Persist settings ───────────────────────────────────── */
   useEffect(() => {
@@ -295,16 +305,22 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
       else prevPage();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium]);
+  }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, onSubscribe]);
 
   /* ─── Page navigation ────────────────────────────────────── */
   const nextPage = useCallback(() => {
     if (pageIndex < totalPages - 1) {
       setPageIndex(p => p + 1);
-    } else if (chapterIdx < totalChapters - 1 && isPremium) {
-      changeChapter(chapterIdx + 1, false, 'forward');
+    } else if (chapterIdx < totalChapters - 1) {
+      // Check if the NEXT chapter is within the free limit (or user is premium)
+      if (canAccessChapter(chapterIdx + 1, isPremium, FREE_READ_CHAPTER_LIMIT)) {
+        changeChapter(chapterIdx + 1, false, 'forward');
+      } else {
+        // Hit the paywall — trigger subscribe
+        onSubscribe?.();
+      }
     }
-  }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, changeChapter]);
+  }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, changeChapter, onSubscribe]);
 
   const prevPage = useCallback(() => {
     if (pageIndex > 0) {
@@ -328,6 +344,11 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   /* ─── Chapter navigation (from TOC) ─────────────────────── */
   const goChapter = (idx) => {
     if (idx < 0 || idx >= totalChapters) return;
+    // Block navigation to locked chapters
+    if (!canAccessChapter(idx, isPremium, FREE_READ_CHAPTER_LIMIT)) {
+      onSubscribe?.();
+      return;
+    }
     setShowToc(false);
     if (idx === chapterIdx) return; // already on this chapter
     const direction = idx > chapterIdx ? 'forward' : 'backward';
@@ -355,6 +376,11 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   }, [bookmarks, book]);
 
   const goBookmark = useCallback((bm) => {
+    // Block navigation to locked chapters
+    if (!canAccessChapter(bm.chapter, isPremium, FREE_READ_CHAPTER_LIMIT)) {
+      onSubscribe?.();
+      return;
+    }
     setShowToc(false);
     if (bm.chapter === chapterIdx) {
       setPageIndex(bm.page);
@@ -364,22 +390,18 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
       pendingChapterRef.current = { idx: bm.chapter, lastPage: false, targetPage: bm.page };
       setChapterFade(direction);
     }
-  }, [chapterIdx]);
+  }, [chapterIdx, isPremium, onSubscribe]);
 
   /* ─── Compute column transform ───────────────────────────── */
   const clampedPage = Math.max(0, Math.min(pageIndex, totalPages - 1));
   const translateX = containerWidth > 0 ? -(clampedPage * (containerWidth + COLUMN_GAP)) : 0;
 
   /* ─── Premium gating ─────────────────────────────────────── */
-  const freePreviewText = useMemo(() => {
-    if (isPremium || !chapter?.content) return null;
-    if (chapterIdx > 0) return "";
-    return chapter.content.split(/\s+/).slice(0, FREE_PREVIEW_WORDS).join(" ");
-  }, [isPremium, chapter, chapterIdx]);
-
+  // Free users can read the first FREE_READ_CHAPTER_LIMIT chapters fully.
+  // Beyond that, show a locked overlay.
+  const chapterAccessible = canAccessChapter(chapterIdx, isPremium, FREE_READ_CHAPTER_LIMIT);
   const isLocked = !isPremium;
-  const showLockedOverlay = isLocked && chapterIdx > 0;
-  const showFadeGate = isLocked && chapterIdx === 0;
+  const showLockedOverlay = !chapterAccessible;
 
   /* ─── Overall reading progress ───────────────────────────── */
   const overallPct = useMemo(() => {
@@ -388,6 +410,12 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     const pp = totalPages > 1 ? clampedPage / (totalPages - 1) : 1;
     return Math.round(chapterIdx * cw + pp * cw);
   }, [chapterIdx, clampedPage, totalPages, totalChapters]);
+
+  // Broadcast e-reader open/close so the mini player can reposition
+  useEffect(() => {
+    document.documentElement.classList.add('ereader-active');
+    return () => document.documentElement.classList.remove('ereader-active');
+  }, []);
 
   if (!book) return null;
 
@@ -402,7 +430,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
       >
         {/* ─── Background ──────────────────────────────────────── */}
-        <div className="absolute inset-0 bg-[#0a0a10]" />
+        <div className="absolute inset-0 bg-[#0a0a10] pointer-events-none" />
         <div className="ereader-vignette absolute inset-0 pointer-events-none" />
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[60rem] h-[40rem] rounded-full blur-[180px] opacity-[0.03] bg-gradient-to-br from-red-900 via-purple-900 to-transparent pointer-events-none" />
 
@@ -518,16 +546,19 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
               {/* ── Contents list ── */}
               {tocTab === "contents" && (
                 <div className="py-1 overflow-y-auto flex-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
-                  {book.chapters.map((ch, i) => (
-                    <button key={`ch-${i}`} type="button" onClick={() => goChapter(i)} disabled={isLocked && i > 0}
-                      className={cn("w-full text-left px-4 py-2.5 flex items-center gap-3 transition-all",
-                        i === chapterIdx ? "bg-white/[0.06] text-white" : isLocked && i > 0 ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200")}>
-                      <span className="text-[11px] font-bold text-zinc-600 w-5 text-right tabular-nums">{ch.number}</span>
-                      <span className="text-sm font-medium flex-1 truncate italic">{ch.title}</span>
-                      {isLocked && i > 0 && <Lock className="w-3 h-3 text-zinc-700 flex-shrink-0" />}
-                      {i === chapterIdx && <Bookmark className="w-3.5 h-3.5 text-red-500 fill-red-500 flex-shrink-0" />}
-                    </button>
-                  ))}
+                  {book.chapters.map((ch, i) => {
+                    const chLocked = isLocked && !canAccessChapter(i, isPremium, FREE_READ_CHAPTER_LIMIT);
+                    return (
+                      <button key={`ch-${i}`} type="button" onClick={() => goChapter(i)} disabled={chLocked}
+                        className={cn("w-full text-left px-4 py-2.5 flex items-center gap-3 transition-all",
+                          i === chapterIdx ? "bg-white/[0.06] text-white" : chLocked ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200")}>
+                        <span className="text-[11px] font-bold text-zinc-600 w-5 text-right tabular-nums">{ch.number}</span>
+                        <span className="text-sm font-medium flex-1 truncate italic">{ch.title}</span>
+                        {chLocked && <Lock className="w-3 h-3 text-zinc-700 flex-shrink-0" />}
+                        {i === chapterIdx && <Bookmark className="w-3.5 h-3.5 text-red-500 fill-red-500 flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -589,36 +620,10 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                 <Lock className="w-7 h-7 text-amber-400/80" />
               </div>
               <h3 className="text-xl font-display italic text-zinc-200 mb-2">Members-Only Content</h3>
-              <p className="text-sm text-zinc-500 max-w-sm mb-6 leading-relaxed">Chapters 2 and beyond are available exclusively to Eeriecast members.</p>
+              <p className="text-sm text-zinc-500 max-w-sm mb-6 leading-relaxed">Chapter {FREE_READ_CHAPTER_LIMIT + 1} and beyond are available exclusively to Eeriecast members.</p>
               <button type="button" onClick={onSubscribe} className="px-7 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-semibold text-sm shadow-lg shadow-amber-500/20 transition-all hover:scale-[1.02]">
                 Become a Member
               </button>
-            </div>
-          ) : showFadeGate ? (
-            /* ─── Free preview with fade gate ─── */
-            <div className="flex-1 flex flex-col relative overflow-hidden">
-              <div className="flex-1 overflow-hidden px-6 sm:px-10 lg:px-16 py-8 sm:py-12">
-                <div className="max-w-[680px] mx-auto">
-                  {chapterIdx === 0 && book.epigraph && (
-                    <div className="mb-8 border-l-2 border-white/[0.06] pl-5">
-                      <p className="text-sm italic text-zinc-500 leading-relaxed mb-2">&ldquo;{book.epigraph.text}&rdquo;</p>
-                      <p className="text-xs text-zinc-600">&mdash;{book.epigraph.attribution}</p>
-                    </div>
-                  )}
-                  <div className="ereader-no-break mb-8 text-center pt-[20vh]">
-                    <h2 className="text-2xl sm:text-3xl font-display italic text-zinc-200">{chapter?.title}</h2>
-                    <div className="w-16 h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent mx-auto mt-4" />
-                  </div>
-                  <div className="ereader-body text-zinc-400" style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}>{renderContent(freePreviewText)}</div>
-                </div>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-60 bg-gradient-to-t from-[#0a0a10] via-[#0a0a10]/95 to-transparent" />
-              <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pb-6">
-                <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-400/[0.08] flex items-center justify-center mb-4"><Lock className="w-6 h-6 text-amber-400/80" /></div>
-                <h3 className="text-lg font-display italic text-zinc-200 mb-1.5">Continue Reading</h3>
-                <p className="text-xs text-zinc-500 max-w-xs text-center mb-5">Become an Eeriecast member to read the full story</p>
-                <button type="button" onClick={onSubscribe} className="px-7 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-semibold text-sm shadow-lg shadow-amber-500/20 transition-all hover:scale-[1.02]">Become a Member</button>
-              </div>
             </div>
           ) : (
             /* ═══ Full paginated reading ═══ */
@@ -693,7 +698,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
               </p>
             </div>
             <button type="button" onClick={nextPage}
-              disabled={(chapterIdx >= totalChapters - 1 && clampedPage >= totalPages - 1) || (isLocked && clampedPage >= totalPages - 1)}
+              disabled={chapterIdx >= totalChapters - 1 && clampedPage >= totalPages - 1}
               className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
               <span className="hidden sm:inline">Next</span>
               <ChevronRight className="w-3.5 h-3.5" />

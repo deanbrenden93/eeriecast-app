@@ -1,6 +1,18 @@
-
-import React, { useState } from 'react';
-import { Settings as SettingsIcon } from 'lucide-react';
+import React from 'react';
+import {
+  Settings as SettingsIcon,
+  Volume2,
+  Play,
+  Bell,
+  Shield,
+  Info,
+  ChevronRight,
+  Headphones,
+  Gauge,
+  ListEnd,
+  BookmarkCheck,
+  Trash2,
+} from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -8,84 +20,123 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { useSettings } from '@/hooks/use-settings';
+import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 
-const SettingsCard = ({ title, children }) => (
-  <div className="bg-[#1C1C1E] rounded-2xl p-6 mb-8">
-    <h2 className="text-xl font-bold mb-6">{title}</h2>
-    {children}
+/* ─── Reusable components ──────────────────────────────────────────── */
+
+const SettingsCard = ({ icon: Icon, title, description, children }) => (
+  <div className="relative rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent backdrop-blur-sm overflow-hidden mb-6">
+    {/* Subtle top-edge glow */}
+    <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-red-500/20 to-transparent" />
+    <div className="p-6">
+      <div className="flex items-center gap-3 mb-1">
+        {Icon && <Icon className="w-5 h-5 text-red-500/80 flex-shrink-0" />}
+        <h2 className="text-lg font-semibold text-zinc-100">{title}</h2>
+      </div>
+      {description && (
+        <p className="text-sm text-zinc-500 ml-8 mb-5">{description}</p>
+      )}
+      {!description && <div className="mb-5" />}
+      {children}
+    </div>
   </div>
 );
 
-const SettingsToggle = ({ label, checked, onCheckedChange }) => (
-  <div className="flex items-center justify-between py-3 border-b border-gray-700/50 last:border-b-0">
-    <label htmlFor={label} className="text-gray-200">
-      {label}
-    </label>
-    <Checkbox 
-      id={label}
-      checked={checked}
-      onCheckedChange={onCheckedChange}
-      className="border-white bg-transparent data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
-    />
-  </div>
+const SettingsToggle = ({ icon: Icon, label, description, checked, onCheckedChange }) => (
+  <button
+    type="button"
+    onClick={() => onCheckedChange(!checked)}
+    className="flex items-center gap-4 w-full py-3.5 px-1 border-b border-white/[0.04] last:border-b-0 group transition-colors hover:bg-white/[0.02] rounded-lg -mx-1 px-3"
+  >
+    {Icon && <Icon className="w-4 h-4 text-zinc-500 group-hover:text-zinc-400 flex-shrink-0 transition-colors" />}
+    <div className="flex-1 text-left">
+      <span className="text-sm text-zinc-200 group-hover:text-white transition-colors">{label}</span>
+      {description && <p className="text-xs text-zinc-600 mt-0.5">{description}</p>}
+    </div>
+    {/* Toggle switch */}
+    <div
+      className={`relative w-9 h-[18px] rounded-full transition-all duration-300 flex-shrink-0 ${
+        checked
+          ? 'bg-red-600'
+          : 'bg-zinc-700'
+      }`}
+    >
+      <div
+        className={`absolute top-[3px] w-3 h-3 rounded-full bg-white transition-all duration-300 ${
+          checked ? 'left-[21px]' : 'left-[3px]'
+        }`}
+      />
+    </div>
+  </button>
 );
 
 const PlaybackSpeedControl = ({ speed, setSpeed }) => {
-  const speeds = ["0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x"];
+  const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
   return (
-    <div className="flex items-center space-x-2 bg-gray-900/80 p-1 rounded-lg">
+    <div className="flex items-center gap-1.5 bg-black/40 border border-white/[0.06] p-1 rounded-xl">
       {speeds.map(s => (
         <button
           key={s}
           onClick={() => setSpeed(s)}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+          className={`flex-1 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
             speed === s
-              ? 'bg-red-600 text-white'
-              : 'text-gray-300 hover:bg-gray-700/50'
+              ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
           }`}
         >
-          {s}
+          {s}x
         </button>
       ))}
     </div>
   );
 };
 
-export default function Settings() {
-  const [settings, setSettings] = useState({
-    streamingQuality: '320kbps',
-    downloadQuality: '320kbps',
-    playbackSpeed: '1x',
-    autoplay: true,
-    skipSilence: false,
-    rememberPosition: true,
-    newEpisodeNotifications: true,
-    recommendedContent: false,
-    weeklyDigest: true,
-    publicProfile: false,
-    showActivity: false,
-  });
+/* ─── Main Settings Page ───────────────────────────────────────────── */
 
-  const handleToggle = (key) => {
-    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+export default function Settings() {
+  const { settings, updateSetting } = useSettings();
+  const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
 
   return (
-    <div className="min-h-screen bg-black text-white py-10">
-      <div className="max-w-3xl mx-auto px-4">
-        <div className="flex items-center gap-4 mb-10">
-          <SettingsIcon className="w-8 h-8 text-gray-400" />
-          <h1 className="text-4xl font-bold tracking-wider">Settings</h1>
-        </div>
+    <div className="min-h-screen bg-eeriecast-surface text-white">
+      {/* Header */}
+      <div className="relative pt-10 pb-8 px-6 max-w-2xl mx-auto">
+        {/* Background accent */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-[radial-gradient(ellipse_at_center,_rgba(220,38,38,0.06),_transparent_70%)] pointer-events-none" />
 
-        <SettingsCard title="Audio Settings">
-          <div className="space-y-6">
+        <div className="relative flex items-center gap-4 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-red-600/10 border border-red-600/20 flex items-center justify-center">
+            <SettingsIcon className="w-5 h-5 text-red-500" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+            <p className="text-sm text-zinc-600 mt-0.5">Customize your listening experience</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-2xl mx-auto px-6 pb-32">
+
+        {/* Audio Quality */}
+        <SettingsCard
+          icon={Volume2}
+          title="Audio Quality"
+          description="Controls quality for streaming and downloads"
+        >
+          <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Streaming Quality</label>
-              <Select defaultValue={settings.streamingQuality} onValueChange={value => setSettings(s => ({ ...s, streamingQuality: value }))}>
-                <SelectTrigger className="w-full bg-black/50 border-gray-600">
+              <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-2">
+                <Headphones className="w-3.5 h-3.5" />
+                Streaming Quality
+              </label>
+              <Select
+                value={settings.streamingQuality}
+                onValueChange={value => updateSetting('streamingQuality', value)}
+              >
+                <SelectTrigger className="w-full bg-black/40 border-white/[0.08] hover:border-white/[0.15] transition-colors text-zinc-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -96,9 +147,15 @@ export default function Settings() {
               </Select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Download Quality</label>
-              <Select defaultValue={settings.downloadQuality} onValueChange={value => setSettings(s => ({ ...s, downloadQuality: value }))}>
-                <SelectTrigger className="w-full bg-black/50 border-gray-600">
+              <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-2">
+                <Headphones className="w-3.5 h-3.5" />
+                Download Quality
+              </label>
+              <Select
+                value={settings.downloadQuality}
+                onValueChange={value => updateSetting('downloadQuality', value)}
+              >
+                <SelectTrigger className="w-full bg-black/40 border-white/[0.08] hover:border-white/[0.15] transition-colors text-zinc-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -107,44 +164,93 @@ export default function Settings() {
                   <SelectItem value="64kbps">Low Quality (64kbps)</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Playback Speed</label>
-              <PlaybackSpeedControl speed={settings.playbackSpeed} setSpeed={value => setSettings(s => ({ ...s, playbackSpeed: value }))} />
             </div>
           </div>
         </SettingsCard>
 
-        <SettingsCard title="Playback">
-          <SettingsToggle label="Autoplay next episode" checked={settings.autoplay} onCheckedChange={() => handleToggle('autoplay')} />
-          <SettingsToggle label="Skip silence" checked={settings.skipSilence} onCheckedChange={() => handleToggle('skipSilence')} />
-          <SettingsToggle label="Remember playback position" checked={settings.rememberPosition} onCheckedChange={() => handleToggle('rememberPosition')} />
+        {/* Playback */}
+        <SettingsCard
+          icon={Play}
+          title="Playback"
+          description="Player behavior and speed preferences"
+        >
+          <div className="mb-5">
+            <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-3">
+              <Gauge className="w-3.5 h-3.5" />
+              Default Playback Speed
+            </label>
+            <PlaybackSpeedControl
+              speed={playbackRate}
+              setSpeed={setPlaybackRate}
+            />
+          </div>
+          <SettingsToggle
+            icon={ListEnd}
+            label="Autoplay next episode"
+            description="Automatically play the next episode when one finishes"
+            checked={settings.autoplay}
+            onCheckedChange={val => updateSetting('autoplay', val)}
+          />
+          <SettingsToggle
+            icon={BookmarkCheck}
+            label="Remember playback position"
+            description="Resume episodes from where you left off"
+            checked={settings.rememberPosition}
+            onCheckedChange={val => updateSetting('rememberPosition', val)}
+          />
         </SettingsCard>
 
-        <SettingsCard title="Notifications">
-          <SettingsToggle label="New episode notifications" checked={settings.newEpisodeNotifications} onCheckedChange={() => handleToggle('newEpisodeNotifications')} />
-          <SettingsToggle label="Recommended content" checked={settings.recommendedContent} onCheckedChange={() => handleToggle('recommendedContent')} />
-          <SettingsToggle label="Weekly digest email" checked={settings.weeklyDigest} onCheckedChange={() => handleToggle('weeklyDigest')} />
+        {/* Notifications */}
+        <SettingsCard
+          icon={Bell}
+          title="Notifications"
+        >
+          <SettingsToggle
+            icon={Bell}
+            label="New episode notifications"
+            description="Get notified when shows you follow release new episodes"
+            checked={settings.newEpisodeNotifications}
+            onCheckedChange={val => updateSetting('newEpisodeNotifications', val)}
+          />
         </SettingsCard>
 
-        <SettingsCard title="Privacy">
-          <SettingsToggle label="Make profile public" checked={settings.publicProfile} onCheckedChange={() => handleToggle('publicProfile')} />
-          <SettingsToggle label="Show listening activity" checked={settings.showActivity} onCheckedChange={() => handleToggle('showActivity')} />
-          <div className="mt-6">
-            <Button variant="outline" className="border-red-800/70 text-red-500 hover:bg-red-900/30 hover:text-red-400 w-full sm:w-auto">
+        {/* Privacy */}
+        <SettingsCard
+          icon={Shield}
+          title="Privacy"
+        >
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
               Clear Listening History
             </Button>
           </div>
         </SettingsCard>
 
-        <SettingsCard title="About">
-          <div className="text-gray-400 text-sm space-y-2">
-            <p>Version: 1.0.0</p>
-            <p>© 2024 EerieCast. All rights reserved.</p>
-            <div className="flex space-x-4 pt-2">
-              <a href="#" className="text-red-500 hover:underline">Terms of Service</a>
-              <a href="#" className="text-red-500 hover:underline">Privacy Policy</a>
-              <a href="#" className="text-red-500 hover:underline">Contact Support</a>
+        {/* About */}
+        <SettingsCard icon={Info} title="About">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500">Version</span>
+              <span className="text-zinc-300 font-mono text-xs bg-white/[0.04] px-2.5 py-1 rounded-md">1.0.0</span>
+            </div>
+            <div className="border-t border-white/[0.04] pt-3">
+              <p className="text-xs text-zinc-600 mb-3">&copy; 2026 Eeriecast. All rights reserved.</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {['Terms of Service', 'Privacy Policy', 'Contact Support'].map(link => (
+                  <a
+                    key={link}
+                    href="#"
+                    className="text-sm text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 group"
+                  >
+                    {link}
+                    <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
         </SettingsCard>

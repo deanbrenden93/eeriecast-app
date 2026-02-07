@@ -23,7 +23,6 @@ import KeepListeningSection from "../components/podcasts/KeepListeningSection";
 import MembersOnlySection from "../components/podcasts/MembersOnlySection";
 import FeaturedCreatorsSection from "../components/podcasts/FeaturedCreatorsSection";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
-import SubscribeModal from "@/components/auth/SubscribeModal";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@/context/UserContext.jsx";
@@ -35,8 +34,6 @@ export default function Podcasts() {
   const [keepListeningItems, setKeepListeningItems] = useState([]); // { podcast, episode, progress (0-100) }
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [subscribeLabel, setSubscribeLabel] = useState("");
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -182,8 +179,7 @@ export default function Podcasts() {
       }
       if (!ep) return;
       if (ep?.is_premium && !isPremium) {
-        setSubscribeLabel(ep?.title || podcast?.title || 'Premium episode');
-        setShowSubscribeModal(true);
+        navigate(createPageUrl('Premium'));
         return;
       }
       await loadAndPlay({ podcast, episode: ep, resume });
@@ -453,13 +449,6 @@ export default function Podcasts() {
         )}
       </AnimatePresence>
 
-      <SubscribeModal
-        open={showSubscribeModal}
-        onOpenChange={setShowSubscribeModal}
-        itemLabel={subscribeLabel}
-        title="Subscribe to listen"
-        message="This content is available to members only. Subscribe to unlock all premium shows and episodes."
-      />
     </div>
   );
 }

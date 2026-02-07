@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Playlist, Search as SearchApi } from "@/api/entities";
-import { Input } from "@/components/ui/input";
+import { Playlist, Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Button } from "@/components/ui/button";
-import { Search as SearchIcon, Plus, Heart, Clock, TrendingUp, Star, Play } from "lucide-react";
+import { Search as SearchIcon, Plus, Heart, Play, BookOpen, Headphones, Crown, ChevronRight } from "lucide-react";
 import { isAudiobook, getPodcastCategoriesLower, formatDate } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
@@ -19,7 +18,6 @@ function formatDuration(raw) {
   if (typeof raw === 'number') {
     totalSeconds = Math.floor(raw);
   } else if (typeof raw === 'string') {
-    // "HH:MM:SS" or "MM:SS" or plain number string
     const parts = raw.split(':').map(Number);
     if (parts.some(isNaN)) return raw;
     if (parts.length === 3) totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -45,12 +43,12 @@ function ExpandableDescription({ text, maxLength = 150 }) {
 
   return (
     <div className="mt-1.5">
-      <p className="text-gray-500 text-xs leading-snug">{displayText}</p>
+      <p className="text-zinc-500 text-xs leading-relaxed">{displayText}</p>
       {needsTruncation && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
-          className="text-blue-400 hover:text-blue-300 text-xs mt-0.5 transition-colors"
+          className="text-red-400/80 hover:text-red-300 text-xs mt-0.5 transition-colors"
         >
           {expanded ? 'Show less' : 'Show more'}
         </button>
@@ -59,12 +57,152 @@ function ExpandableDescription({ text, maxLength = 150 }) {
   );
 }
 
+/* ── Show / Audiobook card ───────────────────────────────────────── */
+function ShowCard({ podcast, onClick, isBook }) {
+  return (
+    <div className="group cursor-pointer" onClick={onClick}>
+      <div className={`relative overflow-hidden rounded-xl bg-white/[0.03] border border-white/[0.06] mb-2.5 transition-all duration-300 group-hover:border-white/[0.12] group-hover:shadow-lg group-hover:shadow-black/30 ${
+        isBook ? 'aspect-[3/4]' : 'aspect-square'
+      }`}>
+        {podcast.cover_image ? (
+          <img src={podcast.cover_image} alt={podcast.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/[0.04] to-white/[0.01]">
+            {isBook ? <BookOpen className="w-8 h-8 text-zinc-600" /> : <Headphones className="w-8 h-8 text-zinc-600" />}
+          </div>
+        )}
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
+          <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+            <Play className="w-4 h-4 text-white fill-white" />
+          </div>
+        </div>
+      </div>
+      <h3 className="text-white/90 font-semibold text-xs md:text-sm line-clamp-2 mb-0.5 group-hover:text-white transition-colors">{podcast.title}</h3>
+      <p className="text-zinc-500 text-[11px]">{podcast.author || 'Eeriecast'}</p>
+    </div>
+  );
+}
+
+/* ── Episode card ────────────────────────────────────────────────── */
+function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthenticated, openAuth }) {
+  const formattedDur = formatDuration(episode.duration);
+
+  return (
+    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 md:p-4 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all duration-300 group">
+      <div className="flex items-start gap-3 md:gap-4">
+        {/* Cover */}
+        <div
+          className="relative w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg overflow-hidden bg-white/[0.04] flex-shrink-0 cursor-pointer group/thumb ring-1 ring-white/[0.06]"
+          onClick={onPlay}
+        >
+          {episode.cover_image ? (
+            <img src={episode.cover_image} alt={episode.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/[0.06] to-white/[0.02]">
+              <Headphones className="w-5 h-5 text-zinc-600" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
+            <Play className="w-5 h-5 text-white fill-white" />
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <h3
+                className="text-white/90 font-semibold text-sm md:text-base truncate hover:text-white cursor-pointer transition-colors"
+                onClick={onPlay}
+              >
+                {episode.title}
+              </h3>
+              {episode.podcast_id ? (
+                <button
+                  type="button"
+                  className="text-red-400/80 hover:text-red-300 text-[11px] md:text-xs font-semibold uppercase tracking-wide mb-1 transition-colors text-left"
+                  onClick={(e) => { e.stopPropagation(); onShowLink(); }}
+                >
+                  {episode.podcast_title || episode.podcast_author || ''}
+                </button>
+              ) : (
+                <p className="text-red-400/80 text-[11px] md:text-xs font-semibold uppercase tracking-wide mb-1">
+                  {episode.podcast_title || episode.podcast_author || ''}
+                </p>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <button
+                className="p-1.5 text-zinc-600 hover:text-white transition-colors rounded-lg hover:bg-white/[0.04]"
+                title="Add to playlist"
+                onClick={() => onAddToPlaylist(episode)}
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <button
+                className="p-1.5 text-zinc-600 hover:text-white transition-colors rounded-lg hover:bg-white/[0.04]"
+                title="Favorite"
+                onClick={() => { if (!isAuthenticated) openAuth('login'); }}
+              >
+                <Heart className="w-4 h-4" />
+              </button>
+              <button
+                className="p-1.5 text-zinc-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/[0.04]"
+                title="Play"
+                onClick={onPlay}
+              >
+                <Play className="w-4 h-4 fill-current" />
+              </button>
+            </div>
+          </div>
+
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-x-2 md:gap-x-3 gap-y-1 text-[11px] md:text-xs text-zinc-500">
+            {episode.published_at && (
+              <span>{formatDate(episode.published_at)}</span>
+            )}
+            {formattedDur && (
+              <>
+                <span className="text-zinc-700">·</span>
+                <span>{formattedDur}</span>
+              </>
+            )}
+            {episode.episode_number && (
+              <>
+                <span className="text-zinc-700 hidden md:inline">·</span>
+                <span className="hidden md:inline">Ep. {episode.episode_number}</span>
+              </>
+            )}
+            {episode.is_premium && (
+              <>
+                <span className="text-zinc-700">·</span>
+                <span className="inline-flex items-center gap-1 text-amber-400/80 text-[10px] font-semibold">
+                  <Crown className="w-2.5 h-2.5" /> PREMIUM
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Description */}
+          <ExpandableDescription text={episode.description} maxLength={160} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SEARCH PAGE
+   ═══════════════════════════════════════════════════════════════════ */
 export default function Search() {
   const location = useLocation();
   const navigate = useNavigate();
   const urlParams = new URLSearchParams(location.search);
   const initialQuery = urlParams.get('q') || '';
-  
+
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [activeTab, setActiveTab] = useState("All Content");
   const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById } = usePodcasts();
@@ -97,7 +235,7 @@ export default function Search() {
     setIsLoading(true);
     const lowerQuery = (query || '').toLowerCase();
 
-    // --- Client-side podcast search (fast, uses full context data) ---
+    // --- Client-side podcast search ---
     const source = Array.isArray(contextPodcasts) ? contextPodcasts : [];
     let podcastResults = source.filter(podcast => {
       const title = podcast.title?.toLowerCase() || '';
@@ -124,36 +262,109 @@ export default function Search() {
 
     setShowResults(podcastResults);
 
-    // --- Server-side episode search (uses /api/search/ endpoint) ---
+    // --- Episode search (multi-source: dedicated API + client-side fallback) ---
     if (activeTab !== "Podcasts" && activeTab !== "Audiobooks") {
-      try {
-        const searchResp = await SearchApi.search(query);
-        const apiEpisodes = Array.isArray(searchResp?.episodes) ? searchResp.episodes : [];
+      const seenIds = new Set();
+      let allEpisodes = [];
 
-        // Enrich episode results with podcast data from context
-        const enrichedEpisodes = apiEpisodes.map(ep => {
-          const podcastData = ep.podcast ? getById(ep.podcast) : null;
-          return {
-            ...ep,
-            podcast_id: ep.podcast,
-            podcast_title: podcastData?.title || '',
-            podcast_author: podcastData?.author || '',
-            podcast_cover_image: podcastData?.cover_image || '',
-            cover_image: ep.cover_image || podcastData?.cover_image || '',
-          };
-        });
+      const enrichEpisode = (ep) => {
+        const podId = ep.podcast_id || ep.podcast;
+        const podcastData = podId ? getById(podId) : null;
+        return {
+          ...ep,
+          podcast_id: podId,
+          podcast_title: ep.podcast_title || podcastData?.title || '',
+          podcast_author: ep.podcast_author || podcastData?.author || '',
+          podcast_cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
+          cover_image: ep.cover_image || podcastData?.cover_image || '',
+        };
+      };
 
-        // If "Members Only" tab, filter episodes too
-        let filteredEpisodes = enrichedEpisodes;
-        if (activeTab === "Members Only") {
-          filteredEpisodes = enrichedEpisodes.filter(ep => ep.is_premium);
+      const addUnique = (episodes) => {
+        for (const ep of episodes) {
+          const key = ep.id || ep.slug || `${ep.title}-${ep.podcast_id || ep.podcast}`;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            allEpisodes.push(enrichEpisode(ep));
+          }
         }
+      };
 
-        setEpisodeResults(filteredEpisodes);
-      } catch (err) {
-        console.error('Episode search failed:', err);
-        setEpisodeResults([]);
+      // Fire all API sources in parallel — each is individually try/caught so one failure doesn't block the rest
+      const [epSearchResult, generalSearchResult, episodeFilterResult] = await Promise.allSettled([
+        // Source 1: Dedicated episode search endpoint (/search/episodes/)
+        SearchApi.searchEpisodes(query),
+        // Source 2: General search endpoint (/search/)
+        SearchApi.search(query),
+        // Source 3: Episodes list with search filter (/episodes/?search=)
+        EpisodeApi.filter({ search: query }, null, 50),
+      ]);
+
+      // Process Source 1
+      if (epSearchResult.status === 'fulfilled') {
+        const epResp = epSearchResult.value;
+        const epResults = Array.isArray(epResp) ? epResp : (epResp?.results || epResp?.episodes || []);
+        addUnique(epResults);
+      } else {
+        console.error('Episode search endpoint failed:', epSearchResult.reason);
       }
+
+      // Process Source 2 — try multiple response shapes
+      if (generalSearchResult.status === 'fulfilled') {
+        const searchResp = generalSearchResult.value;
+        // Shape A: { episodes: [...] }
+        if (Array.isArray(searchResp?.episodes)) {
+          addUnique(searchResp.episodes);
+        }
+        // Shape B: { results: [...] } — flat list that may contain episode objects
+        if (Array.isArray(searchResp?.results)) {
+          const episodeLike = searchResp.results.filter(r =>
+            r.type === 'episode' || r.episode_number != null || r.audio_file || r.audio_url
+          );
+          addUnique(episodeLike);
+        }
+        // Shape C: direct array
+        if (Array.isArray(searchResp)) {
+          const episodeLike = searchResp.filter(r =>
+            r.type === 'episode' || r.episode_number != null || r.audio_file || r.audio_url
+          );
+          addUnique(episodeLike);
+        }
+      } else {
+        console.error('General search endpoint failed:', generalSearchResult.reason);
+      }
+
+      // Process Source 3 — /episodes/?search= (standard DRF search filter)
+      if (episodeFilterResult.status === 'fulfilled') {
+        const filterResp = episodeFilterResult.value;
+        const filterResults = Array.isArray(filterResp) ? filterResp : (filterResp?.results || []);
+        addUnique(filterResults);
+      } else {
+        console.error('Episode filter endpoint failed:', episodeFilterResult.reason);
+      }
+
+      // Source 4: Client-side search across loaded podcast episodes (instant, no network)
+      for (const podcast of source) {
+        if (!Array.isArray(podcast.episodes)) continue;
+        const matchingEps = podcast.episodes.filter(ep => {
+          const t = ep.title?.toLowerCase() || '';
+          const d = ep.description?.toLowerCase() || '';
+          return t.includes(lowerQuery) || d.includes(lowerQuery);
+        });
+        const enriched = matchingEps.map(ep => ({
+          ...ep,
+          podcast_id: ep.podcast_id || ep.podcast || podcast.id,
+          podcast: ep.podcast || podcast.id,
+        }));
+        addUnique(enriched);
+      }
+
+      let filteredEpisodes = allEpisodes;
+      if (activeTab === "Members Only") {
+        filteredEpisodes = allEpisodes.filter(ep => ep.is_premium);
+      }
+
+      setEpisodeResults(filteredEpisodes);
     } else {
       setEpisodeResults([]);
     }
@@ -162,7 +373,7 @@ export default function Search() {
   }, [contextPodcasts, activeTab, getById]);
 
   useEffect(() => {
-    if (podcastsLoading) return; // wait for context to load first
+    if (podcastsLoading) return;
     if (searchQuery.trim()) {
       performSearch(searchQuery);
     } else {
@@ -173,15 +384,11 @@ export default function Search() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      performSearch(searchQuery);
-    }
+    if (searchQuery.trim()) performSearch(searchQuery);
   };
 
   const handlePodcastPlay = (podcast) => {
-    if (podcast?.id) {
-      navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
-    }
+    if (podcast?.id) navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
   };
 
   const handleEpisodePlay = async (episode) => {
@@ -189,7 +396,6 @@ export default function Search() {
     if (podcastData) {
       await loadAndPlay({ podcast: podcastData, episode, resume: { progress: 0 } });
     } else if (episode.podcast_id) {
-      // Navigate to the episodes page for the podcast
       navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(episode.podcast_id)}`);
     }
   };
@@ -200,187 +406,146 @@ export default function Search() {
     setShowAddModal(true);
   };
 
+  // ── Derived result arrays ───────────────────────────────────────
+  const podcastShows = showResults.filter(p => !isAudiobook(p));
+  const audiobookShows = showResults.filter(p => isAudiobook(p));
   const totalResults = showResults.length + episodeResults.length;
 
-  const renderShows = () => {
-    if (activeTab === "Episodes") return null;
-    const shows = activeTab === "Audiobooks"
-      ? showResults
-      : showResults.filter(p => !isAudiobook(p));
-    if (shows.length === 0) return null;
+  // Limit items on "All Content" to keep it scannable
+  const ALL_CONTENT_LIMIT = 6;
+  const isAllTab = activeTab === "All Content";
 
-    const label = activeTab === "Audiobooks" ? "Audiobooks" : "Shows";
+  // ── Section renderers ───────────────────────────────────────────
+
+  const renderShowGrid = (shows, label, tabName, isBookGrid = false, limit) => {
+    if (shows.length === 0) return null;
+    const capped = limit ? shows.slice(0, limit) : shows;
+    const hasMore = limit && shows.length > limit;
 
     return (
-      <div className="mb-8">
-        <h2 className="text-lg md:text-xl font-bold text-white mb-4">{label} ({shows.length})</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 md:gap-4">
-          {shows.map((podcast) => (
-            <div key={podcast.id} className="group cursor-pointer" onClick={() => handlePodcastPlay(podcast)}>
-              <div className="aspect-square bg-gray-800 rounded-lg p-4 md:p-6 flex items-center justify-center mb-2 md:mb-3 transition-transform group-hover:scale-105 overflow-hidden">
-                {podcast.cover_image ? (
-                  <img src={podcast.cover_image} alt={podcast.title} className="w-full h-full object-cover rounded-lg" />
-                ) : (
-                  <span className="text-3xl md:text-4xl">🎧</span>
-                )}
-              </div>
-              <h3 className="text-white font-semibold text-xs md:text-sm line-clamp-2 mb-1">{podcast.title}</h3>
-              <p className="text-gray-400 text-xs">{podcast.author || 'Eeriecast'}</p>
-            </div>
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg md:text-xl font-bold text-white/90">{label} <span className="text-zinc-600 font-normal text-base">({shows.length})</span></h2>
+          {hasMore && (
+            <button
+              type="button"
+              onClick={() => setActiveTab(tabName)}
+              className="inline-flex items-center gap-1 text-xs text-red-400/80 hover:text-red-300 font-medium transition-colors"
+            >
+              View all <ChevronRight className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        <div className={`grid gap-3 md:gap-4 ${
+          isBookGrid
+            ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+            : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8'
+        }`}>
+          {capped.map((podcast) => (
+            <ShowCard key={podcast.id} podcast={podcast} isBook={isBookGrid} onClick={() => handlePodcastPlay(podcast)} />
           ))}
         </div>
-      </div>
+      </section>
     );
   };
 
-  const renderEpisodes = () => {
-    if (activeTab === "Podcasts" || activeTab === "Audiobooks") return null;
-    if (episodeResults.length === 0) return null;
+  const renderEpisodeList = (episodes, limit) => {
+    if (episodes.length === 0) return null;
+    const capped = limit ? episodes.slice(0, limit) : episodes;
+    const hasMore = limit && episodes.length > limit;
 
     return (
-      <div>
-        <h2 className="text-lg md:text-xl font-bold text-white mb-4">Episodes ({episodeResults.length})</h2>
-        <div className="space-y-3">
-          {episodeResults.map((episode) => {
-            const formattedDuration = formatDuration(episode.duration);
-
-            return (
-              <div key={episode.id} className="bg-gray-800/60 rounded-lg p-3 md:p-4 group hover:bg-gray-800/80 transition-colors">
-                <div className="flex items-start space-x-3 md:space-x-4">
-                  {/* Cover image + play overlay */}
-                  <div
-                    className="relative w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0 cursor-pointer group/thumb"
-                    onClick={() => handleEpisodePlay(episode)}
-                  >
-                    {episode.cover_image ? (
-                      <img src={episode.cover_image} alt={episode.title} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-900">
-                        <span className="text-xl md:text-2xl">🎧</span>
-                      </div>
-                    )}
-                    {/* Play button overlay */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-                      <Play className="w-5 h-5 md:w-6 md:h-6 text-white fill-white" />
-                    </div>
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <h3
-                          className="text-white font-semibold text-sm md:text-lg truncate hover:text-blue-400 cursor-pointer transition-colors"
-                          onClick={() => handleEpisodePlay(episode)}
-                        >
-                          {episode.title}
-                        </h3>
-                        {episode.podcast_id ? (
-                          <button
-                            type="button"
-                            className="text-blue-400 hover:text-blue-300 text-xs md:text-sm font-semibold uppercase mb-1 transition-colors text-left"
-                            onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(episode.podcast_id)}`); }}
-                          >
-                            {episode.podcast_title || episode.podcast_author || ''}
-                          </button>
-                        ) : (
-                          <p className="text-blue-400 text-xs md:text-sm font-semibold uppercase mb-1">
-                            {episode.podcast_title || episode.podcast_author || ''}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex items-center space-x-1 flex-shrink-0">
-                        <button
-                          className="p-1.5 md:p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/5"
-                          title="Add to playlist"
-                          onClick={() => openAddToPlaylist(episode)}
-                        >
-                          <Plus className="w-4 h-4 md:w-5 md:h-5" />
-                        </button>
-                        <button
-                          className="p-1.5 md:p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/5"
-                          title="Favorite"
-                          onClick={() => { if (!isAuthenticated) openAuth('login'); }}
-                        >
-                          <Heart className="w-4 h-4 md:w-5 md:h-5" />
-                        </button>
-                        <button
-                          className="p-1.5 md:p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/5"
-                          title="Play"
-                          onClick={() => handleEpisodePlay(episode)}
-                        >
-                          <Play className="w-4 h-4 md:w-5 md:h-5 fill-current" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Meta row */}
-                    <div className="flex flex-wrap items-center gap-x-2 md:gap-x-3 gap-y-1 text-xs md:text-sm text-gray-400">
-                      {episode.published_at && (
-                        <span>{formatDate(episode.published_at)}</span>
-                      )}
-                      {formattedDuration && (
-                        <>
-                          <span className="text-gray-600">•</span>
-                          <span>{formattedDuration}</span>
-                        </>
-                      )}
-                      {episode.episode_number && (
-                        <>
-                          <span className="text-gray-600 hidden md:inline">•</span>
-                          <span className="hidden md:inline">Episode #{episode.episode_number}</span>
-                        </>
-                      )}
-                      {episode.is_premium && (
-                        <>
-                          <span className="text-gray-600">•</span>
-                          <span className="text-yellow-400 text-xs font-medium">PREMIUM</span>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Expandable description */}
-                    <ExpandableDescription text={episode.description} maxLength={160} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg md:text-xl font-bold text-white/90">Episodes <span className="text-zinc-600 font-normal text-base">({episodes.length})</span></h2>
+          {hasMore && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("Episodes")}
+              className="inline-flex items-center gap-1 text-xs text-red-400/80 hover:text-red-300 font-medium transition-colors"
+            >
+              View all <ChevronRight className="w-3 h-3" />
+            </button>
+          )}
         </div>
-      </div>
+        <div className="space-y-2.5">
+          {capped.map((episode) => (
+            <EpisodeCard
+              key={episode.id}
+              episode={episode}
+              onPlay={() => handleEpisodePlay(episode)}
+              onAddToPlaylist={openAddToPlaylist}
+              onShowLink={() => navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(episode.podcast_id)}`)}
+              isAuthenticated={isAuthenticated}
+              openAuth={openAuth}
+            />
+          ))}
+        </div>
+      </section>
     );
+  };
+
+  const renderResults = () => {
+    if (activeTab === "All Content") {
+      // Show all three sections with caps
+      return (
+        <>
+          {renderShowGrid(podcastShows, "Shows", "Podcasts", false, ALL_CONTENT_LIMIT)}
+          {renderShowGrid(audiobookShows, "Audiobooks", "Audiobooks", true, ALL_CONTENT_LIMIT)}
+          {renderEpisodeList(episodeResults, ALL_CONTENT_LIMIT)}
+        </>
+      );
+    }
+    if (activeTab === "Podcasts") {
+      return renderShowGrid(podcastShows, "Shows", "Podcasts");
+    }
+    if (activeTab === "Audiobooks") {
+      return renderShowGrid(audiobookShows, "Audiobooks", "Audiobooks", true);
+    }
+    if (activeTab === "Episodes") {
+      return renderEpisodeList(episodeResults);
+    }
+    if (activeTab === "Members Only") {
+      return (
+        <>
+          {renderShowGrid(showResults, "Members-Only Shows", "Members Only")}
+          {renderEpisodeList(episodeResults)}
+        </>
+      );
+    }
+    return null;
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-2.5 lg:px-10 py-8">
-      {/* Header */}
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 md:mb-6">Search</h1>
-        {/* Search Bar */}
-        <form onSubmit={handleSearch} className="mb-4 md:mb-6">
+    <div className="min-h-screen bg-eeriecast-surface text-white px-4 lg:px-10 py-8">
+      {/* ─── Header ─────────────────────────────────────────────── */}
+      <div className="mb-8">
+        <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">Search</h1>
+
+        {/* Search input */}
+        <form onSubmit={handleSearch} className="mb-6">
           <div className="relative max-w-2xl">
-            <SearchIcon className="absolute left-3 md:left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 md:w-5 md:h-5" />
-            <Input
+            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 w-4 h-4 md:w-5 md:h-5 pointer-events-none" />
+            <input
               type="text"
-              placeholder="Search for podcasts, episodes, or creators..."
+              placeholder="Search shows, episodes, audiobooks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 md:pl-12 pr-3 md:pr-4 py-2 md:py-3 bg-gray-800 border-gray-600 text-white placeholder-gray-400 text-sm md:text-lg focus:border-blue-500 focus:ring-blue-500"
+              className="w-full pl-11 md:pl-12 pr-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.06] text-white placeholder-zinc-500 text-sm md:text-base focus:outline-none focus:border-red-500/40 focus:ring-1 focus:ring-red-500/20 transition-all"
             />
           </div>
         </form>
-        {/* Tab Navigation */}
-        <div className="flex space-x-2 md:space-x-4 mb-4 md:mb-6 overflow-x-auto pb-2 scrollbar-hide">
+
+        {/* Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${
+              className={`px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-all duration-300 whitespace-nowrap border ${
                 activeTab === tab
-                  ? "bg-white text-black"
-                  : "bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700"
+                  ? "bg-gradient-to-r from-red-600 to-red-700 text-white border-red-500/30 shadow-lg shadow-red-900/20"
+                  : "bg-white/[0.03] text-zinc-400 border-white/[0.06] hover:bg-white/[0.06] hover:text-zinc-200"
               }`}
             >
               {tab}
@@ -389,53 +554,37 @@ export default function Search() {
         </div>
       </div>
 
-      {/* Results */}
-      {searchQuery && (
+      {/* ─── Results summary ────────────────────────────────────── */}
+      {searchQuery && !isLoading && (
         <div className="mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-0 mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-white">
-              {isLoading ? 'Searching...' : `${totalResults} results`}
-              {searchQuery && <span className="text-gray-400"> for &quot;{searchQuery}&quot;</span>}
-            </h2>
-            <div className="hidden md:flex items-center space-x-4">
-              <Button variant="ghost" className="text-blue-400 hover:text-blue-300 text-sm">
-                <Clock className="w-4 h-4 mr-2" />
-                Relevance
-              </Button>
-              <Button variant="ghost" className="text-gray-400 hover:text-white text-sm">
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Newest
-              </Button>
-              <Button variant="ghost" className="text-gray-400 hover:text-white text-sm">
-                <Star className="w-4 h-4 mr-2" />
-                Popular
-              </Button>
-            </div>
-          </div>
+          <p className="text-sm text-zinc-400">
+            {totalResults} {totalResults === 1 ? 'result' : 'results'} for <span className="text-white/80 font-medium">&quot;{searchQuery}&quot;</span>
+          </p>
         </div>
       )}
 
-      {/* Search Results */}
+      {/* ─── Results ────────────────────────────────────────────── */}
       <div className="pb-32">
         {isLoading ? (
-          <div className="text-center py-10">
-            <div className="text-gray-400">Searching...</div>
+          <div className="text-center py-16">
+            <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-zinc-500 text-sm">Searching...</p>
           </div>
         ) : searchQuery && totalResults === 0 ? (
-          <div className="text-center py-10">
-            <div className="text-gray-400 text-lg">No results found for &quot;{searchQuery}&quot;</div>
-            <div className="text-gray-500 text-sm mt-2">Try different keywords or browse our categories</div>
+          <div className="text-center py-16">
+            <SearchIcon className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
+            <p className="text-zinc-400 text-lg mb-1">No results found</p>
+            <p className="text-zinc-600 text-sm">Try different keywords or browse our categories</p>
           </div>
         ) : searchQuery ? (
-          <>
-            {renderShows()}
-            {renderEpisodes()}
-          </>
+          renderResults()
         ) : (
-          <div className="text-center py-10">
-            <SearchIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <div className="text-gray-400 text-lg">Start typing to search</div>
-            <div className="text-gray-500 text-sm mt-2">Search for podcasts, episodes, or creators</div>
+          <div className="text-center py-16">
+            <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mx-auto mb-5">
+              <SearchIcon className="w-7 h-7 text-zinc-600" />
+            </div>
+            <p className="text-zinc-400 text-lg mb-1">Start typing to search</p>
+            <p className="text-zinc-600 text-sm">Find shows, episodes, and audiobooks</p>
           </div>
         )}
       </div>

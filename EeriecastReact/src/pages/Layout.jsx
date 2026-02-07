@@ -30,7 +30,7 @@ const PAGE_ROUTE_MAP = {
 function BottomNav({ currentPageName }) {
   return (
     <nav
-      className="hidden max-[1000px]:flex fixed bottom-0 left-0 right-0 z-40 bg-[#08080e]/80 backdrop-blur-xl border-t border-white/[0.04] overflow-x-hidden"
+      className="layout-bottom-nav hidden max-[1000px]:flex fixed bottom-0 left-0 right-0 z-40 bg-[#08080e]/80 backdrop-blur-xl border-t border-white/[0.04] overflow-x-hidden"
       role="navigation"
       aria-label="Bottom Navigation"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -168,7 +168,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
       `}</style>
 
       {/* ─── Top bar ─── */}
-      <header className="fixed top-0 left-0 right-0 z-50 isolate bg-[#08080e]/70 backdrop-blur-xl border-b border-white/[0.04]">
+      <header className="layout-header fixed top-0 left-0 right-0 z-50 isolate bg-[#08080e]/70 backdrop-blur-xl border-b border-white/[0.04]">
         <div className="w-full px-4 md:px-6 py-3">
           <div className="flex items-center justify-between">
             {/* Left: Mobile menu + Logo */}

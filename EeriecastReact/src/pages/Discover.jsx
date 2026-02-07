@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
 import { Podcast, Playlist, UserLibrary, Category, Episode } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
@@ -8,7 +8,6 @@ import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
 import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
-import SubscribeModal from "@/components/auth/SubscribeModal";
 import { useUser } from '@/context/UserContext.jsx';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
@@ -205,6 +204,7 @@ function InfiniteScrollSentinel({ onVisible }) {
 
 export default function Discover() {
   const location = useLocation();
+  const navigate = useNavigate();
   const tabs = [
     "Recommended", "Podcasts", "Books", "Members-Only", "Free", "Newest", "Categories", "Trending"
   ];
@@ -225,8 +225,7 @@ export default function Discover() {
   const [categories, setCategories] = useState([]);
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [subscribeLabel, setSubscribeLabel] = useState("");
+  const goToPremium = () => navigate(createPageUrl('Premium'));
 
   // Episode data for episode-based tabs (progressively loaded)
   const [fetchedEpisodes, setFetchedEpisodes] = useState([]);
@@ -471,8 +470,7 @@ export default function Discover() {
     const p = podcast || podcastMap[episode.podcast || episode.podcast_id];
 
     if ((episode.is_premium || p?.is_exclusive) && !isPremium) {
-      setSubscribeLabel(episode.title || p?.title || 'Premium episode');
-      setShowSubscribeModal(true);
+      goToPremium();
       return;
     }
 
@@ -521,8 +519,7 @@ export default function Discover() {
         try { const fullEp = await Episode.get(ep.id); ep = fullEp || ep; } catch { /* ignore */ }
       }
       if (ep?.is_premium && !isPremium) {
-        setSubscribeLabel(ep?.title || podcast?.title || 'Premium episode');
-        setShowSubscribeModal(true);
+        goToPremium();
         return;
       }
       await loadAndPlay({ podcast, episode: ep, resume });
@@ -911,13 +908,6 @@ export default function Discover() {
         }}
       />
 
-      <SubscribeModal
-        open={showSubscribeModal}
-        onOpenChange={setShowSubscribeModal}
-        itemLabel={subscribeLabel}
-        title="Subscribe to listen"
-        message="This podcast is available to members only. Subscribe to unlock all premium shows and episodes."
-      />
     </div>
   );
 }

@@ -1,16 +1,26 @@
 /* eslint-disable no-undef, no-unused-vars */
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
-import { getEpisodeAudioUrl } from '@/lib/utils';
+import { getEpisodeAudioUrl, isAudiobook } from '@/lib/utils';
+import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
+import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_EXCLUSIVE_EPISODE_LIMIT } from '@/lib/freeTier';
+import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const AudioPlayerContext = createContext();
 
+// Routes where the mini player should never appear
+const PLAYER_HIDDEN_ROUTES = new Set(['/', '/home', '/premium']);
+
 export const AudioPlayerProvider = ({ children }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const hidePlayer = PLAYER_HIDDEN_ROUTES.has(location.pathname.toLowerCase());
   const [showPlayer, setShowPlayer] = useState(false);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
   // New: global queue across podcasts (array of { podcast, episode, resume })
@@ -98,60 +108,20 @@ export const AudioPlayerProvider = ({ children }) => {
     return () => window.removeEventListener('beforeunload', saveNow);
   }, [episode, podcast, currentTime, duration, queue, queueIndex, audioRef]);
 
-  // Restore on initial mount (run once). Show the player in paused state
-  // so user can resume with one tap, but don't auto-play.
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current) return;
-    restoredRef.current = true;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      // Only restore if data is less than 7 days old
-      if (!saved?.episode?.id || !saved?.podcast?.id) return;
-      if (saved.savedAt && Date.now() - saved.savedAt > 7 * 24 * 60 * 60 * 1000) return;
-
-      // Restore queue if available
-      if (Array.isArray(saved.queue) && saved.queue.length > 0) {
-        setQueue(saved.queue);
-        setQueueIndex(typeof saved.queueIndex === 'number' ? saved.queueIndex : 0);
-      }
-
-      // Set episode and podcast (which triggers showPlayer via the existing effect)
-      setPodcast(saved.podcast);
-      setEpisode(saved.episode);
-
-      // Prepare the audio element with the source so the user can hit play
-      const audio = audioRef?.current;
-      if (audio && saved.episode) {
-        const url = getEpisodeAudioUrl(saved.episode);
-        if (url) {
-          audio.src = url;
-          // Restore playback rate
-          try { audio.playbackRate = parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { /* */ }
-          // Seek to saved position once metadata loads
-          const resumePos = Math.max(0, saved.currentTime || 0);
-          if (resumePos > 0) {
-            const doSeek = () => {
-              try {
-                const dur = Number.isFinite(audio.duration) ? audio.duration : 0;
-                audio.currentTime = dur > 0 ? Math.min(resumePos, dur - 0.5) : resumePos;
-              } catch { /* */ }
-              audio.removeEventListener('loadedmetadata', doSeek);
-            };
-            audio.addEventListener('loadedmetadata', doSeek);
-            // Also try immediately in case metadata is cached
-            try { if (resumePos > 0) audio.currentTime = resumePos; } catch { /* */ }
-          }
-        }
-      }
-    } catch { /* corrupted data, ignore */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Session restore is disabled — the mini player should NOT automatically
+  // appear when the user freshly opens the app. Playback state is still
+  // persisted to localStorage (above) so features like "Continue Listening"
+  // can reference it, but the player itself only appears after a deliberate
+  // user action (pressing play).
 
   // ─── User Context (for real-time progress tracking + smart resume) ─
-  const { updateEpisodeProgress, episodeProgressMap } = useUser() || {};
+  const { updateEpisodeProgress, episodeProgressMap, isPremium } = useUser() || {};
+
+  // ─── Free-tier chapter gating ──────────────────────────────────────
+  const premiumRef = useRef(isPremium);
+  useEffect(() => { premiumRef.current = isPremium; }, [isPremium]);
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
   // ─── Smart Resume Wrapper ──────────────────────────────────────────
   // Wraps the raw loadAndPlay to automatically resume from the last known
@@ -164,6 +134,13 @@ export const AudioPlayerProvider = ({ children }) => {
     const { episode: ep, resume, ...rest } = args;
     const eid = Number(ep?.id);
     const map = episodeProgressMapRef.current;
+    const shouldRemember = getSetting('rememberPosition');
+
+    // If "remember position" is off, always start from the beginning
+    if (!shouldRemember) {
+      return loadAndPlay({ ...rest, episode: ep, resume: { progress: 0 } });
+    }
+
     // If resume.progress is 0 (default), check if we have saved progress
     if (ep && Number.isFinite(eid) && map && (!resume || resume.progress === 0 || resume.progress == null)) {
       const saved = map.get(eid);
@@ -179,9 +156,23 @@ export const AudioPlayerProvider = ({ children }) => {
     if (!Array.isArray(queue) || index < 0 || index >= queue.length) return;
     const item = queue[index];
     if (!item || !item.episode) return;
+
+    // Free-tier gate: block chapters/episodes beyond the free limit
+    if (item.podcast && !premiumRef.current) {
+      const limit = isAudiobook(item.podcast)
+        ? FREE_LISTEN_CHAPTER_LIMIT
+        : item.podcast.is_exclusive
+          ? FREE_EXCLUSIVE_EPISODE_LIMIT
+          : null;
+      if (limit !== null && !canAccessChapter(index, false, limit)) {
+        navigateRef.current(createPageUrl('Premium'));
+        return; // do NOT play
+      }
+    }
+
     setQueueIndex(index);
-    await loadAndPlay({ podcast: item.podcast, episode: item.episode, resume: item.resume });
-  }, [queue, loadAndPlay]);
+    await loadAndPlaySmart({ podcast: item.podcast, episode: item.episode, resume: item.resume });
+  }, [queue, loadAndPlaySmart]);
 
   const setPlaybackQueue = useCallback(async (items, startIndex = 0) => {
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
@@ -215,12 +206,16 @@ export const AudioPlayerProvider = ({ children }) => {
     const repeat = repeatRef.current || 'off';
     const loader = loadAndPlayRef.current;
 
-    // Repeat current item
+    // Repeat current item (always honored regardless of autoplay)
     if (repeat === 'one') {
       await seek(0);
       await play();
       return;
     }
+
+    // Check autoplay setting — if off, don't advance to next episode
+    const shouldAutoplay = getSetting('autoplay');
+    if (!shouldAutoplay) return;
 
     const total = list.length;
     if (total <= 0 || idx < 0) return;
@@ -240,6 +235,18 @@ export const AudioPlayerProvider = ({ children }) => {
     if (nextIndex >= 0 && nextIndex < total) {
       const item = list[nextIndex];
       if (item && item.episode) {
+        // Free-tier gate: stop auto-advance at the episode/chapter limit
+        if (item.podcast && !premiumRef.current) {
+          const limit = isAudiobook(item.podcast)
+            ? FREE_LISTEN_CHAPTER_LIMIT
+            : item.podcast.is_exclusive
+              ? FREE_EXCLUSIVE_EPISODE_LIMIT
+              : null;
+          if (limit !== null && !canAccessChapter(nextIndex, false, limit)) {
+            navigateRef.current?.(createPageUrl('Premium'));
+            return; // do NOT play the next item
+          }
+        }
         setQueueIndex(nextIndex);
         await loader({ podcast: item.podcast, episode: item.episode, resume: item.resume });
       }
@@ -302,10 +309,13 @@ export const AudioPlayerProvider = ({ children }) => {
   // Gate that keeps the mini player hidden until the expanded player's exit
   // animation has fully completed, so the re-entrance animation is visible.
   const [miniPlayerReady, setMiniPlayerReady] = useState(true);
+  // Minimized state — shrinks mini player into a small pill/bubble
+  const [isMiniPlayerMinimized, setIsMiniPlayerMinimized] = useState(false);
 
   const handleClosePlayer = () => {
     setShowPlayer(false);
     setShowExpandedPlayer(false);
+    setIsMiniPlayerMinimized(false);
     setMiniPlayerReady(true);
     // Clear persisted state when user explicitly closes the player
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
@@ -313,6 +323,7 @@ export const AudioPlayerProvider = ({ children }) => {
 
   const handleExpandPlayer = () => {
     setShowExpandedPlayer(true);
+    setIsMiniPlayerMinimized(false);
     setMiniPlayerReady(true); // not gated when expanding
   };
 
@@ -324,6 +335,14 @@ export const AudioPlayerProvider = ({ children }) => {
   const handleExpandedExitComplete = () => {
     // Expanded player has fully left the screen — let the mini player animate in
     setMiniPlayerReady(true);
+  };
+
+  const handleMinimizePlayer = () => {
+    setIsMiniPlayerMinimized(true);
+  };
+
+  const handleRestorePlayer = () => {
+    setIsMiniPlayerMinimized(false);
   };
 
   // ─── Sleep Timer ───────────────────────────────────────────────────
@@ -433,14 +452,14 @@ export const AudioPlayerProvider = ({ children }) => {
 
       {/* Expanded Player - shows when user expands (slide-up enter/exit) */}
       <AnimatePresence onExitComplete={handleExpandedExitComplete}>
-        {showExpandedPlayer && episode && podcast && (
+        {showExpandedPlayer && !hidePlayer && episode && podcast && (
           <motion.div
             key="expanded-player"
             initial={{ opacity: 0, y: '100%' }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 3000 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10100 }}
           >
             <ExpandedPlayer
               podcast={podcast}
@@ -477,7 +496,7 @@ export const AudioPlayerProvider = ({ children }) => {
           transform on a parent breaks position:fixed inside MobilePlayer.
           The enter animation is a CSS @keyframes on MobilePlayer's own root. */}
       <AnimatePresence>
-        {showPlayer && !showExpandedPlayer && miniPlayerReady && episode && podcast && (
+        {showPlayer && !showExpandedPlayer && !hidePlayer && miniPlayerReady && episode && podcast && (
           <motion.div
             key="mobile-player"
             initial={{ opacity: 0 }}
@@ -506,6 +525,10 @@ export const AudioPlayerProvider = ({ children }) => {
               repeatMode={repeatMode}
               onShuffleToggle={toggleShuffle}
               onRepeatToggle={cycleRepeat}
+              // minimize props
+              isMinimized={isMiniPlayerMinimized}
+              onMinimize={handleMinimizePlayer}
+              onRestore={handleRestorePlayer}
             />
           </motion.div>
         )}
