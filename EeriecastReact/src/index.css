@@ -632,6 +632,64 @@
   border-color: rgba(220, 38, 38, 0.2);
 }
 
+/* ═══════════════════════════════════════════════════════
+   E-READER STYLES
+   ═══════════════════════════════════════════════════════ */
+
+/* Vignette overlay — darkened edges for immersive reading */
+.ereader-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 50%,
+    rgba(0, 0, 0, 0.4) 100%
+  );
+}
+
+/* Multi-column pagination container.
+   column-width is set dynamically via inline style (pixel value from JS).
+   Height must equal the parent's height so text overflows into new columns. */
+.ereader-columns {
+  column-fill: auto;
+  height: 100%;
+  overflow: hidden;
+  transition: transform 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* Prevent breaks inside key elements */
+.ereader-no-break {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+}
+
+/* Body text styling for the reader */
+.ereader-body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  text-align: justify;
+  word-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  break-inside: auto;
+  orphans: 3;
+  widows: 3;
+}
+.ereader-body::first-letter {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 3.2em;
+  float: left;
+  line-height: 0.85;
+  margin-right: 0.08em;
+  margin-top: 0.05em;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PLAYER CONTROLS (continued)
+   ═══════════════════════════════════════════════════════ */
+
 .player-controls-large {
   display: flex;
   align-items: center;

@@ -11,6 +11,8 @@ import { getPodcastCategoriesLower, isAudiobook } from '@/lib/utils';
 import SubscribeModal from '@/components/auth/SubscribeModal';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
+import EReader from '@/components/podcasts/EReader';
+import callOfCthulhu from '@/data/books/call-of-cthulhu';
 
 function useQuery() {
   const { search } = useLocation();
@@ -32,6 +34,7 @@ export default function Episodes() {
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [subscribeLabel, setSubscribeLabel] = useState('');
+  const [showReader, setShowReader] = useState(false);
 
   const { loadAndPlay } = useAudioPlayerContext();
   const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium } = useUser();
@@ -314,6 +317,20 @@ export default function Episodes() {
                   <Heart className={`w-3.5 h-3.5 mr-1.5 ${isFollowing ? 'fill-red-400' : ''}`} />
                   {isFollowing ? 'Following' : 'Follow'}
                 </Button>
+
+                {/* Read Book — audiobooks only */}
+                {isBook && (
+                  <Button
+                    className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold bg-gradient-to-r from-cyan-600/80 to-teal-600/80 hover:from-cyan-500 hover:to-teal-500 text-white shadow-lg shadow-cyan-500/10 transition-all duration-500 hover:scale-[1.02] border border-cyan-400/10"
+                    onClick={() => {
+                      // TODO: restore auth gate before launch: if (!isAuthenticated) { openAuth('login'); return; }
+                      setShowReader(true);
+                    }}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    Read Book
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -365,6 +382,20 @@ export default function Episodes() {
         title="Subscribe to listen"
         message="This content is available to members only. Subscribe to unlock all premium shows and episodes."
       />
+
+      {/* E-Reader overlay — audiobooks only */}
+      {showReader && isBook && (
+        <EReader
+          book={callOfCthulhu}
+          isPremium={true /* TODO: revert to isPremium before launch */}
+          onClose={() => setShowReader(false)}
+          onSubscribe={() => {
+            setShowReader(false);
+            setSubscribeLabel(show?.title || 'this audiobook');
+            setShowSubscribeModal(true);
+          }}
+        />
+      )}
     </div>
   );
 }
