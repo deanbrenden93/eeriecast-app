@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eeriecast — Font Comparison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    @font-face {
+      font-family: 'Awakenning';
+      src: url('/src/assets/fonts/Awakenning.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #06060c;
+      color: #f1f1f4;
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 40px 24px;
+    }
+
+    h1.page-title {
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: #666;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .font-column {
+      padding: 32px;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .font-label {
+      font-family: system-ui, sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: #dc2626;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .col-outfit .sample { font-family: 'Outfit', system-ui, sans-serif; }
+    .col-awakenning .sample { font-family: 'Awakenning', system-ui, sans-serif; }
+
+    .sample-group { margin-bottom: 32px; }
+    .sample-group:last-child { margin-bottom: 0; }
+
+    .sample-label {
+      font-family: system-ui, sans-serif;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: #555;
+      margin-bottom: 8px;
+    }
+
+    .sample.hero {
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1.05;
+      font-style: italic;
+      background: linear-gradient(to right, #fff, #fca5a5, #f87171);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sample.section-heading {
+      font-size: 28px;
+      font-weight: 700;
+      font-style: italic;
+      color: #f1f1f4;
+    }
+
+    .sample.card-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e4e4e7;
+    }
+
+    .sample.small-heading {
+      font-size: 14px;
+      font-weight: 600;
+      color: #a1a1aa;
+    }
+
+    .sample.body-text {
+      font-size: 15px;
+      font-weight: 400;
+      color: #71717a;
+      line-height: 1.6;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.04);
+      margin: 48px 0;
+      max-width: 1200px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .interactive-section {
+      max-width: 1200px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .interactive-section h2 {
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    .editable {
+      width: 100%;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 24px;
+      color: #f1f1f4;
+      font-size: 36px;
+      font-weight: 700;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .editable:focus {
+      border-color: rgba(220, 38, 38, 0.3);
+    }
+
+    .editable-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      margin-top: 12px;
+    }
+
+    .editable.outfit-edit { font-family: 'Outfit', system-ui, sans-serif; }
+    .editable.awakenning-edit { font-family: 'Awakenning', system-ui, sans-serif; }
+
+    .sync-note {
+      font-size: 11px;
+      color: #444;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1 class="page-title">Eeriecast Font Comparison</h1>
+
+  <div class="compare-grid">
+    <!-- Outfit Column -->
+    <div class="font-column col-outfit">
+      <div class="font-label">Outfit</div>
+
+      <div class="sample-group">
+        <div class="sample-label">Hero Title</div>
+        <div class="sample hero">Stories That<br>Haunt You</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Section Heading</div>
+        <div class="sample section-heading">Trending Now</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Section Heading</div>
+        <div class="sample section-heading">New Releases</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Card Title</div>
+        <div class="sample card-title">NAMAHAGE — The New Year's Demon</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Small Heading</div>
+        <div class="sample small-heading">Explore Categories</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Body / UI</div>
+        <div class="sample body-text">Immerse yourself in spine-chilling podcasts, from terrifying true stories to supernatural fiction.</div>
+      </div>
+    </div>
+
+    <!-- Awakenning Column -->
+    <div class="font-column col-awakenning">
+      <div class="font-label">Awakenning</div>
+
+      <div class="sample-group">
+        <div class="sample-label">Hero Title</div>
+        <div class="sample hero">Stories That<br>Haunt You</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Section Heading</div>
+        <div class="sample section-heading">Trending Now</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Section Heading</div>
+        <div class="sample section-heading">New Releases</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Card Title</div>
+        <div class="sample card-title">NAMAHAGE — The New Year's Demon</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Small Heading</div>
+        <div class="sample small-heading">Explore Categories</div>
+      </div>
+
+      <div class="sample-group">
+        <div class="sample-label">Body / UI</div>
+        <div class="sample body-text">Immerse yourself in spine-chilling podcasts, from terrifying true stories to supernatural fiction.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="interactive-section">
+    <h2>Type Your Own Text</h2>
+    <div class="editable-row">
+      <input class="editable outfit-edit" value="Type anything here..." oninput="document.querySelector('.awakenning-edit').value = this.value" />
+      <input class="editable awakenning-edit" value="Type anything here..." oninput="document.querySelector('.outfit-edit').value = this.value" />
+    </div>
+    <div class="sync-note">Both fields stay in sync — type in either one</div>
+  </div>
+
+</body>
+</html>
