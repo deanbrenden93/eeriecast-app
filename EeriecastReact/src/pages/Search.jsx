@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Playlist, Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
+import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Search as SearchIcon, Plus, Heart, Play, BookOpen, Headphones, Crown, ChevronRight } from "lucide-react";
 import { isAudiobook, getPodcastCategoriesLower, formatDate } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
+import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -209,27 +210,15 @@ export default function Search() {
   const [showResults, setShowResults] = useState([]);
   const [episodeResults, setEpisodeResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [playlists, setPlaylists] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const { isAuthenticated } = useUser();
+  const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
 
   const tabs = ["All Content", "Podcasts", "Episodes", "Audiobooks", "Members Only"];
 
-  useEffect(() => {
-    const loadPlaylists = async () => {
-      try {
-        const resp = await Playlist.list();
-        const list = Array.isArray(resp) ? resp : (resp?.results || []);
-        setPlaylists(list);
-      } catch {
-        setPlaylists([]);
-      }
-    };
-    loadPlaylists();
-  }, []);
 
   const performSearch = useCallback(async (query) => {
     setIsLoading(true);
@@ -596,8 +585,8 @@ export default function Search() {
         playlists={playlists}
         onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
         onAdded={({ playlist: pl, action }) => {
-          if (action === 'created') setPlaylists(prev => [pl, ...prev]);
-          if (action === 'updated') setPlaylists(prev => prev.map(p => p.id === pl.id ? pl : p));
+          if (action === 'created') addPlaylist(pl);
+          if (action === 'updated') updatePlaylist(pl);
         }}
       />
     </div>

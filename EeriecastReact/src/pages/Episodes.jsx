@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Playlist, UserLibrary } from '@/api/entities';
+import { UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart } from 'lucide-react';
+import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart, Loader2 } from 'lucide-react';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
-import { getPodcastCategoriesLower, isAudiobook } from '@/lib/utils';
+import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
+import { getPodcastCategoriesLower, isAudiobook, getEpisodeAudioUrl } from '@/lib/utils';
 import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT, FREE_EXCLUSIVE_EPISODE_LIMIT } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
+import { useToast } from '@/components/ui/use-toast';
+import { Episode } from '@/api/entities';
 import EReader from '@/components/podcasts/EReader';
 import { findBookForShow } from '@/data/books';
 import { getShowDescription } from '@/data/show-descriptions';
@@ -31,17 +34,19 @@ export default function Episodes() {
   const [episodes, setEpisodes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('Newest');
-  const [playlists, setPlaylists] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
+  const [followAnim, setFollowAnim] = useState(null); // 'followed' | 'unfollowed' | null
   const [showReader, setShowReader] = useState(false);
 
   const goToPremium = () => navigate(createPageUrl('Premium'));
 
   const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
   const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium, episodeProgressMap } = useUser();
+  const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
+  const { toast } = useToast();
 
   const isFollowing = useMemo(() => {
     if (!show?.id) return false;
@@ -73,19 +78,6 @@ export default function Episodes() {
     }
   }, [show]);
 
-  useEffect(() => {
-    async function loadPlaylists() {
-      try {
-        const resp = await Playlist.list();
-        const list = Array.isArray(resp) ? resp : (resp?.results || []);
-        setPlaylists(list);
-      } catch (e) {
-        if (typeof console !== 'undefined') console.debug('playlists load failed', e);
-        setPlaylists([]);
-      }
-    }
-    loadPlaylists();
-  }, []);
 
   const handleOpenAddToPlaylist = (ep) => {
     if (!isAuthenticated) { openAuth('login'); return; }
@@ -96,14 +88,18 @@ export default function Episodes() {
   const handleFollowToggle = async () => {
     if (!show?.id) return;
     if (!isAuthenticated) { openAuth('login'); return; }
+    const wasFollowing = isFollowing;
     setIsFollowingLoading(true);
     try {
-      if (isFollowing) {
+      if (wasFollowing) {
         await UserLibrary.unfollowPodcast(show.id);
       } else {
         await UserLibrary.followPodcast(show.id);
       }
       await refreshFollowings();
+      // Trigger completion animation
+      setFollowAnim(wasFollowing ? 'unfollowed' : 'followed');
+      setTimeout(() => setFollowAnim(null), 900);
     } catch (e) {
       console.error('Failed to toggle follow', e);
     } finally {
@@ -133,14 +129,26 @@ export default function Episodes() {
   const freeEpisodeLimit = isBook ? FREE_LISTEN_CHAPTER_LIMIT : (isExclusive ? FREE_EXCLUSIVE_EPISODE_LIMIT : Infinity);
 
   // Set of episode IDs that are locked behind the free-tier limit
+  // Audiobooks: first N chapters (oldest) are free
+  // Exclusive shows: newest N episodes are free
   const lockedEpisodeIds = useMemo(() => {
     if (isPremium || !episodeOrder.length) return new Set();
     const locked = new Set();
-    for (let i = freeEpisodeLimit; i < episodeOrder.length; i++) {
-      if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
+    if (isExclusive) {
+      // Lock everything except the newest `freeEpisodeLimit` episodes
+      // episodeOrder is sorted oldest-first, so the newest are at the end
+      const lockUpTo = episodeOrder.length - freeEpisodeLimit;
+      for (let i = 0; i < lockUpTo; i++) {
+        if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
+      }
+    } else {
+      // Audiobooks: first N chapters are free
+      for (let i = freeEpisodeLimit; i < episodeOrder.length; i++) {
+        if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
+      }
     }
     return locked;
-  }, [isPremium, episodeOrder, freeEpisodeLimit]);
+  }, [isPremium, episodeOrder, freeEpisodeLimit, isExclusive]);
 
   const doPlay = async (ep) => {
     if (!ep) return;
@@ -155,10 +163,23 @@ export default function Episodes() {
       return;
     }
     try {
-      await loadAndPlay({ podcast: show, episode: ep });
-      try { await UserLibrary.addToHistory(ep.id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
+      // If episode lacks an audio URL, try fetching the full episode detail first
+      let playEp = ep;
+      if (!getEpisodeAudioUrl(playEp) && playEp.id) {
+        try {
+          const fullEp = await Episode.get(playEp.id);
+          if (fullEp && getEpisodeAudioUrl(fullEp)) playEp = fullEp;
+        } catch { /* ignore */ }
+      }
+      const played = await loadAndPlay({ podcast: show, episode: playEp });
+      if (played === false) {
+        toast({ title: "Unable to play", description: "This episode doesn't have audio available yet.", variant: "destructive" });
+        return;
+      }
+      try { await UserLibrary.addToHistory(playEp.id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
     } catch (e) {
       console.error('Failed to play', e);
+      toast({ title: "Playback error", description: "Something went wrong. Please try again.", variant: "destructive" });
     }
   };
 
@@ -208,15 +229,28 @@ export default function Episodes() {
       return da - db;
     });
 
+    // Enrich episodes that are missing audio URLs by fetching their full details
+    const enriched = await Promise.all(ordered.map(async (ep) => {
+      if (getEpisodeAudioUrl(ep)) return ep;
+      try {
+        const fullEp = await Episode.get(ep.id);
+        return (fullEp && getEpisodeAudioUrl(fullEp)) ? fullEp : ep;
+      } catch { return ep; }
+    }));
+
+    // Check if the start chapter has audio
+    const startIdx = audiobookResume ? audiobookResume.index : 0;
+    if (!getEpisodeAudioUrl(enriched[startIdx])) {
+      toast({ title: "Unable to play", description: "This audiobook doesn't have audio available yet.", variant: "destructive" });
+      return;
+    }
+
     // Build queue items for every chapter
-    const queueItems = ordered.map((ep) => ({
+    const queueItems = enriched.map((ep) => ({
       podcast: show,
       episode: ep,
       resume: { progress: 0 },
     }));
-
-    // Determine start index
-    const startIdx = audiobookResume ? audiobookResume.index : 0;
 
     // Embed saved progress for the resume chapter
     if (audiobookResume && audiobookResume.progress > 0 && queueItems[startIdx]) {
@@ -225,9 +259,10 @@ export default function Episodes() {
 
     try {
       await setPlaybackQueue(queueItems, startIdx);
-      try { await UserLibrary.addToHistory(ordered[startIdx].id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
+      try { await UserLibrary.addToHistory(enriched[startIdx].id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
     } catch (e) {
       console.error('Failed to play audiobook', e);
+      toast({ title: "Playback error", description: "Something went wrong starting the audiobook.", variant: "destructive" });
     }
   };
 
@@ -436,13 +471,26 @@ export default function Episodes() {
 
                 <Button
                   variant="outline"
-                  className={`px-5 py-2.5 rounded-full bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.1] transition-all duration-300 text-sm ${
+                  className={`relative overflow-visible px-5 py-2.5 rounded-full bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.1] transition-all duration-300 text-sm ${
                     isFollowing ? 'text-red-400 border-red-400/20' : 'text-zinc-300'
-                  }`}
+                  } ${isFollowingLoading ? 'animate-pulse pointer-events-none' : ''
+                  } ${followAnim === 'followed' ? 'animate-follow-glow' : ''
+                  } ${followAnim === 'unfollowed' ? 'animate-unfollow-dim' : ''}`}
                   onClick={handleFollowToggle}
                   disabled={isFollowingLoading}
                 >
-                  <Heart className={`w-3.5 h-3.5 mr-1.5 ${isFollowing ? 'fill-red-400' : ''}`} />
+                  {/* Pill-shaped ripple ring on follow */}
+                  {followAnim === 'followed' && (
+                    <span className="absolute inset-0 rounded-full border border-red-400/50 animate-follow-ring pointer-events-none" />
+                  )}
+                  {isFollowingLoading
+                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    : <Heart className={`w-3.5 h-3.5 mr-1.5 transition-colors duration-300 ${
+                        isFollowing ? 'fill-red-400' : ''
+                      } ${followAnim === 'followed' ? 'animate-heart-bloom' : ''
+                      } ${followAnim === 'unfollowed' ? 'animate-heart-release' : ''}`}
+                      />
+                  }
                   {isFollowing ? 'Following' : 'Follow'}
                 </Button>
 
@@ -498,8 +546,8 @@ export default function Episodes() {
         playlists={playlists}
         onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
         onAdded={({ playlist: pl, action }) => {
-          if (action === 'created') setPlaylists(prev => [pl, ...prev]);
-          if (action === 'updated') setPlaylists(prev => prev.map(p => p.id === pl.id ? pl : p));
+          if (action === 'created') addPlaylist(pl);
+          if (action === 'updated') updatePlaylist(pl);
         }}
       />
 

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { Podcast, UserLibrary, Playlist, Episode } from "@/api/entities";
+import { Podcast, UserLibrary, Episode } from "@/api/entities";
 import { Button } from "@/components/ui/button";
-import { Play, Edit, Plus, Download, Trash2 } from "lucide-react";
+import { Play, Edit, Plus, Download, Trash2, Headphones } from "lucide-react";
 import FavoritesTab from "../components/library/FavoritesTab";
 import FollowingTab from "../components/library/FollowingTab";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
@@ -13,6 +13,7 @@ import PlaylistRenameModal from "../components/library/PlaylistRenameModal";
 import PlaylistDeleteModal from "../components/library/PlaylistDeleteModal";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
+import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useNavigate } from "react-router-dom";
 import EpisodesTable from "../components/podcasts/EpisodesTable";
@@ -33,8 +34,6 @@ export default function Library() {
   const [podcasts, setPodcasts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
-  const [playlists, setPlaylists] = useState([]);
-  const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [playlistToRename, setPlaylistToRename] = useState(null);
@@ -46,6 +45,7 @@ export default function Library() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   const { isAuthenticated, favoritePodcasts, favoritesLoading, favoriteEpisodeIds } = useUser();
+  const { playlists, isLoadingPlaylists, addPlaylist, updatePlaylist, removePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const navigate = useNavigate();
 
@@ -74,22 +74,6 @@ export default function Library() {
     loadPodcasts();
   }, []);
 
-  useEffect(() => {
-    const loadPlaylists = async () => {
-      setIsLoadingPlaylists(true);
-      try {
-        const resp = await Playlist.list();
-        const list = Array.isArray(resp) ? resp : (resp?.results || []);
-        setPlaylists(list);
-      } catch (e) {
-        console.error('Failed to load playlists', e);
-        setPlaylists([]);
-      } finally {
-        setIsLoadingPlaylists(false);
-      }
-    };
-    loadPlaylists();
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,14 +106,27 @@ export default function Library() {
   async function handlePlayPlaylist(pl) {
     try {
       if (!pl || !Array.isArray(pl.episodes) || pl.episodes.length === 0) return;
-      const ep = await Episode.get(pl.episodes[0]);
-      if (!ep) return;
+      // Fetch all episodes to build a full queue
+      const eps = [];
+      for (const id of pl.episodes) {
+        try {
+          const ep = await Episode.get(id);
+          if (ep) eps.push(ep);
+        } catch { /* skip */ }
+      }
+      if (!eps.length) return;
+      const getArt = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
       const pseudoPodcast = {
         id: `playlist-${pl.id}`,
         title: pl.name,
-        cover_image: ep.cover_image || null,
+        cover_image: getArt(eps[0]) || null,
       };
-      await loadAndPlay({ podcast: pseudoPodcast, episode: ep });
+      const queueItems = eps.map(ep => ({
+        podcast: { ...pseudoPodcast, cover_image: getArt(ep) || pseudoPodcast.cover_image },
+        episode: ep,
+        resume: { progress: 0 },
+      }));
+      await setPlaybackQueue(queueItems, 0);
     } catch {
       // swallow
     }
@@ -264,6 +261,66 @@ export default function Library() {
     );
   };
 
+  // ── Playlist card cover: fetches first 3 episode images for mosaic ──
+  function PlaylistCardCover({ episodeIds = [] }) {
+    const [images, setImages] = useState([]);
+    useEffect(() => {
+      let mounted = true;
+      const ids = episodeIds.slice(0, 3);
+      if (!ids.length) return;
+      (async () => {
+        const imgs = [];
+        for (const id of ids) {
+          try {
+            const ep = await Episode.get(id);
+            const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
+            if (art) imgs.push(art);
+          } catch { /* skip */ }
+        }
+        if (mounted) setImages(imgs);
+      })();
+      return () => { mounted = false; };
+    }, [episodeIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (images.length === 0) {
+      return (
+        <div className="w-full h-28 bg-gradient-to-br from-violet-900/20 to-eeriecast-deep-violet/20 flex items-center justify-center">
+          <div className="w-20 h-20 rounded-lg overflow-hidden bg-eeriecast-surface-lighter flex items-center justify-center ring-1 ring-white/[0.06]">
+            <Headphones className="w-6 h-6 text-violet-400/40" />
+          </div>
+        </div>
+      );
+    }
+
+    if (images.length === 1) {
+      return (
+        <div className="w-full h-28 overflow-hidden">
+          <img src={images[0]} alt="" className="w-full h-full object-cover" />
+        </div>
+      );
+    }
+
+    if (images.length === 2) {
+      return (
+        <div className="w-full h-28 grid grid-cols-2 overflow-hidden">
+          <img src={images[0]} alt="" className="w-full h-full object-cover" />
+          <img src={images[1]} alt="" className="w-full h-full object-cover" />
+        </div>
+      );
+    }
+
+    // 3 images: one large left, two stacked right
+    return (
+      <div className="w-full h-28 grid grid-cols-2 overflow-hidden">
+        <img src={images[0]} alt="" className="w-full h-full object-cover" />
+        <div className="flex flex-col h-full">
+          <img src={images[1]} alt="" className="w-full flex-1 object-cover" />
+          <img src={images[2]} alt="" className="w-full flex-1 object-cover" />
+        </div>
+      </div>
+    );
+  }
+
   const renderPlaylistsTab = () => {
     if (isLoadingPlaylists) {
       return (
@@ -295,12 +352,8 @@ export default function Library() {
           return (
             <div key={pl.id} className="eeriecast-card overflow-hidden cursor-pointer"
                  onClick={() => navigate(`/Playlist?id=${encodeURIComponent(pl.id)}`)}>
-              {/* Cover */}
-              <div className="w-full h-28 bg-gradient-to-br from-red-900/30 to-eeriecast-deep-violet/20 flex items-center justify-center">
-                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg bg-eeriecast-surface-lighter flex items-center justify-center ring-1 ring-white/[0.06]">
-                  <span className="text-zinc-500 text-xs">Playlist</span>
-                </div>
-              </div>
+              {/* Cover mosaic */}
+              <PlaylistCardCover episodeIds={Array.isArray(pl.episodes) ? pl.episodes : []} />
 
               {/* Content */}
               <div className="p-4">
@@ -448,10 +501,10 @@ export default function Library() {
         )}
       </AnimatePresence>
 
-      <PlaylistCreateModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
-      <PlaylistRenameModal isOpen={showRenameModal} onClose={() => setShowRenameModal(false)} playlist={playlistToRename} />
-      <PlaylistDeleteModal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} playlist={playlistToDelete} />
-      <AddToPlaylistModal isOpen={showAddModal} episode={episodeToAdd} playlists={playlists} onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }} onAdded={({ playlist: pl, action }) => { if (action === 'created') setPlaylists(prev => [pl, ...prev]); if (action === 'updated') setPlaylists(prev => prev.map(p => p.id === pl.id ? pl : p)); }} />
+      <PlaylistCreateModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreated={(pl) => addPlaylist(pl)} />
+      <PlaylistRenameModal isOpen={showRenameModal} onClose={() => setShowRenameModal(false)} playlist={playlistToRename} onRenamed={(pl) => updatePlaylist(pl)} />
+      <PlaylistDeleteModal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} playlist={playlistToDelete} onDeleted={(pl) => removePlaylist(pl.id)} />
+      <AddToPlaylistModal isOpen={showAddModal} episode={episodeToAdd} playlists={playlists} onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }} onAdded={({ playlist: pl, action }) => { if (action === 'created') addPlaylist(pl); if (action === 'updated') updatePlaylist(pl); }} />
     </div>
   );
 }

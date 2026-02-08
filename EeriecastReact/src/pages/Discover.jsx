@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from "@/utils";
-import { Podcast, Playlist, UserLibrary, Category, Episode } from "@/api/entities";
+import { Podcast, UserLibrary, Category, Episode } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
-import BookCard from "../components/discover/BookCard";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
 import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from '@/context/UserContext.jsx';
+import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -206,7 +206,7 @@ export default function Discover() {
   const location = useLocation();
   const navigate = useNavigate();
   const tabs = [
-    "Recommended", "Podcasts", "Books", "Members-Only", "Free", "Newest", "Categories", "Trending"
+    "Recommended", "Podcasts", "Members-Only", "Free", "Newest", "Categories", "Trending"
   ];
   const queryTab = (() => {
     try {
@@ -219,7 +219,6 @@ export default function Discover() {
 
   const [activeTab, setActiveTab] = useState(queryTab || "Recommended");
   const { podcasts: rawPodcasts, isLoading, getById } = usePodcasts();
-  const [playlists, setPlaylists] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -242,9 +241,9 @@ export default function Discover() {
   // Filters
   const [episodeFilters, setEpisodeFilters] = useState({ show: "all", category: "all", sort: "newest", access: "all" });
   const [showFilters, setShowFilters] = useState({ category: "all" });
-  const [bookFilters, setBookFilters] = useState({ category: "all", sort: "newest" });
 
   const { favoritePodcastIds, user, refreshFavorites, isPremium, isAuthenticated } = useUser();
+  const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
   const { toast } = useToast();
@@ -264,9 +263,6 @@ export default function Discover() {
   /* ─── data loading ─── */
 
   useEffect(() => {
-    Playlist.list().then(resp => {
-      setPlaylists(Array.isArray(resp) ? resp : (resp?.results || []));
-    }).catch(() => setPlaylists([]));
 
     (async () => {
       try {
@@ -334,7 +330,6 @@ export default function Discover() {
   useEffect(() => {
     setEpisodeFilters({ show: "all", category: "all", sort: "newest", access: "all" });
     setShowFilters({ category: "all" });
-    setBookFilters({ category: "all", sort: "newest" });
     setDisplayCount(DISPLAY_PAGE_SIZE);
   }, [activeTab]);
 
@@ -628,62 +623,6 @@ export default function Discover() {
     );
   };
 
-  /* ─── audiobooks view ─── */
-
-  const renderBookList = (books) => {
-    let filtered = [...books];
-
-    // Category filter
-    if (bookFilters.category !== "all") {
-      filtered = filtered.filter(p => hasCategory(p, bookFilters.category));
-    }
-
-    // Sort
-    if (bookFilters.sort === "oldest") {
-      filtered.sort((a, b) => new Date(a.created_date || 0) - new Date(b.created_date || 0));
-    } else {
-      filtered.sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0));
-    }
-
-    const sortOptions = [
-      { value: "newest", label: "Newest First" },
-      { value: "oldest", label: "Oldest First" },
-    ];
-
-    const categoryOptions = [
-      { value: "all", label: "All Categories" },
-      ...categories.map(c => ({ value: c.slug || c.name, label: c.name })),
-    ];
-
-    return (
-      <div>
-        <SectionHeader title="Audiobook Collection" count={filtered.length} countLabel="titles">
-          <FilterDropdown value={bookFilters.category} options={categoryOptions} onChange={(v) => setBookFilters(prev => ({ ...prev, category: v }))} placeholder="Category" />
-          <FilterDropdown value={bookFilters.sort} options={sortOptions} onChange={(v) => setBookFilters(prev => ({ ...prev, sort: v }))} placeholder="Sort" />
-          {bookFilters.category !== "all" && (
-            <button
-              onClick={() => setBookFilters(prev => ({ ...prev, category: "all" }))}
-              className="inline-flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors"
-            >
-              <X className="w-3 h-3" />
-              Reset
-            </button>
-          )}
-        </SectionHeader>
-
-        {filtered.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500">No audiobooks found.</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filtered.map(book => (
-              <BookCard key={book.id} podcast={book} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   /* ─── categories view ─── */
 
   const renderCategoryDetailView = () => {
@@ -846,8 +785,6 @@ export default function Discover() {
         return renderEpisodeList(trendingEpisodes, "Trending Now", "Episodes with the most listens right now", "No trending episodes at the moment.", 100);
       case "Podcasts":
         return renderShowList(podcasts.filter(p => !isAudiobook(p)), "All Podcasts", "No podcasts found.");
-      case "Books":
-        return renderBookList(podcasts.filter(p => isAudiobook(p)));
       case "Members-Only": {
         const membersOnly = podcasts.filter(p => p.is_exclusive);
         return renderShowList(membersOnly, "Members-Only", "No members-only content found.");
@@ -903,8 +840,8 @@ export default function Discover() {
         playlists={playlists}
         onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
         onAdded={({ playlist: pl, action }) => {
-          if (action === 'created') setPlaylists(prev => [pl, ...prev]);
-          if (action === 'updated') setPlaylists(prev => prev.map(p => p.id === pl.id ? pl : p));
+          if (action === 'created') addPlaylist(pl);
+          if (action === 'updated') updatePlaylist(pl);
         }}
       />
 

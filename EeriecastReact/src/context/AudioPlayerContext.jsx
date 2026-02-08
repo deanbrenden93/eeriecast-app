@@ -6,7 +6,7 @@ import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { getEpisodeAudioUrl, isAudiobook } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
-import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_EXCLUSIVE_EPISODE_LIMIT } from '@/lib/freeTier';
+import { canAccessChapter, canAccessExclusiveEpisode, FREE_LISTEN_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
@@ -159,14 +159,18 @@ export const AudioPlayerProvider = ({ children }) => {
 
     // Free-tier gate: block chapters/episodes beyond the free limit
     if (item.podcast && !premiumRef.current) {
-      const limit = isAudiobook(item.podcast)
-        ? FREE_LISTEN_CHAPTER_LIMIT
-        : item.podcast.is_exclusive
-          ? FREE_EXCLUSIVE_EPISODE_LIMIT
-          : null;
-      if (limit !== null && !canAccessChapter(index, false, limit)) {
-        navigateRef.current(createPageUrl('Premium'));
-        return; // do NOT play
+      if (isAudiobook(item.podcast)) {
+        if (!canAccessChapter(index, false, FREE_LISTEN_CHAPTER_LIMIT)) {
+          navigateRef.current(createPageUrl('Premium'));
+          return; // do NOT play
+        }
+      } else if (item.podcast.is_exclusive) {
+        // Newest N episodes are free — check by date, not queue index
+        const allEps = queue.filter(q => q?.episode).map(q => q.episode);
+        if (!canAccessExclusiveEpisode(item.episode, allEps, false)) {
+          navigateRef.current(createPageUrl('Premium'));
+          return; // do NOT play
+        }
       }
     }
 
@@ -179,12 +183,31 @@ export const AudioPlayerProvider = ({ children }) => {
     setQueue(list);
     if (list.length) {
       const idx = Math.min(Math.max(0, startIndex), list.length - 1);
-      await playQueueIndex(idx);
+      const item = list[idx];
+      if (item?.episode) {
+        // Free-tier gate (mirrors playQueueIndex logic)
+        if (item.podcast && !premiumRef.current) {
+          if (isAudiobook(item.podcast)) {
+            if (!canAccessChapter(idx, false, FREE_LISTEN_CHAPTER_LIMIT)) {
+              navigateRef.current(createPageUrl('Premium'));
+              return;
+            }
+          } else if (item.podcast.is_exclusive) {
+            const allEps = list.filter(q => q?.episode).map(q => q.episode);
+            if (!canAccessExclusiveEpisode(item.episode, allEps, false)) {
+              navigateRef.current(createPageUrl('Premium'));
+              return;
+            }
+          }
+        }
+        setQueueIndex(idx);
+        await loadAndPlaySmart({ podcast: item.podcast, episode: item.episode, resume: item.resume });
+      }
       setShowPlayer(true);
     } else {
       setQueueIndex(-1);
     }
-  }, [playQueueIndex]);
+  }, [loadAndPlaySmart]);
 
   // Refs for latest state/functions used in onEnded
   const queueRef = useRef(queue);
@@ -237,14 +260,18 @@ export const AudioPlayerProvider = ({ children }) => {
       if (item && item.episode) {
         // Free-tier gate: stop auto-advance at the episode/chapter limit
         if (item.podcast && !premiumRef.current) {
-          const limit = isAudiobook(item.podcast)
-            ? FREE_LISTEN_CHAPTER_LIMIT
-            : item.podcast.is_exclusive
-              ? FREE_EXCLUSIVE_EPISODE_LIMIT
-              : null;
-          if (limit !== null && !canAccessChapter(nextIndex, false, limit)) {
-            navigateRef.current?.(createPageUrl('Premium'));
-            return; // do NOT play the next item
+          if (isAudiobook(item.podcast)) {
+            if (!canAccessChapter(nextIndex, false, FREE_LISTEN_CHAPTER_LIMIT)) {
+              navigateRef.current?.(createPageUrl('Premium'));
+              return; // do NOT play the next item
+            }
+          } else if (item.podcast.is_exclusive) {
+            // Newest N episodes are free — check by date, not queue index
+            const allEps = list.filter(q => q?.episode).map(q => q.episode);
+            if (!canAccessExclusiveEpisode(item.episode, allEps, false)) {
+              navigateRef.current?.(createPageUrl('Premium'));
+              return; // do NOT play the next item
+            }
           }
         }
         setQueueIndex(nextIndex);

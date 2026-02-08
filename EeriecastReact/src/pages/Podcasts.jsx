@@ -332,7 +332,7 @@ export default function Podcasts() {
             onPodcastPlay={handleAudiobookNavigate}
             isCompact={true}
             showAudiobookPill={true}
-            viewAllTo={`${createPageUrl('Discover')}?tab=Books`}
+            viewAllTo={createPageUrl('Audiobooks')}
             subtext={(p) => {
               const n = p?.episodes_count ?? p?.episode_count ?? 0;
               return n > 0 ? `${n} Chapter${n === 1 ? '' : 's'}` : '';
