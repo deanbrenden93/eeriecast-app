@@ -7,8 +7,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     allowedHosts: true,
-    port: 5178, // Fixed port as requested
-    strictPort: true, // Fail instead of picking a different port
+    host: true,
+    port: 5178,
+    strictPort: true,
   },
   resolve: {
     alias: {
