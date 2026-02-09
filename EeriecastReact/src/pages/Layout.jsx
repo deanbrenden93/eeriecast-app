@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings } from "lucide-react";
+import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown } from "lucide-react";
 import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
 import UserMenu from "../components/layout/UserMenu";
@@ -72,7 +72,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const notifRef = useRef(null);
-  const { isAuthenticated, unreadNotificationCount } = useUser();
+  const { isAuthenticated, isPremium, unreadNotificationCount } = useUser();
   const prevAuthRef = useRef(isAuthenticated);
 
   useEffect(() => {
@@ -183,7 +183,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <Link to={createPageUrl("Home")} className="flex items-center">
+              <Link to={createPageUrl("Podcasts")} className="flex items-center">
                 <img
                   src={logo}
                   alt="EERIECAST"
@@ -195,6 +195,15 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
             {/* Center: Navigation (desktop) */}
             <nav className="hidden md:flex items-center gap-7">
               <NavLinks />
+              {!isPremium && (
+                <Link
+                  to={createPageUrl('Premium')}
+                  className="flex items-center gap-1.5 ml-1 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/10 to-yellow-500/[0.06] border border-amber-400/15 text-amber-400/90 text-[12px] font-semibold tracking-wide hover:from-amber-500/20 hover:to-yellow-500/10 hover:border-amber-400/25 hover:text-amber-300 transition-all duration-300"
+                >
+                  <Crown className="w-3 h-3" />
+                  Premium
+                </Link>
+              )}
             </nav>
 
             {/* Right: Actions */}
@@ -286,7 +295,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
               {/* Header */}
               <div className="flex items-center justify-between px-4 h-14 border-b border-white/[0.04]">
                 <Link
-                  to={createPageUrl('Home')}
+                  to={createPageUrl('Podcasts')}
                   className="flex items-center"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
@@ -326,6 +335,27 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     </motion.div>
                   );
                 })}
+
+                {/* Premium CTA for free users */}
+                {!isPremium && (
+                  <>
+                    <div className="my-2 h-px bg-white/[0.04]" />
+                    <motion.div
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.04 + navLinks.length * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                    >
+                      <Link
+                        to={createPageUrl('Premium')}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-semibold text-amber-400/90 hover:text-amber-300 hover:bg-amber-500/[0.06] transition-all duration-300"
+                      >
+                        <Crown className="w-4 h-4" />
+                        Go Premium
+                      </Link>
+                    </motion.div>
+                  </>
+                )}
               </nav>
             </motion.div>
           </motion.div>

@@ -24,6 +24,20 @@ class FavoriteListCreateView(generics.ListCreateAPIView):
         if not request.user or not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=403)
 
+        # Free users may have up to FREE_FAVORITE_LIMIT favorites; premium is unlimited.
+        FREE_FAVORITE_LIMIT = 5
+        is_premium = getattr(request.user, 'is_premium_member', lambda: getattr(request.user, 'is_premium', False))()
+        if not is_premium:
+            ct_episode = ContentType.objects.get_for_model(Episode)
+            current_count = Favorite.objects.filter(user=request.user, content_type=ct_episode).count()
+            if current_count >= FREE_FAVORITE_LIMIT:
+                return Response({
+                    'detail': f'Free accounts are limited to {FREE_FAVORITE_LIMIT} favorites. Upgrade to premium for unlimited favorites.',
+                    'limit_reached': True,
+                    'current_count': current_count,
+                    'limit': FREE_FAVORITE_LIMIT,
+                }, status=403)
+
         input_serializer = FavoriteCreateSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         content_type = input_serializer.validated_data['content_type']
@@ -321,6 +335,30 @@ class PlaylistViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Playlist.objects.filter(user=self.request.user).prefetch_related('episodes')
+
+    def _require_premium(self, request):
+        """Return a 403 Response if user is not premium, else None."""
+        if not getattr(request.user, 'is_premium_member', lambda: getattr(request.user, 'is_premium', False))():
+            return Response({'detail': 'Playlists are a premium feature. Please subscribe to unlock.'}, status=status.HTTP_403_FORBIDDEN)
+        return None
+
+    def create(self, request, *args, **kwargs):
+        denied = self._require_premium(request)
+        if denied:
+            return denied
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        denied = self._require_premium(request)
+        if denied:
+            return denied
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        denied = self._require_premium(request)
+        if denied:
+            return denied
+        return super().partial_update(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         # user is already a HiddenField with CurrentUserDefault, but enforce here as well

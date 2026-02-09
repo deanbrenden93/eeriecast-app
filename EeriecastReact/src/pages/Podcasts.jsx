@@ -54,7 +54,7 @@ export default function Podcasts() {
     setPlaybackQueue,
   } = useAudioPlayerContext();
 
-  const { isPremium, episodeProgressMap } = useUser();
+  const { isPremium, isAuthenticated, episodeProgressMap } = useUser();
 
   // Build "Keep Listening" items from the real-time episodeProgressMap.
   // This picks up both server-side history and current-session plays.
@@ -258,7 +258,13 @@ export default function Podcasts() {
               onEpisodePlay={async (item) => {
                 const played = await loadAndPlay({ podcast: item.podcast, episode: item.episode, resume: item.resumeData || { progress: 0 } });
                 if (played === false) {
-                  toast({ title: "Unable to play", description: "Please sign in to play episodes.", variant: "destructive" });
+                  toast({
+                    title: "Unable to play",
+                    description: isAuthenticated
+                      ? "This episode doesn't have audio available yet."
+                      : "Please sign in to play episodes.",
+                    variant: "destructive",
+                  });
                 }
               }}
               currentEpisodeId={currentEpisode?.id}

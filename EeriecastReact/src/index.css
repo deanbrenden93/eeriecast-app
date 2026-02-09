@@ -141,6 +141,95 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   SPLASH SCREEN — "Rising from the Deep"
+   ═══════════════════════════════════════════════════════ */
+
+/* Caustic light layers — overlapping radial gradients that shift */
+.splash-caustic {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.splash-caustic-a {
+  background:
+    radial-gradient(ellipse at 25% 35%, rgba(100,150,190,0.045) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 65%, rgba(80,130,170,0.035) 0%, transparent 45%);
+  animation: splash-caustic-a 7s ease-in-out infinite;
+}
+.splash-caustic-b {
+  background:
+    radial-gradient(ellipse at 60% 25%, rgba(90,160,200,0.035) 0%, transparent 50%),
+    radial-gradient(ellipse at 35% 75%, rgba(60,110,150,0.04)  0%, transparent 50%);
+  animation: splash-caustic-b 5.5s 0.5s ease-in-out infinite;
+}
+@keyframes splash-caustic-a {
+  0%, 100% { opacity: 0.4; transform: scale(1) rotate(0deg); }
+  50%      { opacity: 1;   transform: scale(1.15) rotate(3deg); }
+}
+@keyframes splash-caustic-b {
+  0%, 100% { opacity: 0.5; transform: scale(1.05) rotate(-2deg); }
+  50%      { opacity: 1;   transform: scale(0.95) rotate(2deg); }
+}
+
+/* Underwater light rays filtering down from the surface */
+.splash-ray {
+  position: absolute;
+  top: -10%;
+  width: 120%;
+  height: 55%;
+  pointer-events: none;
+}
+.splash-ray-1 {
+  left: -10%;
+  background: linear-gradient(190deg, rgba(170,195,215,0.04) 0%, transparent 100%);
+  clip-path: polygon(42% 0%, 58% 0%, 72% 100%, 28% 100%);
+  animation: splash-ray 5s ease-in-out infinite;
+}
+.splash-ray-2 {
+  left: 5%;
+  background: linear-gradient(195deg, rgba(150,180,200,0.03) 0%, transparent 100%);
+  clip-path: polygon(48% 0%, 56% 0%, 68% 100%, 32% 100%);
+  animation: splash-ray 6s 1.5s ease-in-out infinite;
+}
+@keyframes splash-ray {
+  0%, 100% { opacity: 0.3; transform: rotate(-8deg) scaleY(1); }
+  50%      { opacity: 1;   transform: rotate(-5deg) scaleY(1.06); }
+}
+
+/* Deep red glow pulsing from the abyss */
+.splash-depth-glow {
+  position: absolute;
+  bottom: -5%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(550px, 100vw);
+  height: 320px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(170,25,25,0.14) 0%,
+    rgba(90,10,10,0.05) 45%,
+    transparent 72%
+  );
+  animation: splash-depth-glow 3.5s ease-in-out infinite;
+}
+@keyframes splash-depth-glow {
+  0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+  50%      { opacity: 1;   transform: translateX(-50%) scale(1.08); }
+}
+
+/* Bubble particles — each uses CSS custom-properties set inline */
+.splash-bubble {
+  animation: splash-bubble-rise var(--b-dur, 5s) var(--b-delay, 0s) linear infinite;
+}
+@keyframes splash-bubble-rise {
+  0%   { transform: translateY(0) translateX(0);                    opacity: 0; }
+  8%   {                                                            opacity: var(--b-o, 0.12); }
+  80%  {                                                            opacity: calc(var(--b-o, 0.12) * 0.35); }
+  100% { transform: translateY(-105vh) translateX(var(--b-dx, 0px)); opacity: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════
    FOG & ATMOSPHERIC ANIMATIONS
    ═══════════════════════════════════════════════════════ */
 

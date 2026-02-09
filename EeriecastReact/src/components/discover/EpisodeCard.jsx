@@ -7,6 +7,8 @@ import { UserLibrary } from '@/api/entities';
 import { useUser } from '@/context/UserContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { formatDate } from '@/lib/utils';
+import { FREE_FAVORITE_LIMIT } from '@/lib/freeTier';
+import { toast } from '@/components/ui/use-toast';
 
 function formatDurationHM(totalSeconds) {
   const s = Number(totalSeconds);
@@ -26,7 +28,7 @@ function sumEpisodesDurationSeconds(podcast) {
 export default function EpisodeCard({ podcast, onPlay, onAddToPlaylist, initialFavorited = false, onFavoriteChange, canFavorite = true, onFavoriteClick }) {
   const [isFavorited, setIsFavorited] = useState(!!initialFavorited);
   const [favLoading, setFavLoading] = useState(false);
-  const { user } = useUser();
+  const { user, isPremium, favoriteEpisodeIds } = useUser();
   const { openAuth } = useAuthModal();
 
   useEffect(() => {
@@ -42,6 +44,15 @@ export default function EpisodeCard({ podcast, onPlay, onAddToPlaylist, initialF
     const userId = user?.id || user?.user?.id || user?.pk;
     if (!isFavorited && !userId) {
       openAuth('login');
+      return;
+    }
+    // Free users can have up to FREE_FAVORITE_LIMIT favorites; premium is unlimited
+    if (!isFavorited && !isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
+      toast({
+        title: "Favorite limit reached",
+        description: `Free accounts can save up to ${FREE_FAVORITE_LIMIT} favorites. Upgrade to premium for unlimited.`,
+        variant: "destructive",
+      });
       return;
     }
 

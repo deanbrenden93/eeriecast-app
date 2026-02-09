@@ -11,6 +11,7 @@ import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
+import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 
 /** Format duration — handles seconds (number), "HH:MM:SS" string, or "MM:SS" string */
 function formatDuration(raw) {
@@ -86,7 +87,7 @@ function ShowCard({ podcast, onClick, isBook }) {
 }
 
 /* ── Episode card ────────────────────────────────────────────────── */
-function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthenticated, openAuth }) {
+function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthenticated, isPremium, favoriteCount, favoriteLimit, openAuth }) {
   const formattedDur = formatDuration(episode.duration);
 
   return (
@@ -146,7 +147,7 @@ function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthentic
               <button
                 className="p-1.5 text-zinc-600 hover:text-white transition-colors rounded-lg hover:bg-white/[0.04]"
                 title="Favorite"
-                onClick={() => { if (!isAuthenticated) openAuth('login'); }}
+                onClick={() => { if (!isAuthenticated) { openAuth('login'); return; } if (!isPremium && favoriteCount >= favoriteLimit) { window.location.assign('/Premium'); return; } }}
               >
                 <Heart className="w-4 h-4" />
               </button>
@@ -212,7 +213,7 @@ export default function Search() {
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const { isAuthenticated } = useUser();
+  const { isAuthenticated, isPremium, favoriteEpisodeIds } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -391,6 +392,8 @@ export default function Search() {
 
   const openAddToPlaylist = (episode) => {
     if (!isAuthenticated) { openAuth('login'); return; }
+    // Playlists are a premium feature
+    if (!isPremium) { window.location.assign('/Premium'); return; }
     setEpisodeToAdd(episode);
     setShowAddModal(true);
   };
@@ -466,6 +469,9 @@ export default function Search() {
               onAddToPlaylist={openAddToPlaylist}
               onShowLink={() => navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(episode.podcast_id)}`)}
               isAuthenticated={isAuthenticated}
+              isPremium={isPremium}
+              favoriteCount={favoriteEpisodeIds.size}
+              favoriteLimit={FREE_FAVORITE_LIMIT}
               openAuth={openAuth}
             />
           ))}

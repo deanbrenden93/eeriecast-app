@@ -82,6 +82,8 @@ export default function Episodes() {
 
   const handleOpenAddToPlaylist = (ep) => {
     if (!isAuthenticated) { openAuth('login'); return; }
+    // Playlists are a premium feature
+    if (!isPremium) { goToPremium(); return; }
     setEpisodeToAdd(ep);
     setShowAddModal(true);
   };

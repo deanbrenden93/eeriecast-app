@@ -9,13 +9,16 @@
  */
 
 /** Maximum number of chapters a free user may listen to (audiobook). */
-export const FREE_LISTEN_CHAPTER_LIMIT = 7;
+export const FREE_LISTEN_CHAPTER_LIMIT = 3;
 
 /** Maximum number of chapters a free user may read (e-reader). */
-export const FREE_READ_CHAPTER_LIMIT = 7;
+export const FREE_READ_CHAPTER_LIMIT = 3;
+
+/** Maximum number of episode favorites a free user may have. */
+export const FREE_FAVORITE_LIMIT = 5;
 
 /** Maximum number of episodes a free user may access on a members-only show. */
-export const FREE_EXCLUSIVE_EPISODE_LIMIT = 3;
+export const FREE_EXCLUSIVE_EPISODE_LIMIT = 1;
 
 /**
  * Check whether a user can access a given chapter/episode by index.

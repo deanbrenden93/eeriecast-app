@@ -16,6 +16,8 @@ import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 import EpisodesTable from "../components/podcasts/EpisodesTable";
 
 export default function Library() {
@@ -44,7 +46,7 @@ export default function Library() {
   const [historyEpisodes, setHistoryEpisodes] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
-  const { isAuthenticated, favoritePodcasts, favoritesLoading, favoriteEpisodeIds } = useUser();
+  const { isAuthenticated, isPremium, favoritePodcasts, favoritesLoading, favoriteEpisodeIds } = useUser();
   const { playlists, isLoadingPlaylists, addPlaylist, updatePlaylist, removePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const navigate = useNavigate();
@@ -172,6 +174,8 @@ export default function Library() {
 
   const handleOpenAddToPlaylist = async (item) => {
     if (!isAuthenticated) { openAuth('login'); return; }
+    // Playlists are a premium feature
+    if (!isPremium) { navigate(createPageUrl('Premium')); return; }
     let episode = item;
     if (item && Array.isArray(item.episodes)) {
       if (item.episodes.length > 0) {
@@ -249,15 +253,33 @@ export default function Library() {
     const playAllCount = (favoriteEpisodeIds && favoriteEpisodeIds.size) || 0;
 
     return (
-      <FavoritesTab
-        podcasts={podcasts}
-        playlists={playlists}
-        onAddToPlaylist={handleOpenAddToPlaylist}
-        favoritesPodcasts={favoritePodcasts}
-        isLoading={favoritesLoading}
-        onPlayAllFavorites={handlePlayAllFavorites}
-        playAllCount={playAllCount}
-      />
+      <>
+        {!isPremium && (
+          <div className="mb-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between">
+            <span className="text-sm text-zinc-400">
+              {playAllCount} / {FREE_FAVORITE_LIMIT} favorites used
+            </span>
+            {playAllCount >= FREE_FAVORITE_LIMIT && (
+              <Button
+                size="sm"
+                onClick={() => navigate(createPageUrl('Premium'))}
+                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white text-xs px-4 py-1 rounded-full"
+              >
+                Upgrade for Unlimited
+              </Button>
+            )}
+          </div>
+        )}
+        <FavoritesTab
+          podcasts={podcasts}
+          playlists={playlists}
+          onAddToPlaylist={handleOpenAddToPlaylist}
+          favoritesPodcasts={favoritePodcasts}
+          isLoading={favoritesLoading}
+          onPlayAllFavorites={handlePlayAllFavorites}
+          playAllCount={playAllCount}
+        />
+      </>
     );
   };
 
@@ -328,6 +350,17 @@ export default function Library() {
           {[1, 2, 3].map(i => (
             <div key={i} className="h-48 bg-eeriecast-surface-light/50 rounded-xl animate-pulse" />
           ))}
+        </div>
+      );
+    }
+
+    if (!isPremium) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
+          <p className="text-zinc-500 mb-4">Playlists are a premium feature.</p>
+          <Button onClick={() => navigate(createPageUrl('Premium'))} className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white px-6 py-2 rounded-full flex items-center gap-2 shadow-[0_4px_16px_rgba(220,38,38,0.2)]">
+            Become a Member
+          </Button>
         </div>
       );
     }

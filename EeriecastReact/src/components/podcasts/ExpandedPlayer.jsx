@@ -10,6 +10,8 @@ import { Podcast, Episode, UserLibrary, Playlist } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/utils";
+import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
+import { toast } from "@/components/ui/use-toast";
 
 // Custom SVG icons matching the MobilePlayer exactly
 const PlayIcon = () => (
@@ -486,6 +488,15 @@ export default function ExpandedPlayer({
       openAuth('login');
       return;
     }
+    // Free users can have up to FREE_FAVORITE_LIMIT favorites; premium is unlimited
+    if (!isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
+      toast({
+        title: "Favorite limit reached",
+        description: `Free accounts can save up to ${FREE_FAVORITE_LIMIT} favorites. Upgrade to premium for unlimited.`,
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       setFavLoading(true);
       // Optimistic like state
@@ -511,6 +522,8 @@ export default function ExpandedPlayer({
   // Resolve an episode just like EpisodeCard/Show flows before opening modal
   const handleOpenAddToPlaylist = async () => {
     if (!isAuthenticated) { openAuth('login'); return; }
+    // Playlists are a premium feature
+    if (!isPremium) { window.location.assign('/Premium'); return; }
     if (openingAdd) return;
     setOpeningAdd(true);
     setShowAddModal(true);

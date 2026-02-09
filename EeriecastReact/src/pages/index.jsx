@@ -87,12 +87,12 @@ function scrollToTop() {
 
 // Animated route wrapper
 function AnimatedPage({ children }) {
-    const location = useLocation();
-
-    // Pre-paint scroll (fires before the browser draws the new page)
+    // Scroll to top only when this page first mounts (i.e. the entering page).
+    // Using [] deps so it does NOT fire on the exiting page when location changes,
+    // which would cause a visible scroll jump during the exit animation.
     useLayoutEffect(() => {
         scrollToTop();
-    }, [location.pathname, location.search]);
+    }, []);
 
     return (
         <motion.div
@@ -112,19 +112,18 @@ function PagesContent() {
     const currentPage = _getCurrentPage(location.pathname);
     const { showPlayer } = useAudioPlayerContext();
 
-    // Safety-net scroll: fires after the page transition animation settles.
-    // Covers edge cases where the useLayoutEffect scroll gets overridden
-    // by browser behaviour, lazy-loaded content, or AnimatePresence timing.
+    // Safety-net scroll: fires well after the exit animation (0.2s) has
+    // completed, covering edge cases where lazy-loaded content or browser
+    // quirks shift the scroll position after the initial reset.
     useEffect(() => {
-        scrollToTop();
-        const t1 = setTimeout(scrollToTop, 50);
-        const t2 = setTimeout(scrollToTop, 300);
+        const t1 = setTimeout(scrollToTop, 250);
+        const t2 = setTimeout(scrollToTop, 500);
         return () => { clearTimeout(t1); clearTimeout(t2); };
     }, [location.pathname, location.search]);
 
     return (
         <Layout currentPageName={currentPage} hasPlayer={showPlayer}>
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="wait" onExitComplete={scrollToTop}>
                 <Routes location={location} key={location.pathname}>
                     <Route path="/" element={<AnimatedPage><Home /></AnimatedPage>} />
                     

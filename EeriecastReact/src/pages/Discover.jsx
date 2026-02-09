@@ -13,6 +13,7 @@ import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useToast } from "@/components/ui/use-toast";
+import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { X, Loader2 } from "lucide-react";
 
@@ -242,7 +243,7 @@ export default function Discover() {
   const [episodeFilters, setEpisodeFilters] = useState({ show: "all", category: "all", sort: "newest", access: "all" });
   const [showFilters, setShowFilters] = useState({ category: "all" });
 
-  const { favoritePodcastIds, user, refreshFavorites, isPremium, isAuthenticated } = useUser();
+  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -477,7 +478,9 @@ export default function Discover() {
     if (played === false) {
       toast({
         title: "Unable to play",
-        description: "Please sign in to play episodes.",
+        description: isAuthenticated
+          ? "This episode doesn't have audio available yet."
+          : "Please sign in to play episodes.",
         variant: "destructive",
       });
     }
@@ -525,6 +528,8 @@ export default function Discover() {
 
   const handleOpenAddToPlaylist = async (item) => {
     if (!isAuthenticated) { openAuth('login'); return; }
+    // Playlists are a premium feature
+    if (!isPremium) { navigate(createPageUrl('Premium')); return; }
     if (item?.id) {
       setEpisodeToAdd(item);
       setShowAddModal(true);
@@ -535,6 +540,15 @@ export default function Discover() {
     if (!podcast?.id) return;
     const userId = user?.id || user?.user?.id || user?.pk;
     if (!userId || !isAuthenticated) { openAuth('login'); return; }
+    // Free users can have up to FREE_FAVORITE_LIMIT favorites; premium is unlimited
+    if (!isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
+      toast({
+        title: "Favorite limit reached",
+        description: `Free accounts can save up to ${FREE_FAVORITE_LIMIT} favorites. Upgrade to premium for unlimited.`,
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       await UserLibrary.addFavorite('podcast', podcast.id, { userId });
       await refreshFavorites();

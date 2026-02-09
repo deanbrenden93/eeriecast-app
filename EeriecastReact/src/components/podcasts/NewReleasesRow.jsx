@@ -37,7 +37,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
   const navigate = useNavigate();
   const { podcasts, getById } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
-  const { episodeProgressMap } = useUser() || {};
+  const { episodeProgressMap, isAuthenticated } = useUser() || {};
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -108,10 +108,15 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
   const handleEpisodePlay = async (ep) => {
     const podcastData = ep.podcast_data || getById(ep.podcast_id);
     if (podcastData) {
-      // loadAndPlay will resolve audio URL via history endpoint if needed
       const played = await loadAndPlay({ podcast: podcastData, episode: ep, resume: { progress: 0 } });
       if (played === false) {
-        toast({ title: "Unable to play", description: "Please sign in to play episodes.", variant: "destructive" });
+        toast({
+          title: "Unable to play",
+          description: isAuthenticated
+            ? "This episode doesn't have audio available yet."
+            : "Please sign in to play episodes.",
+          variant: "destructive",
+        });
       }
     } else if (ep.podcast_id) {
       navigate(`${createPageUrl("Episodes")}?id=${encodeURIComponent(ep.podcast_id)}`);

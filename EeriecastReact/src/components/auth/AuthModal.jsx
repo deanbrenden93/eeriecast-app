@@ -16,13 +16,10 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const [localError, setLocalError] = useState(null);
 
   const FEATURES = [
-    'Favorites & Playlists',
     'Listening History Sync',
-    'Follow Creators',
-    'Download Episodes',
-    'Exclusive Audiobooks & Ebooks',
-    'Members-only Shows',
-    'Listen to All Eeriecast Podcasts Ad-Free'
+    'Follow Your Favorite Shows',
+    'Sleep Timer & Playback Speed',
+    'Sample Exclusive Content',
   ];
 
   useEffect(() => {

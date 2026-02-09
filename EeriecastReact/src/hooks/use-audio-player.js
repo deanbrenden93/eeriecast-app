@@ -1,7 +1,7 @@
 // filepath: c:\Users\jdura\Documents\BitBenders\Eeriecast\EeriecastReact\src\hooks\use-audio-player.js
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getEpisodeAudioUrl } from '@/lib/utils';
-import { UserLibrary } from '@/api/entities';
+import { UserLibrary, Episode as EpisodeApi } from '@/api/entities';
 
 function getDeviceId() {
   try {
@@ -148,10 +148,21 @@ export function useAudioPlayer({ onEnd } = {}) {
     const audio = audioRef.current;
     if (!audio || !ep) return false;
 
-    // Resolve audio URL first; if unavailable, try the history endpoint which
-    // uses a serializer that correctly returns audio_url.
+    // Resolve audio URL first; if unavailable, try the public episode endpoint
+    // (no auth required), then fall back to the authenticated history endpoint.
     let url = getEpisodeAudioUrl(ep);
     if (!url && ep?.id) {
+      // 1. Try the public episode detail endpoint (works for all users)
+      try {
+        const fullEp = await EpisodeApi.get(ep.id);
+        if (fullEp) {
+          url = getEpisodeAudioUrl(fullEp) || fullEp.audio_url;
+          if (url) ep = { ...ep, audio_url: url };
+        }
+      } catch { /* endpoint unavailable */ }
+    }
+    if (!url && ep?.id) {
+      // 2. Fall back to the authenticated history endpoint
       try {
         const histResp = await UserLibrary.updateProgress(ep.id, {
           progress: Math.floor(resume?.progress || 0),

@@ -9,6 +9,8 @@ import { useUser } from '@/context/UserContext.jsx';
 import { UserLibrary } from '@/api/entities';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { formatDate } from '@/lib/utils';
+import { FREE_FAVORITE_LIMIT } from '@/lib/freeTier';
+import { toast } from '@/components/ui/use-toast';
 
 
 function formatDuration(secondsOrString) {
@@ -55,6 +57,16 @@ export default function EpisodesTable({
     }
 
     const isFavorited = favoriteEpisodeIds.has(ep.id);
+
+    // Free users can have up to FREE_FAVORITE_LIMIT favorites; premium is unlimited
+    if (!isFavorited && !isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
+      toast({
+        title: "Favorite limit reached",
+        description: `Free accounts can save up to ${FREE_FAVORITE_LIMIT} favorites. Upgrade to premium for unlimited.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       if (isFavorited) {
