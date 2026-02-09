@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Playlist, Episode, Search as SearchApi } from '@/api/entities';
+import { Episode, Search as SearchApi } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Play } from 'lucide-react';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
@@ -8,6 +8,7 @@ import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { getEpisodeAudioUrl } from '@/lib/utils';
 import { useUser } from '@/context/UserContext.jsx';
+import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 
 export default function CreatorEpisodes() {
@@ -19,7 +20,6 @@ export default function CreatorEpisodes() {
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('Newest');
-  const [playlists, setPlaylists] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
 
@@ -65,18 +65,7 @@ export default function CreatorEpisodes() {
       }
     };
 
-    const loadPlaylists = async () => {
-      try {
-        const resp = await Playlist.list();
-        const list = Array.isArray(resp) ? resp : (resp?.results || []);
-        setPlaylists(list);
-      } catch {
-        setPlaylists([]);
-      }
-    };
-
     loadEpisodes();
-    loadPlaylists();
   }, [authorQuery]);
 
   // Lookup creator profile to get correct avatar/cover image and canonical display name
@@ -104,6 +93,7 @@ export default function CreatorEpisodes() {
   // hook into global audio player
   const { loadAndPlay } = useAudioPlayerContext();
   const { isAuthenticated } = useUser();
+  const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
 
   // Prefer URL/display name for hero; then profile; then episode data
@@ -138,19 +128,9 @@ export default function CreatorEpisodes() {
     setShowAddModal(true);
   };
 
-  const handleAddedToPlaylist = (e) => {
-    try {
-      const pl = e && e.playlist;
-      const action = e && e.action;
-      if (!pl || !action) return;
-      if (action === 'created') {
-        setPlaylists(prev => [pl, ...prev]);
-      } else if (action === 'updated') {
-        setPlaylists(prev => prev.map(p => (p.id === pl.id ? pl : p)));
-      }
-    } catch (err) {
-      if (typeof console !== 'undefined') console.debug('onAdded handler noop', err);
-    }
+  const handleAddedToPlaylist = ({ playlist: pl, action }) => {
+    if (action === 'created') addPlaylist(pl);
+    if (action === 'updated') updatePlaylist(pl);
   };
 
   const sortedEpisodes = (Array.isArray(episodes) ? [...episodes] : []).sort((a, b) => {

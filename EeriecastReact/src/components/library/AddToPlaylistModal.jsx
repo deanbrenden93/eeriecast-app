@@ -11,6 +11,7 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
   const [newName, setNewName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [duplicateInfo, setDuplicateInfo] = useState(null); // playlist name when episode already exists
 
   useEffect(() => {
     if (isOpen) {
@@ -19,6 +20,7 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
       setNewName('');
       setError(null);
       setSubmitting(false);
+      setDuplicateInfo(null);
     }
   }, [isOpen, episode?.id]);
 
@@ -58,8 +60,8 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
         const currentRaw = Array.isArray(pl.episodes) ? pl.episodes : [];
         const currentIds = currentRaw.map((x) => (x && typeof x === 'object' ? x.id : x)).filter(Boolean);
         if (currentIds.includes(episode.id)) {
-          onAdded && onAdded({ playlist: pl, action: 'no-op' });
-          onClose && onClose();
+          setDuplicateInfo(pl.name || 'this playlist');
+          setSubmitting(false);
           return;
         }
         const nextIds = Array.from(new Set([...currentIds, episode.id]));
@@ -116,7 +118,7 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
                         name="playlist"
                         value={pl.id}
                         checked={selectedId === pl.id}
-                        onChange={() => setSelectedId(pl.id)}
+                        onChange={() => { setSelectedId(pl.id); setDuplicateInfo(null); }}
                         className="accent-red-600"
                       />
                       <div className="flex-1">
@@ -142,6 +144,12 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
                 </div>
                 <p className="text-xs text-gray-400">We’ll create the playlist and add this episode to it.</p>
               </div>
+            )}
+
+            {duplicateInfo && (
+              <p className="text-amber-300 text-sm bg-amber-950/30 border border-amber-700/40 rounded px-3 py-2">
+                This episode is already in <span className="font-semibold text-amber-200">&quot;{duplicateInfo}&quot;</span>. Choose a different playlist or close.
+              </p>
             )}
 
             {error && (
