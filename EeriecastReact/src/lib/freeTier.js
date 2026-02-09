@@ -17,9 +17,6 @@ export const FREE_READ_CHAPTER_LIMIT = 3;
 /** Maximum number of episode favorites a free user may have. */
 export const FREE_FAVORITE_LIMIT = 5;
 
-/** Maximum number of episodes a free user may access on a members-only show. */
-export const FREE_EXCLUSIVE_EPISODE_LIMIT = 1;
-
 /**
  * Check whether a user can access a given chapter/episode by index.
  * Used for audiobooks/ebooks where the first N chapters are free.
@@ -34,21 +31,20 @@ export function canAccessChapter(chapterIndex, isPremium, limit = FREE_LISTEN_CH
 }
 
 /**
- * For members-only (exclusive) shows, the **oldest** N episodes are free.
- * This prevents the loophole of users catching every new release for free.
- * @param {Object} episode — the episode to check (must have id and a date field)
- * @param {Array} allEpisodes — all episodes of the show
+ * For members-only (exclusive) shows, the admin assigns a single free sample
+ * episode via the `free_sample_episode` field on the Podcast model.
+ * Only that episode is accessible to non-premium users.
+ *
+ * @param {Object} episode — the episode to check (must have `id`)
+ * @param {Object} podcast — the podcast/show object (must have `free_sample_episode`)
  * @param {boolean} isPremium — whether user has an active subscription
- * @param {number} [limit] — how many oldest episodes are free (default: FREE_EXCLUSIVE_EPISODE_LIMIT)
  * @returns {boolean}
  */
-export function canAccessExclusiveEpisode(episode, allEpisodes, isPremium, limit = FREE_EXCLUSIVE_EPISODE_LIMIT) {
+export function canAccessExclusiveEpisode(episode, podcast, isPremium) {
   if (isPremium) return true;
-  if (!episode || !allEpisodes || allEpisodes.length <= limit) return true;
-  const getDate = (ep) => new Date(ep.created_date || ep.published_at || ep.release_date || 0).getTime();
-  // Sort oldest-first
-  const sorted = [...allEpisodes].sort((a, b) => getDate(a) - getDate(b));
-  // The first `limit` episodes (oldest) are free
-  const freeIds = new Set(sorted.slice(0, limit).map(ep => ep.id));
-  return freeIds.has(episode.id);
+  if (!episode || !podcast) return false;
+  const freeId = podcast.free_sample_episode?.id ?? podcast.free_sample_episode;
+  if (freeId == null) return false;
+  // Compare with loose equality to handle string vs number IDs
+  return episode.id == freeId;
 }

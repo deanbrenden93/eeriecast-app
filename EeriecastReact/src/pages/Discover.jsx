@@ -470,13 +470,9 @@ export default function Discover() {
       goToPremium();
       return;
     }
-    // Exclusive show gate — allow the free sample episode(s) through
+    // Exclusive show gate — only the admin-assigned free sample is playable
     if (p?.is_exclusive && !isPremium) {
-      const podId = p.id;
-      const showEpisodes = fetchedEpisodes.filter(
-        ep => (ep.podcast || ep.podcast_id) === podId
-      );
-      if (!canAccessExclusiveEpisode(episode, showEpisodes, isPremium)) {
+      if (!canAccessExclusiveEpisode(episode, p, isPremium)) {
         goToPremium();
         return;
       }

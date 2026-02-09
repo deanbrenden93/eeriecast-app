@@ -44,4 +44,10 @@ class EpisodeSerializer(serializers.ModelSerializer):
         # Otherwise prefer ad-supported if available
         if getattr(obj, 'ad_supported_audio_url', None):
             return obj.ad_supported_audio_url
-        return getattr(obj, 'audio_url', None)
+        # Fall back to raw audio_url
+        raw = getattr(obj, 'audio_url', None)
+        if raw:
+            return raw
+        # Last resort: use ad-free URL even for non-premium users so free
+        # sample episodes from ad-free-only feeds are still playable.
+        return getattr(obj, 'ad_free_audio_url', None) or ''

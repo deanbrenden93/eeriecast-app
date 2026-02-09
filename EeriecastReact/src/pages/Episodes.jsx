@@ -10,9 +10,10 @@ import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import { getPodcastCategoriesLower, isAudiobook, getEpisodeAudioUrl } from '@/lib/utils';
-import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT, FREE_EXCLUSIVE_EPISODE_LIMIT } from '@/lib/freeTier';
+import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
+import { getShowColors } from '@/lib/showColors';
 import { useToast } from '@/components/ui/use-toast';
 import { Episode } from '@/api/entities';
 import { AnimatePresence } from 'framer-motion';
@@ -112,38 +113,49 @@ export default function Episodes() {
 
   const isBook = show ? isAudiobook(show) : false;
   const isExclusive = !!show?.is_exclusive;
+  const showColors = useMemo(() => getShowColors(show, isBook), [show, isBook]);
 
-  // Episode order (oldest-first) for audiobooks and exclusive shows — needed for free-tier gating
+  // Episode order (oldest-first) for audiobooks — needed for free-tier chapter gating
   const episodeOrder = useMemo(() => {
-    if ((!isBook && !isExclusive) || !episodes.length) return [];
+    if (!isBook || !episodes.length) return [];
     return [...episodes].sort((a, b) => {
       const da = new Date(a.created_date || a.published_at || a.release_date || 0).getTime();
       const db = new Date(b.created_date || b.published_at || b.release_date || 0).getTime();
       return da - db;
     });
-  }, [isBook, isExclusive, episodes]);
+  }, [isBook, episodes]);
 
   const getChapterIndex = (ep) => {
-    if ((!isBook && !isExclusive) || !ep) return -1;
+    if (!isBook || !ep) return -1;
     return episodeOrder.findIndex(e => e.id === ep.id);
   };
 
-  // Determine the free episode limit for this show
-  const freeEpisodeLimit = isBook ? FREE_LISTEN_CHAPTER_LIMIT : (isExclusive ? FREE_EXCLUSIVE_EPISODE_LIMIT : Infinity);
+  // The admin-assigned free sample episode for members-only shows
+  const freeSampleEpisodeId = isExclusive
+    ? (show?.free_sample_episode?.id ?? show?.free_sample_episode ?? null)
+    : null;
 
   // Set of episode IDs that are locked behind the free-tier limit
-  // Audiobooks: first N chapters (oldest) are free
-  // Exclusive shows: oldest N episodes are free
+  // Audiobooks: first N chapters (oldest) are free — takes priority over exclusive
+  // Exclusive shows (non-audiobook): only the admin-assigned free_sample_episode is free
   const lockedEpisodeIds = useMemo(() => {
-    if (isPremium || !episodeOrder.length) return new Set();
+    if (isPremium) return new Set();
     const locked = new Set();
-    // Both audiobooks and exclusive shows: the first `freeEpisodeLimit` items
-    // (oldest, since episodeOrder is sorted oldest-first) are free.
-    for (let i = freeEpisodeLimit; i < episodeOrder.length; i++) {
-      if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
+    if (isBook && episodeOrder.length) {
+      // Audiobooks: first N chapters (oldest) are free
+      for (let i = FREE_LISTEN_CHAPTER_LIMIT; i < episodeOrder.length; i++) {
+        if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
+      }
+    } else if (isExclusive && episodes.length) {
+      // Exclusive shows: lock all episodes except the admin-assigned free sample
+      for (const ep of episodes) {
+        if (ep?.id != null && ep.id != freeSampleEpisodeId) {
+          locked.add(ep.id);
+        }
+      }
     }
     return locked;
-  }, [isPremium, episodeOrder, freeEpisodeLimit]);
+  }, [isPremium, episodes, episodeOrder, isExclusive, isBook, freeSampleEpisodeId]);
 
   const doPlay = async (ep) => {
     if (!ep) return;
@@ -169,7 +181,15 @@ export default function Episodes() {
 
       // Build a queue from all episodes so autoplay-next can advance
       // to the following episode when this one ends.
-      const currentList = episodes;
+      // For audiobooks, sort oldest-first (chapter order) so queue indices
+      // match what canAccessChapter expects for free-tier gating.
+      const currentList = isBook
+        ? [...episodes].sort((a, b) => {
+            const da = new Date(a.created_date || a.published_at || a.release_date || 0).getTime();
+            const db = new Date(b.created_date || b.published_at || b.release_date || 0).getTime();
+            return da - db;
+          })
+        : episodes;
       const queueItems = currentList.map(e => ({
         podcast: show,
         episode: e.id === playEp.id ? playEp : e, // use enriched version for the target
@@ -466,11 +486,11 @@ export default function Episodes() {
               {/* Action buttons */}
               <div className="flex flex-wrap items-center gap-3">
                 <Button
-                  className={`px-7 py-2.5 rounded-full flex items-center gap-2.5 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] ${
-                    isBook
-                      ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-white shadow-cyan-500/20'
-                      : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white shadow-red-600/20'
-                  }`}
+                  className="px-7 py-2.5 rounded-full flex items-center gap-2.5 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110 text-white"
+                  style={{
+                    background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                    boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
+                  }}
                   onClick={isBook ? doPlayAudiobook : () => doPlay(sortedEpisodes[0])}
                 >
                   <Play className="w-4 h-4 fill-white" />
@@ -549,7 +569,7 @@ export default function Episodes() {
           </div>
         </div>
 
-        <EpisodesTable episodes={sortedEpisodes} show={show} onPlay={doPlay} onAddToPlaylist={handleOpenAddToPlaylist} lockedEpisodeIds={lockedEpisodeIds} />
+        <EpisodesTable episodes={sortedEpisodes} show={show} onPlay={doPlay} onAddToPlaylist={handleOpenAddToPlaylist} lockedEpisodeIds={lockedEpisodeIds} accentColor={showColors.row} freeSampleEpisodeId={freeSampleEpisodeId} />
       </div>
 
       <AddToPlaylistModal

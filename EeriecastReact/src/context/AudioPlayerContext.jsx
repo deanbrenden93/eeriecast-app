@@ -165,9 +165,7 @@ export const AudioPlayerProvider = ({ children }) => {
           return; // do NOT play
         }
       } else if (item.podcast.is_exclusive) {
-        // Newest N episodes are free — check by date, not queue index
-        const allEps = queue.filter(q => q?.episode).map(q => q.episode);
-        if (!canAccessExclusiveEpisode(item.episode, allEps, false)) {
+        if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
           navigateRef.current(createPageUrl('Premium'));
           return; // do NOT play
         }
@@ -193,8 +191,7 @@ export const AudioPlayerProvider = ({ children }) => {
               return;
             }
           } else if (item.podcast.is_exclusive) {
-            const allEps = list.filter(q => q?.episode).map(q => q.episode);
-            if (!canAccessExclusiveEpisode(item.episode, allEps, false)) {
+            if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
               navigateRef.current(createPageUrl('Premium'));
               return;
             }
@@ -266,9 +263,7 @@ export const AudioPlayerProvider = ({ children }) => {
               return; // do NOT play the next item
             }
           } else if (item.podcast.is_exclusive) {
-            // Newest N episodes are free — check by date, not queue index
-            const allEps = list.filter(q => q?.episode).map(q => q.episode);
-            if (!canAccessExclusiveEpisode(item.episode, allEps, false)) {
+            if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
               navigateRef.current?.(createPageUrl('Premium'));
               return; // do NOT play the next item
             }

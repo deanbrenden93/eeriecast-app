@@ -38,12 +38,24 @@ export default function EpisodesTable({
   onRemoveFromPlaylist, // new optional handler
   removingEpisodeId, // id currently being removed
   lockedEpisodeIds, // Set of episode IDs locked behind the free-tier chapter limit
+  accentColor, // optional { primary, darker } for play button gradient
+  freeSampleEpisodeId, // ID of the admin-assigned free sample episode
   className = '',
 }) {
   const { favoriteEpisodeIds, user, refreshFavorites, isAuthenticated, isPremium, episodeProgressMap } = useUser();
   const { openAuth } = useAuthModal();
 
-  const rows = useMemo(() => Array.isArray(episodes) ? episodes : [], [episodes]);
+  // Sort the free sample episode to the very top of the list
+  const rows = useMemo(() => {
+    const list = Array.isArray(episodes) ? episodes : [];
+    if (!freeSampleEpisodeId || isPremium) return list;
+    const sampleIdx = list.findIndex(ep => ep.id == freeSampleEpisodeId);
+    if (sampleIdx <= 0) return list; // already first or not found
+    const reordered = [...list];
+    const [sample] = reordered.splice(sampleIdx, 1);
+    reordered.unshift(sample);
+    return reordered;
+  }, [episodes, freeSampleEpisodeId, isPremium]);
 
   const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
   const getShowName = (ep) => ep?.podcast?.title || ep?.podcast?.name || show?.title || show?.name || '';
@@ -85,23 +97,29 @@ export default function EpisodesTable({
 
   return (
     <div className={`space-y-2 ${className}`}>
-      {rows.map((ep) => {
+      {rows.map((ep, idx) => {
         const fav = favoriteEpisodeIds.has(ep.id);
         const isRemoving = onRemoveFromPlaylist && removingEpisodeId === ep.id;
         const hasLockSet = lockedEpisodeIds instanceof Set;
         const isChapterLocked = hasLockSet && lockedEpisodeIds.has(ep.id);
+        const isFreeSample = freeSampleEpisodeId != null && ep.id == freeSampleEpisodeId;
         // When the parent provides a lockedEpisodeIds set, trust it for exclusive gating.
         // Only fall back to the blanket is_exclusive check when no lock set is provided.
-        const isGated = isChapterLocked
+        // The free sample episode is never gated.
+        const isGated = isFreeSample ? false : (
+          isChapterLocked
           || ((!isPremium) && ep?.is_premium)
-          || (!hasLockSet && (!isPremium) && (show?.is_exclusive || ep?.podcast?.is_exclusive));
+          || (!hasLockSet && (!isPremium) && (show?.is_exclusive || ep?.podcast?.is_exclusive))
+        );
         const prog = episodeProgressMap?.get(Number(ep.id));
         const progPct = prog && prog.duration > 0 ? Math.min(100, Math.max(0, (prog.progress / prog.duration) * 100)) : 0;
         const isCompleted = prog?.completed || progPct >= 95;
         const hasProgress = progPct > 0;
+        // Show a separator after the free sample row when there are more locked episodes below
+        const showSeparatorAfter = isFreeSample && !isPremium && idx < rows.length - 1;
         return (
+          <div key={ep.id || ep.slug || ep.title}>
           <div
-            key={ep.id || ep.slug || ep.title}
             className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg transition-colors group ${
               isChapterLocked
                 ? 'opacity-50 hover:opacity-70'
@@ -146,6 +164,12 @@ export default function EpisodesTable({
                   >
                     {ep.title}
                   </h3>
+                  {isFreeSample && !isPremium && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400/90 bg-emerald-500/10 border border-emerald-400/[0.08] px-1.5 py-0.5 rounded flex-shrink-0">
+                      <Play className="w-2.5 h-2.5 fill-current" />
+                      Free Preview
+                    </span>
+                  )}
                   {isChapterLocked && (
                     <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-400/70 bg-amber-500/10 border border-amber-400/[0.06] px-1.5 py-0.5 rounded flex-shrink-0">
                       <Lock className="w-2.5 h-2.5" />
@@ -231,12 +255,23 @@ export default function EpisodesTable({
                 <Button
                   size="icon"
                   onClick={() => onPlay && onPlay(ep)}
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white w-9 h-9 rounded-lg"
+                  className={`text-white w-9 h-9 rounded-lg hover:brightness-110 ${!accentColor ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : ''}`}
+                  style={accentColor ? {
+                    background: `linear-gradient(to right, ${accentColor.primary}, ${accentColor.darker})`,
+                  } : undefined}
                 >
                   <Play className="w-4 h-4 fill-white ml-0.5" />
                 </Button>
               )}
             </div>
+          </div>
+          {showSeparatorAfter && (
+            <div className="flex items-center gap-3 py-2 px-3">
+              <div className="flex-1 h-px bg-gradient-to-r from-white/[0.06] via-white/[0.12] to-white/[0.06]" />
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Members Only</span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/[0.06] via-white/[0.12] to-white/[0.06]" />
+            </div>
+          )}
           </div>
         );
       })}
@@ -252,5 +287,10 @@ EpisodesTable.propTypes = {
   onRemoveFromPlaylist: PropTypes.func,
   removingEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   lockedEpisodeIds: PropTypes.instanceOf(Set),
+  accentColor: PropTypes.shape({
+    primary: PropTypes.string,
+    darker: PropTypes.string,
+  }),
+  freeSampleEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   className: PropTypes.string,
 };

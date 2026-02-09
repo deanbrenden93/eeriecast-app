@@ -27,7 +27,7 @@ class PodcastAdmin(ModelAdmin):
             'fields': ('cover_image', 'language', 'tags')
         }),
         ('Settings', {
-            'fields': ('status', 'is_exclusive')
+            'fields': ('status', 'is_exclusive', 'free_sample_episode')
         }),
         ('Statistics', {
             'fields': ('rating', 'total_episodes', 'total_duration'),
@@ -40,6 +40,18 @@ class PodcastAdmin(ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('creator').prefetch_related('categories')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Limit free_sample_episode dropdown to episodes belonging to the current podcast."""
+        if db_field.name == 'free_sample_episode':
+            # When editing a podcast, filter episodes to that podcast only.
+            # On add (no object_id), show all episodes as fallback.
+            obj_id = request.resolver_match.kwargs.get('object_id')
+            if obj_id:
+                kwargs['queryset'] = Episode.objects.filter(podcast_id=obj_id).order_by('-published_at')
+            else:
+                kwargs['queryset'] = Episode.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def categories_list(self, obj):
         return ", ".join(obj.categories.values_list('name', flat=True))

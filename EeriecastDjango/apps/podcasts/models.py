@@ -17,6 +17,13 @@ class Podcast(models.Model):
     ], default='active')
     is_trending = models.BooleanField(default=False)
     is_exclusive = models.BooleanField(default=False)
+    free_sample_episode = models.ForeignKey(
+        'episodes.Episode',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        help_text='The episode non-premium users can listen to for free on members-only shows.',
+    )
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
     total_episodes = models.IntegerField(default=0)
     total_duration = models.IntegerField(default=0)  # in minutes
