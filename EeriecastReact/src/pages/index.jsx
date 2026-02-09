@@ -15,8 +15,15 @@ import Episodes from "./Episodes";
 import Playlist from "./Playlist";
 
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect, useLayoutEffect } from 'react';
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { AnimatePresence, motion } from "framer-motion";
+
+// Prevent the browser from auto-restoring scroll positions on navigation.
+// Without this, the browser can override our scrollTo(0) calls.
+if ('scrollRestoration' in window.history) {
+  window.history.scrollRestoration = 'manual';
+}
 
 const PAGES = {
     Home: Home,
@@ -71,8 +78,22 @@ const pageVariants = {
     },
 };
 
+// Scroll every possible target to the top.
+function scrollToTop() {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+}
+
 // Animated route wrapper
 function AnimatedPage({ children }) {
+    const location = useLocation();
+
+    // Pre-paint scroll (fires before the browser draws the new page)
+    useLayoutEffect(() => {
+        scrollToTop();
+    }, [location.pathname, location.search]);
+
     return (
         <motion.div
             variants={pageVariants}
@@ -90,7 +111,17 @@ function PagesContent() {
     const location = useLocation();
     const currentPage = _getCurrentPage(location.pathname);
     const { showPlayer } = useAudioPlayerContext();
-    
+
+    // Safety-net scroll: fires after the page transition animation settles.
+    // Covers edge cases where the useLayoutEffect scroll gets overridden
+    // by browser behaviour, lazy-loaded content, or AnimatePresence timing.
+    useEffect(() => {
+        scrollToTop();
+        const t1 = setTimeout(scrollToTop, 50);
+        const t2 = setTimeout(scrollToTop, 300);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
+    }, [location.pathname, location.search]);
+
     return (
         <Layout currentPageName={currentPage} hasPlayer={showPlayer}>
             <AnimatePresence mode="wait">

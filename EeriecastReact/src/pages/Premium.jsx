@@ -1,4 +1,3 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,19 +48,9 @@ const features = [
 
 export default function Premium() {
   const navigate = useNavigate();
-  const topRef = useRef(null);
-
-  // Scroll to top when the page mounts — use layoutEffect so it fires before
-  // the browser paints, and hit every possible scroll target to guarantee it.
-  useLayoutEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-    topRef.current?.scrollIntoView({ behavior: 'instant', block: 'start' });
-  }, []);
 
   return (
-    <div ref={topRef} className="min-h-screen bg-[#0a0a10] text-white relative overflow-hidden">
+    <div className="min-h-screen bg-[#0a0a10] text-white relative overflow-hidden">
       {/* ── Ambient background effects ── */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[50rem] h-[40rem] rounded-full blur-[200px] opacity-[0.06] bg-gradient-to-br from-red-700 via-amber-600 to-transparent pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-[30rem] h-[30rem] rounded-full blur-[160px] opacity-[0.04] bg-gradient-to-tl from-red-900 to-transparent pointer-events-none" />

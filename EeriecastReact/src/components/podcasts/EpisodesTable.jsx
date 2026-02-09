@@ -2,6 +2,8 @@
 import { useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { Heart, Play, Plus, Trash2, Lock } from 'lucide-react';
 import { useUser } from '@/context/UserContext.jsx';
 import { UserLibrary } from '@/api/entities';
@@ -43,6 +45,7 @@ export default function EpisodesTable({
 
   const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
   const getShowName = (ep) => ep?.podcast?.title || ep?.podcast?.name || show?.title || show?.name || '';
+  const getShowId = (ep) => ep?.podcast?.id || ep?.podcast_id || show?.id;
 
   const toggleFavorite = async (ep) => {
     const userId = user?.id || user?.user?.id || user?.pk;
@@ -134,7 +137,17 @@ export default function EpisodesTable({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-400">
-                  <span className="text-purple-400 font-medium truncate max-w-[60%] sm:max-w-[40%]">{getShowName(ep)}</span>
+                  {getShowId(ep) ? (
+                    <Link
+                      to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(getShowId(ep))}`}
+                      className="text-purple-400 font-medium truncate max-w-[60%] sm:max-w-[40%] hover:text-purple-300 transition-colors duration-200"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {getShowName(ep)}
+                    </Link>
+                  ) : (
+                    <span className="text-purple-400 font-medium truncate max-w-[60%] sm:max-w-[40%]">{getShowName(ep)}</span>
+                  )}
                   <span>•</span>
                   <span>{formatDuration(ep.duration || ep.length_seconds)}</span>
                   <span>•</span>

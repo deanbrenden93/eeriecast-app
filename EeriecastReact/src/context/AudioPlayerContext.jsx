@@ -214,13 +214,13 @@ export const AudioPlayerProvider = ({ children }) => {
   const idxRef = useRef(queueIndex);
   const shuffleRef = useRef(isShuffling);
   const repeatRef = useRef(repeatMode);
-  const loadAndPlayRef = useRef(loadAndPlay);
+  const loadAndPlayRef = useRef(loadAndPlaySmart);
   // Keep refs in sync
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { idxRef.current = queueIndex; }, [queueIndex]);
   useEffect(() => { shuffleRef.current = isShuffling; }, [isShuffling]);
   useEffect(() => { repeatRef.current = repeatMode; }, [repeatMode]);
-  useEffect(() => { loadAndPlayRef.current = loadAndPlay; }, [loadAndPlay]);
+  useEffect(() => { loadAndPlayRef.current = loadAndPlaySmart; }, [loadAndPlaySmart]);
 
   const onEndedFn = useCallback(async () => {
     const list = queueRef.current || [];

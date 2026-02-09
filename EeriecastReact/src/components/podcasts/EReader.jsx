@@ -254,6 +254,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   /* ─── Reset page when chapter changes ────────────────────── */
   // (unless we're doing "go to last page of prev chapter" via sentinel)
   const pendingLastPage = useRef(false);
+  const pendingBookmarkFraction = useRef(null); // for cross-chapter bookmark navigation
 
   /* ─── Chapter-crossing transition logic ───────────────────── */
   // Smoothly fades/slides the reading area out, swaps chapter while invisible,
@@ -269,7 +270,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
 
     // After fade-out completes (~150ms), swap the chapter content
     const t = setTimeout(() => {
-      const { idx, lastPage, targetPage } = pendingChapterRef.current;
+      const { idx, lastPage, targetPage, targetFraction } = pendingChapterRef.current;
       pendingChapterRef.current = null;
 
       // Suppress the column translateX transition during the invisible swap
@@ -277,9 +278,13 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
       suppressColumnTransition.current = true;
 
       if (lastPage) pendingLastPage.current = true;
+      if (targetFraction != null) pendingBookmarkFraction.current = targetFraction;
       setChapterIdx(idx);
-      if (typeof targetPage === "number") {
-        // Bookmark navigation — jump to specific page after measure
+      if (targetFraction != null) {
+        // Fraction-based bookmark — page will be computed in totalPages effect
+        // after measurePages runs for the new chapter.
+      } else if (typeof targetPage === "number") {
+        // Legacy bookmark (no fraction) — jump to raw page after measure
         setTimeout(() => setPageIndex(targetPage), 120);
       } else if (!lastPage) {
         setPageIndex(0);
@@ -327,6 +332,12 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     if (pendingLastPage.current && totalPages > 1) {
       setPageIndex(totalPages - 1);
       pendingLastPage.current = false;
+    } else if (pendingBookmarkFraction.current != null && totalPages > 1) {
+      // Cross-chapter bookmark navigation: compute the correct page from
+      // the stored fraction now that the new chapter has been measured.
+      const target = Math.round(pendingBookmarkFraction.current * (totalPages - 1));
+      setPageIndex(Math.max(0, Math.min(target, totalPages - 1)));
+      pendingBookmarkFraction.current = null;
     } else if (isSettingsChangeRef.current) {
       // Settings change: compute page from the frozen reading offset.
       // The offset was captured before the FIRST settings click and stays
@@ -415,14 +426,17 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     if (bookmarks.length >= 10) return;
     const ch = book?.chapters?.[chapterIdx];
     const label = `Ch. ${ch?.number ?? chapterIdx + 1}, p. ${pageIndex + 1}`;
-    const newBm = { chapter: chapterIdx, page: pageIndex, label };
+    // Store fractional progress (0–1) so bookmarks survive font/layout changes.
+    // page 0 → 0, last page → 1, even distribution in between.
+    const fraction = totalPages > 1 ? pageIndex / (totalPages - 1) : 0;
+    const newBm = { chapter: chapterIdx, page: pageIndex, fraction, label };
     // Don't duplicate the exact same location
     const exists = bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex);
     if (exists) return;
     const next = [...bookmarks, newBm];
     setBookmarks(next);
     saveBookmarks(book?.id, next);
-  }, [bookmarks, chapterIdx, pageIndex, book]);
+  }, [bookmarks, chapterIdx, pageIndex, totalPages, book]);
 
   const removeBookmark = useCallback((idx) => {
     const next = bookmarks.filter((_, i) => i !== idx);
@@ -438,14 +452,25 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     }
     setShowToc(false);
     if (bm.chapter === chapterIdx) {
-      setPageIndex(bm.page);
+      // Same chapter — compute page from fraction (handles settings changes).
+      // Falls back to raw page number for legacy bookmarks without fraction.
+      const targetPage = bm.fraction != null && totalPages > 1
+        ? Math.round(bm.fraction * (totalPages - 1))
+        : bm.page;
+      setPageIndex(Math.max(0, Math.min(targetPage, totalPages - 1)));
     } else {
-      // Use changeChapter for smooth transition, then set page after
+      // Different chapter — pass fraction so the correct page is computed
+      // after the new chapter's layout is measured.
       const direction = bm.chapter > chapterIdx ? 'forward' : 'backward';
-      pendingChapterRef.current = { idx: bm.chapter, lastPage: false, targetPage: bm.page };
+      pendingChapterRef.current = {
+        idx: bm.chapter,
+        lastPage: false,
+        targetFraction: bm.fraction ?? null,
+        targetPage: bm.fraction == null ? bm.page : undefined,
+      };
       setChapterFade(direction);
     }
-  }, [chapterIdx, isPremium, onSubscribe]);
+  }, [chapterIdx, totalPages, isPremium, onSubscribe]);
 
   /* ─── Compute column transform ───────────────────────────── */
   const clampedPage = Math.max(0, Math.min(pageIndex, totalPages - 1));
@@ -475,15 +500,14 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   if (!book) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        key="ereader-overlay"
-        className="fixed inset-0 z-[9999] flex flex-col"
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ type: "spring", damping: 30, stiffness: 300 }}
-      >
+    <motion.div
+      key="ereader-overlay"
+      className="fixed inset-0 z-[9999] flex flex-col"
+      initial={{ y: "100%", opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: "100%", opacity: 0 }}
+      transition={{ type: "spring", damping: 30, stiffness: 300 }}
+    >
         {/* ─── Background ──────────────────────────────────────── */}
         <div className="absolute inset-0 bg-[#0a0a10] pointer-events-none" />
         <div className="ereader-vignette absolute inset-0 pointer-events-none" />
@@ -758,7 +782,6 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             </button>
           </div>
         </div>
-      </motion.div>
-    </AnimatePresence>
+    </motion.div>
   );
 }

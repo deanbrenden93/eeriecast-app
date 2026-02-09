@@ -58,7 +58,7 @@ export default function Audiobooks() {
           <h1 className="text-4xl md:text-5xl font-bold text-white">Audiobooks</h1>
           <span className="text-xs text-zinc-600 font-medium tabular-nums">{books.length} {books.length === 1 ? 'title' : 'titles'}</span>
         </div>
-        <p className="text-zinc-500 text-lg mb-4">Original horror novels, narrated for your ears</p>
+        <p className="text-zinc-500 text-lg mb-4">Listen to or read original horror novels</p>
 
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">

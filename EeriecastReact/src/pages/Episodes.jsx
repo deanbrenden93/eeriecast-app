@@ -15,6 +15,7 @@ import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useToast } from '@/components/ui/use-toast';
 import { Episode } from '@/api/entities';
+import { AnimatePresence } from 'framer-motion';
 import EReader from '@/components/podcasts/EReader';
 import { findBookForShow } from '@/data/books';
 import { getShowDescription } from '@/data/show-descriptions';
@@ -171,11 +172,28 @@ export default function Episodes() {
           if (fullEp && getEpisodeAudioUrl(fullEp)) playEp = fullEp;
         } catch { /* ignore */ }
       }
-      const played = await loadAndPlay({ podcast: show, episode: playEp });
-      if (played === false) {
-        toast({ title: "Unable to play", description: "This episode doesn't have audio available yet.", variant: "destructive" });
-        return;
+
+      // Build a queue from all episodes so autoplay-next can advance
+      // to the following episode when this one ends.
+      const currentList = episodes;
+      const queueItems = currentList.map(e => ({
+        podcast: show,
+        episode: e.id === playEp.id ? playEp : e, // use enriched version for the target
+        resume: { progress: 0 },
+      }));
+      const startIdx = currentList.findIndex(e => e.id === playEp.id);
+
+      if (queueItems.length > 0 && startIdx >= 0) {
+        await setPlaybackQueue(queueItems, startIdx);
+      } else {
+        // Fallback: play directly if we can't build a queue
+        const played = await loadAndPlay({ podcast: show, episode: playEp });
+        if (played === false) {
+          toast({ title: "Unable to play", description: "This episode doesn't have audio available yet.", variant: "destructive" });
+          return;
+        }
       }
+
       try { await UserLibrary.addToHistory(playEp.id, 0); } catch (e) { if (typeof console !== 'undefined') console.debug('history add failed', e); }
     } catch (e) {
       console.error('Failed to play', e);
@@ -552,17 +570,20 @@ export default function Episodes() {
       />
 
       {/* E-Reader overlay — audiobooks only */}
-      {showReader && isBook && findBookForShow(show) && (
-        <EReader
-          book={findBookForShow(show)}
-          isPremium={isPremium}
-          onClose={() => setShowReader(false)}
-          onSubscribe={() => {
-            setShowReader(false);
-            goToPremium();
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {showReader && isBook && findBookForShow(show) && (
+          <EReader
+            key="ereader"
+            book={findBookForShow(show)}
+            isPremium={isPremium}
+            onClose={() => setShowReader(false)}
+            onSubscribe={() => {
+              setShowReader(false);
+              goToPremium();
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

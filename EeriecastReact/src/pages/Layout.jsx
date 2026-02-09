@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search, Bell, User, Menu, X, Home, Library, Compass, Settings } from "lucide-react";
+import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings } from "lucide-react";
 import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
 import UserMenu from "../components/layout/UserMenu";
@@ -15,15 +15,17 @@ import { AnimatePresence, motion } from "framer-motion";
 // Bottom nav menu items
 const menuItems = [
   { id: 'home', Icon: Home, label: 'Home', page: 'home' },
+  { id: 'podcasts', Icon: Headphones, label: 'Podcasts', page: 'podcasts' },
+  { id: 'books', Icon: BookOpen, label: 'Books', page: 'books' },
   { id: 'library', Icon: Library, label: 'Library', page: 'library' },
-  { id: 'browse', Icon: Compass, label: 'Browse', page: 'browse' },
   { id: 'settings', Icon: Settings, label: 'Settings', page: 'settings' }
 ];
 
 const PAGE_ROUTE_MAP = {
   home: 'Podcasts',
+  podcasts: 'Discover',
+  books: 'Audiobooks',
   library: 'Library',
-  browse: 'Discover',
   settings: 'Settings',
 };
 
