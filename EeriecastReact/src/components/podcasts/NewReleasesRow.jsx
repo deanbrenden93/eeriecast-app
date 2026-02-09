@@ -215,7 +215,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
                   </div>
 
                   {/* Three-dot menu — top-right on hover (below badge if present) */}
-                  <div className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-[5]" onClick={(e) => e.stopPropagation()}>
+                  <div className="absolute bottom-1.5 right-1.5 z-[5]" onClick={(e) => e.stopPropagation()}>
                     <EpisodeMenu episode={ep} podcast={ep.podcast_data} className="bg-black/60 backdrop-blur-sm" side="right" />
                   </div>
 
