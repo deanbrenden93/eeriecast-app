@@ -339,9 +339,9 @@ export const UserLibrary = {
     return djangoClient.post(`/library/notifications/${notificationId}/mark_read/`);
   },
 
-  // Get listening history
-  async getHistory() {
-    return djangoClient.get('/library/history/');
+  // Get listening history (request a generous page size to get all recent entries)
+  async getHistory(limit = 100) {
+    return djangoClient.get('/library/history/', { page_size: limit });
   },
 
   // Add to listening history (start an entry)

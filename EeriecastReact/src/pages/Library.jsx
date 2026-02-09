@@ -68,42 +68,59 @@ export default function Library() {
   useEffect(() => {
     const loadPodcasts = async () => {
       setIsLoading(true);
-      const resp = await Podcast.list("-created_date");
-      const allPodcasts = Array.isArray(resp) ? resp : (resp?.results || []);
-      setPodcasts(allPodcasts);
-      setIsLoading(false);
+      try {
+        const resp = await Podcast.list("-created_date");
+        const allPodcasts = Array.isArray(resp) ? resp : (resp?.results || []);
+        setPodcasts(allPodcasts);
+      } catch (e) {
+        if (typeof console !== 'undefined') console.debug('Failed to load podcasts for library', e);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadPodcasts();
   }, []);
 
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setIsLoadingHistory(true);
-      try {
-        const resp = await UserLibrary.getHistory();
-        const raw = Array.isArray(resp) ? resp : (resp?.results || []);
-        const list = raw
-          .map((item) => (item && item.episode_detail) ? item.episode_detail : null)
-          .filter(Boolean);
-        const seen = new Set();
-        const unique = [];
-        for (const ep of list) {
-          const id = ep?.id || ep?.slug;
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          unique.push(ep);
-        }
-        if (!cancelled) setHistoryEpisodes(unique);
-      } catch (e) {
-        if (!cancelled) setHistoryEpisodes([]);
-      } finally {
-        if (!cancelled) setIsLoadingHistory(false);
+  const loadHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      const resp = await UserLibrary.getHistory(100);
+      const raw = Array.isArray(resp) ? resp : (resp?.results || []);
+      // Each history entry has `episode_detail` with nested podcast data,
+      // plus `last_played`, `progress`, `duration`, `completed` etc at the top level.
+      const list = raw
+        .map((item) => {
+          if (!item?.episode_detail) return null;
+          // Attach history metadata onto the episode object so the UI can use it
+          return {
+            ...item.episode_detail,
+            _history_last_played: item.last_played,
+            _history_progress: item.progress,
+            _history_duration: item.duration,
+            _history_completed: item.completed,
+            _history_percent: item.percent_complete,
+          };
+        })
+        .filter(Boolean);
+      const seen = new Set();
+      const unique = [];
+      for (const ep of list) {
+        const id = ep?.id || ep?.slug;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        unique.push(ep);
       }
-    })();
-    return () => { cancelled = true; };
+      setHistoryEpisodes(unique);
+    } catch (e) {
+      if (typeof console !== 'undefined') console.debug('Failed to load history', e);
+      setHistoryEpisodes([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
   }, []);
+
+  // Load history on mount
+  useEffect(() => { loadHistory(); }, [loadHistory]);
 
   async function handlePlayPlaylist(pl) {
     try {
@@ -457,7 +474,10 @@ export default function Library() {
   };
 
   const renderContent = () => {
-    if (isLoading && activeTab !== 'Playlists') {
+    // Only block Following and Favorites behind the podcast list loading
+    // History, Playlists, and Downloads have their own independent loading states
+    const needsPodcasts = activeTab === 'Following' || activeTab === 'Favorites';
+    if (isLoading && needsPodcasts) {
       return (
         <div className="space-y-4">
           {[1, 2, 3].map(i => (

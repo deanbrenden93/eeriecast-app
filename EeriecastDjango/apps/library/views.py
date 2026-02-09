@@ -221,7 +221,7 @@ class ListeningHistoryListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        return ListeningHistory.objects.filter(user=self.request.user).select_related('episode', 'episode__podcast')
+        return ListeningHistory.objects.filter(user=self.request.user).select_related('episode', 'episode__podcast').order_by('-last_played')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
