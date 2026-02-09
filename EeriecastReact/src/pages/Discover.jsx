@@ -13,7 +13,7 @@ import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useToast } from "@/components/ui/use-toast";
-import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
+import { FREE_FAVORITE_LIMIT, canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { X, Loader2 } from "lucide-react";
 
@@ -465,9 +465,21 @@ export default function Discover() {
     if (!episode) return;
     const p = podcast || podcastMap[episode.podcast || episode.podcast_id];
 
-    if ((episode.is_premium || p?.is_exclusive) && !isPremium) {
+    // Individual premium episode gate
+    if (episode.is_premium && !isPremium) {
       goToPremium();
       return;
+    }
+    // Exclusive show gate — allow the free sample episode(s) through
+    if (p?.is_exclusive && !isPremium) {
+      const podId = p.id;
+      const showEpisodes = fetchedEpisodes.filter(
+        ep => (ep.podcast || ep.podcast_id) === podId
+      );
+      if (!canAccessExclusiveEpisode(episode, showEpisodes, isPremium)) {
+        goToPremium();
+        return;
+      }
     }
 
     const played = await loadAndPlay({

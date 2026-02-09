@@ -88,8 +88,13 @@ export default function EpisodesTable({
       {rows.map((ep) => {
         const fav = favoriteEpisodeIds.has(ep.id);
         const isRemoving = onRemoveFromPlaylist && removingEpisodeId === ep.id;
-        const isChapterLocked = lockedEpisodeIds instanceof Set && lockedEpisodeIds.has(ep.id);
-        const isGated = isChapterLocked || ((!isPremium) && (ep?.is_premium || show?.is_exclusive || ep?.podcast?.is_exclusive));
+        const hasLockSet = lockedEpisodeIds instanceof Set;
+        const isChapterLocked = hasLockSet && lockedEpisodeIds.has(ep.id);
+        // When the parent provides a lockedEpisodeIds set, trust it for exclusive gating.
+        // Only fall back to the blanket is_exclusive check when no lock set is provided.
+        const isGated = isChapterLocked
+          || ((!isPremium) && ep?.is_premium)
+          || (!hasLockSet && (!isPremium) && (show?.is_exclusive || ep?.podcast?.is_exclusive));
         const prog = episodeProgressMap?.get(Number(ep.id));
         const progPct = prog && prog.duration > 0 ? Math.min(100, Math.max(0, (prog.progress / prog.duration) * 100)) : 0;
         const isCompleted = prog?.completed || progPct >= 95;

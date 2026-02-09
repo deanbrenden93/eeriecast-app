@@ -133,25 +133,17 @@ export default function Episodes() {
 
   // Set of episode IDs that are locked behind the free-tier limit
   // Audiobooks: first N chapters (oldest) are free
-  // Exclusive shows: newest N episodes are free
+  // Exclusive shows: oldest N episodes are free
   const lockedEpisodeIds = useMemo(() => {
     if (isPremium || !episodeOrder.length) return new Set();
     const locked = new Set();
-    if (isExclusive) {
-      // Lock everything except the newest `freeEpisodeLimit` episodes
-      // episodeOrder is sorted oldest-first, so the newest are at the end
-      const lockUpTo = episodeOrder.length - freeEpisodeLimit;
-      for (let i = 0; i < lockUpTo; i++) {
-        if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
-      }
-    } else {
-      // Audiobooks: first N chapters are free
-      for (let i = freeEpisodeLimit; i < episodeOrder.length; i++) {
-        if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
-      }
+    // Both audiobooks and exclusive shows: the first `freeEpisodeLimit` items
+    // (oldest, since episodeOrder is sorted oldest-first) are free.
+    for (let i = freeEpisodeLimit; i < episodeOrder.length; i++) {
+      if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
     }
     return locked;
-  }, [isPremium, episodeOrder, freeEpisodeLimit, isExclusive]);
+  }, [isPremium, episodeOrder, freeEpisodeLimit]);
 
   const doPlay = async (ep) => {
     if (!ep) return;

@@ -34,21 +34,21 @@ export function canAccessChapter(chapterIndex, isPremium, limit = FREE_LISTEN_CH
 }
 
 /**
- * For members-only (exclusive) shows, the **newest** N episodes are free.
- * Check whether a specific episode can be accessed.
+ * For members-only (exclusive) shows, the **oldest** N episodes are free.
+ * This prevents the loophole of users catching every new release for free.
  * @param {Object} episode — the episode to check (must have id and a date field)
  * @param {Array} allEpisodes — all episodes of the show
  * @param {boolean} isPremium — whether user has an active subscription
- * @param {number} [limit] — how many newest episodes are free (default: FREE_EXCLUSIVE_EPISODE_LIMIT)
+ * @param {number} [limit] — how many oldest episodes are free (default: FREE_EXCLUSIVE_EPISODE_LIMIT)
  * @returns {boolean}
  */
 export function canAccessExclusiveEpisode(episode, allEpisodes, isPremium, limit = FREE_EXCLUSIVE_EPISODE_LIMIT) {
   if (isPremium) return true;
   if (!episode || !allEpisodes || allEpisodes.length <= limit) return true;
   const getDate = (ep) => new Date(ep.created_date || ep.published_at || ep.release_date || 0).getTime();
-  // Sort newest-first
-  const sorted = [...allEpisodes].sort((a, b) => getDate(b) - getDate(a));
-  // The first `limit` episodes (newest) are free
+  // Sort oldest-first
+  const sorted = [...allEpisodes].sort((a, b) => getDate(a) - getDate(b));
+  // The first `limit` episodes (oldest) are free
   const freeIds = new Set(sorted.slice(0, limit).map(ep => ep.id));
   return freeIds.has(episode.id);
 }
