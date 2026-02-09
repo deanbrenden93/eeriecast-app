@@ -699,8 +699,8 @@ html.ereader-active .layout-bottom-nav {
   hyphens: auto;
   -webkit-hyphens: auto;
   break-inside: auto;
-  orphans: 3;
-  widows: 3;
+  orphans: 2;
+  widows: 2;
 }
 
 /* Novel-style paragraphs: no gap between, indent all but the first */

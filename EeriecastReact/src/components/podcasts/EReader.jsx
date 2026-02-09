@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -62,7 +62,7 @@ function renderContent(text) {
           </p>
         ))}
         {si < scenes.length - 1 && (
-          <span className="ereader-scene-break block my-6 flex items-center justify-center gap-3" aria-hidden="true">
+          <span className="ereader-scene-break block my-4 flex items-center justify-center gap-3" aria-hidden="true">
             <span className="block w-8 h-px bg-zinc-700" />
             <span className="block w-1.5 h-1.5 rounded-full bg-zinc-600" />
             <span className="block w-1.5 h-1.5 rounded-full bg-zinc-600" />
@@ -118,7 +118,12 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   const columnsRef = useRef(null);
   const settingsRef = useRef(null);
   const tocRef = useRef(null);
+  const tocBtnRef = useRef(null);
+  const settingsBtnRef = useRef(null);
   const restoredRef = useRef(false); // prevent double-restore
+  const readingOffsetRef = useRef(0);     // frozen fraction (0..1) of chapter progress
+  const isSettingsChangeRef = useRef(false);
+  const settingsTimerRef = useRef(null);
 
   // Chapter-crossing transition: fade+slide the reading area
   const [chapterFade, setChapterFade] = useState(null); // 'forward' | 'backward' | null
@@ -145,31 +150,47 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     // creates a scroll context and scrollWidth reports the true total.
     el.style.width = "";
 
-    // After setting column-width, we need to wait a frame for layout
-    requestAnimationFrame(() => {
-      const sw = el.scrollWidth;
-      const pages = Math.max(1, Math.round(sw / (w + COLUMN_GAP)));
-      setTotalPages(pages);
+    // Reading scrollWidth forces a synchronous reflow — the browser
+    // computes column layout immediately based on the current inline
+    // styles (fontSize, lineHeight, fontFamily, columnWidth).
+    // No requestAnimationFrame needed; doing everything synchronously
+    // ensures the width reset → measure → expand cycle all happens in
+    // a single task, so the browser never paints the collapsed state.
+    const sw = el.scrollWidth;
+    const pages = Math.max(1, Math.round(sw / (w + COLUMN_GAP)));
 
-      // Expand the container to fit ALL columns so overflow:hidden
-      // no longer clips them. The parent (pagerRef) acts as the viewport.
-      // Compute from precise values rather than the integer scrollWidth.
-      if (pages > 1 && w > 0) {
-        const totalWidth = pages * w + (pages - 1) * COLUMN_GAP;
-        el.style.width = `${totalWidth}px`;
-      }
-    });
+    // Expand the container to fit ALL columns so overflow:hidden
+    // no longer clips them. The parent (pagerRef) acts as the viewport.
+    if (pages > 1 && w > 0) {
+      const totalWidth = pages * w + (pages - 1) * COLUMN_GAP;
+      el.style.width = `${totalWidth}px`;
+    }
+
+    setTotalPages(pages);
+
+    // If a settings change is in progress, compute the correct page
+    // synchronously so React can batch it with the totalPages update.
+    if (isSettingsChangeRef.current) {
+      const newPage = Math.round(readingOffsetRef.current * pages);
+      setPageIndex(Math.max(0, Math.min(newPage, pages - 1)));
+    }
   }, []);
 
-  // Measure on mount, chapter/font changes, and resize
-  useEffect(() => {
+  // Measure on mount, chapter/font changes, and resize.
+  // useLayoutEffect runs BEFORE the browser paints, so the correct
+  // page position is computed and committed in the same frame as the
+  // font/layout change — the user never sees an intermediate state.
+  useLayoutEffect(() => {
     measurePages();
     const onResize = () => measurePages();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [measurePages, chapterIdx, fontSize, lineHeight, fontFamily]);
 
-  // Re-measure after fonts load and after layout settles
+  // Re-measure after fonts load and after layout settles (defensive).
+  // This stays as useEffect — it fires after paint, but since the
+  // initial measurement above is accurate for settings changes,
+  // these are mainly to handle font-loading edge cases on first open.
   useEffect(() => {
     const t1 = setTimeout(measurePages, 50);
     const t2 = setTimeout(measurePages, 200);
@@ -208,10 +229,27 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     if (book?.id) saveProgress(book.id, { chapter: chapterIdx, page: pageIndex });
   }, [book?.id, chapterIdx, pageIndex]);
 
-  /* ─── Reset page when font/line-height/font-family changes ─ */
+  /* ─── Track reading position as a stable fraction ────────── */
+  // Updated only during normal navigation (page turns, chapter jumps,
+  // bookmarks). NOT updated after settings-triggered page changes,
+  // so "font+ 3 times then font- 3 times" returns to the exact same page.
   useEffect(() => {
-    setPageIndex(0);
-  }, [fontSize, lineHeight, fontFamily]);
+    if (!isSettingsChangeRef.current && totalPages > 0) {
+      readingOffsetRef.current = pageIndex / totalPages;
+    }
+  }, [pageIndex, totalPages]);
+
+  /* ─── Freeze reading position before a settings change ──── */
+  const captureReadingPosition = useCallback(() => {
+    // Only capture a fresh offset if we're NOT already in a settings-change
+    // cycle. This prevents drift during rapid clicks (e.g., font+ five times).
+    if (!isSettingsChangeRef.current && totalPages > 0) {
+      readingOffsetRef.current = pageIndex / totalPages;
+    }
+    isSettingsChangeRef.current = true;
+    suppressColumnTransition.current = true;
+    clearTimeout(settingsTimerRef.current);
+  }, [pageIndex, totalPages]);
 
   /* ─── Reset page when chapter changes ────────────────────── */
   // (unless we're doing "go to last page of prev chapter" via sentinel)
@@ -265,8 +303,9 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   useEffect(() => {
     function handleClick(e) {
       let closed = false;
-      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target)) { setShowSettings(false); closed = true; }
-      if (showToc && tocRef.current && !tocRef.current.contains(e.target)) { setShowToc(false); closed = true; }
+      // Exclude clicks on the toggle buttons themselves — let their onClick handle toggling
+      if (showSettings && settingsRef.current && !settingsRef.current.contains(e.target) && !settingsBtnRef.current?.contains(e.target)) { setShowSettings(false); closed = true; }
+      if (showToc && tocRef.current && !tocRef.current.contains(e.target) && !tocBtnRef.current?.contains(e.target)) { setShowToc(false); closed = true; }
       if (closed) {
         // Prevent the click from also triggering a page turn
         justClosedPanel.current = true;
@@ -283,11 +322,27 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     return () => { document.body.style.overflow = ""; };
   }, []);
 
-  /* ─── If pendingLastPage, jump to last page after measuring ─ */
+  /* ─── After re-measurement, restore or clamp page ─────────── */
   useEffect(() => {
     if (pendingLastPage.current && totalPages > 1) {
       setPageIndex(totalPages - 1);
       pendingLastPage.current = false;
+    } else if (isSettingsChangeRef.current) {
+      // Settings change: compute page from the frozen reading offset.
+      // The offset was captured before the FIRST settings click and stays
+      // frozen through rapid adjustments, so +N then -N = exact same page.
+      const newPage = Math.round(readingOffsetRef.current * totalPages);
+      setPageIndex(Math.max(0, Math.min(newPage, totalPages - 1)));
+      // Keep the flag active through the measurement cycle (0/50/200/600ms),
+      // then clear so normal navigation updates the offset again.
+      clearTimeout(settingsTimerRef.current);
+      settingsTimerRef.current = setTimeout(() => {
+        isSettingsChangeRef.current = false;
+        suppressColumnTransition.current = false;
+      }, 800);
+    } else {
+      // Normal re-measurement (resize, chapter change): just clamp.
+      setPageIndex(prev => Math.min(prev, Math.max(0, totalPages - 1)));
     }
   }, [totalPages]);
 
@@ -440,7 +495,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             <button type="button" onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-zinc-400 hover:text-white transition-all">
               <X className="w-4 h-4" />
             </button>
-            <button type="button" onClick={() => { const next = !showToc; setShowToc(next); if (next) setTocTab("contents"); setShowSettings(false); }}
+            <button ref={tocBtnRef} type="button" onClick={() => { const next = !showToc; setShowToc(next); if (next) setTocTab("contents"); setShowSettings(false); }}
               className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all", showToc ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white")}>
               <List className="w-4 h-4" />
             </button>
@@ -450,18 +505,16 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             <p className="text-[10px] text-zinc-600 font-medium tracking-wide uppercase">{book.author}</p>
           </div>
           <div className="flex items-center gap-2">
-            {isPremium && (
-              <button type="button" onClick={addBookmark}
-                disabled={bookmarks.length >= 10 || bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)}
-                title={bookmarks.length >= 10 ? "Max 10 bookmarks" : bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex) ? "Page bookmarked" : "Bookmark this page"}
-                className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all",
-                  bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)
-                    ? "bg-red-500/10 border-red-500/20 text-red-400"
-                    : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed")}>
-                <BookmarkPlus className="w-4 h-4" />
-              </button>
-            )}
-            <button type="button" onClick={() => { setShowSettings(!showSettings); setShowToc(false); }}
+            <button type="button" onClick={addBookmark}
+              disabled={bookmarks.length >= 10 || bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)}
+              title={bookmarks.length >= 10 ? "Max 10 bookmarks" : bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex) ? "Page bookmarked" : "Bookmark this page"}
+              className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all",
+                bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)
+                  ? "bg-red-500/10 border-red-500/20 text-red-400"
+                  : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed")}>
+              <BookmarkPlus className="w-4 h-4" />
+            </button>
+            <button ref={settingsBtnRef} type="button" onClick={() => { setShowSettings(!showSettings); setShowToc(false); }}
               className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all", showSettings ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white")}>
               <Settings className="w-4 h-4" />
             </button>
@@ -477,12 +530,12 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
               <div className="mb-4">
                 <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Font Size</label>
                 <div className="flex items-center gap-3">
-                  <button type="button" disabled={fontSize <= FONT_SIZE_MIN} onClick={() => setFontSize(Math.max(FONT_SIZE_MIN, fontSize - FONT_SIZE_STEP))}
+                  <button type="button" disabled={fontSize <= FONT_SIZE_MIN} onClick={() => { captureReadingPosition(); setFontSize(Math.max(FONT_SIZE_MIN, fontSize - FONT_SIZE_STEP)); }}
                     className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                     <Minus className="w-3.5 h-3.5" />
                   </button>
                   <span className="flex-1 text-center text-sm text-zinc-300 font-medium tabular-nums">{fontSize}px</span>
-                  <button type="button" disabled={fontSize >= FONT_SIZE_MAX} onClick={() => setFontSize(Math.min(FONT_SIZE_MAX, fontSize + FONT_SIZE_STEP))}
+                  <button type="button" disabled={fontSize >= FONT_SIZE_MAX} onClick={() => { captureReadingPosition(); setFontSize(Math.min(FONT_SIZE_MAX, fontSize + FONT_SIZE_STEP)); }}
                     className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -492,7 +545,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                 <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Font</label>
                 <div className="flex gap-1.5">
                   {FONT_OPTIONS.map((opt) => (
-                    <button key={opt.label} type="button" onClick={() => setFontFamily(opt.value)}
+                    <button key={opt.label} type="button" onClick={() => { captureReadingPosition(); setFontFamily(opt.value); }}
                       className={cn("flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
                         fontFamily === opt.value ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.02] border-white/[0.04] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300")}
                       style={{ fontFamily: opt.value }}>
@@ -505,7 +558,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                 <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">Line Spacing</label>
                 <div className="flex gap-1.5">
                   {LINE_HEIGHT_OPTIONS.map((opt) => (
-                    <button key={opt.label} type="button" onClick={() => setLineHeight(opt.value)}
+                    <button key={opt.label} type="button" onClick={() => { captureReadingPosition(); setLineHeight(opt.value); }}
                       className={cn("flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
                         lineHeight === opt.value ? "bg-white/[0.08] border-white/[0.12] text-white" : "bg-white/[0.02] border-white/[0.04] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300")}>
                       {opt.label}
@@ -522,7 +575,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
           {showToc && (
             <motion.div ref={tocRef} key="toc"
               className="absolute top-[52px] left-4 sm:left-6 z-30 w-72 rounded-xl bg-[#141418] border border-white/[0.06] shadow-2xl shadow-black/60 overflow-hidden flex flex-col"
-              style={{ maxHeight: "calc(100vh - 120px)" }}
+              style={{ maxHeight: "min(60vh, calc(100dvh - 140px))" }}
               initial={{ opacity: 0, x: -10, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: -10, scale: 0.95 }} transition={{ duration: 0.2 }}>
               {/* ── Tab bar ── */}
               <div className="flex border-b border-white/[0.04] flex-shrink-0">
@@ -545,7 +598,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
 
               {/* ── Contents list ── */}
               {tocTab === "contents" && (
-                <div className="py-1 overflow-y-auto flex-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
+                <div className="py-1 overflow-y-auto flex-1">
                   {book.chapters.map((ch, i) => {
                     const chLocked = isLocked && !canAccessChapter(i, isPremium, FREE_READ_CHAPTER_LIMIT);
                     return (
@@ -564,7 +617,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
 
               {/* ── Bookmarks list ── */}
               {tocTab === "bookmarks" && (
-                <div className="py-1 overflow-y-auto flex-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
+                <div className="py-1 overflow-y-auto flex-1">
                   {bookmarks.length === 0 ? (
                     <div className="px-4 py-10 text-center">
                       <BookmarkPlus className="w-6 h-6 text-zinc-700 mx-auto mb-2" />
