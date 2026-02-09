@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { X, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Heart, Download, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useUser } from "@/context/UserContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { motion } from "framer-motion";
@@ -22,7 +21,6 @@ export default function PodcastModal({ podcast, onClose }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime] = useState("0:13");
   const [totalTime] = useState(podcast.duration || "59:09");
-  const [comment, setComment] = useState("");
   const [isLiked, setIsLiked] = useState(false);
   const { isAuthenticated } = useUser();
   const { openAuth } = useAuthModal();
@@ -35,13 +33,6 @@ export default function PodcastModal({ podcast, onClose }) {
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
-  };
-
-  const handleCommentSubmit = () => {
-    if (comment.trim()) {
-      // Handle comment submission
-      setComment("");
-    }
   };
 
   return (
@@ -158,30 +149,6 @@ export default function PodcastModal({ podcast, onClose }) {
           </div>
         </div>
 
-        {/* Comments Section */}
-        <div className="border-t border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">Comments</h3>
-            <span className="text-gray-400 text-sm">0 comments</span>
-          </div>
-          
-          <div className="space-y-4">
-            <Textarea
-              placeholder="Share your thoughts about this episode..."
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="bg-gray-800 border-gray-600 text-white placeholder-gray-400 resize-none"
-              rows={3}
-            />
-            <Button 
-              onClick={handleCommentSubmit}
-              className="bg-pink-600 hover:bg-pink-700 text-white px-6"
-              disabled={!comment.trim()}
-            >
-              Post Comment
-            </Button>
-          </div>
-        </div>
       </motion.div>
     </motion.div>
   );

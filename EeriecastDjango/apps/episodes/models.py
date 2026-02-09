@@ -59,17 +59,3 @@ try:
 except Exception:
     # During migrations or import-time issues, skip wiring the signal
     pass
-
-
-class Comment(models.Model):
-    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, related_name='comments')
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='episode_comments')
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"Comment by {self.user} on {self.episode}"

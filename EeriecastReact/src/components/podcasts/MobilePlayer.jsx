@@ -72,6 +72,8 @@ export default function MobilePlayer({
   onToggle,
   onExpand,
   onSkip,
+  onNext,
+  onPrev,
   onSeek,
   volume = 0.7,
   onVolumeChange,
@@ -262,15 +264,15 @@ export default function MobilePlayer({
             <div
               className="group relative h-[clamp(80px,10vh,100px)] eeriecast-glass border-t border-white/[0.06] flex items-center px-[clamp(8px,2vw,20px)] gap-[clamp(4px,1vw,12px)]"
             >
-              {/* Close button — top right */}
+              {/* Close button — top left corner, above album art */}
               <button
                 type="button"
                 aria-label="Close player"
                 onClick={() => { pause && pause(); onClose && onClose(); }}
-                className="absolute top-1.5 right-1.5 z-[10] p-1.5 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all focus:outline-none"
+                className="absolute -top-2 left-1 z-[10] p-1 rounded-full bg-zinc-800/90 border border-white/10 text-white/50 hover:text-white hover:bg-zinc-700 transition-all focus:outline-none"
                 style={{ lineHeight: 0 }}
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
 
               {/* Minimize handle — prominent pull-down zone at top center */}
@@ -345,8 +347,8 @@ export default function MobilePlayer({
                 </PressableIconButton>
 
                 <PressableIconButton
-                  ariaLabel="Rewind 15 seconds"
-                  onClick={() => onSkip && onSkip(-15)}
+                  ariaLabel="Previous track"
+                  onClick={() => onPrev && onPrev()}
                   className="w-[clamp(28px,4vw,38px)] h-[clamp(28px,4vw,38px)] rounded-full text-zinc-400 hover:text-white hover:bg-white/[0.04] transition-all flex items-center justify-center flex-shrink-0"
                 >
                   <PrevIcon />
@@ -363,8 +365,8 @@ export default function MobilePlayer({
                 </PressableIconButton>
 
                 <PressableIconButton
-                  ariaLabel="Skip 30 seconds"
-                  onClick={() => onSkip && onSkip(30)}
+                  ariaLabel="Next track"
+                  onClick={() => onNext && onNext()}
                   className="w-[clamp(28px,4vw,38px)] h-[clamp(28px,4vw,38px)] rounded-full text-zinc-400 hover:text-white hover:bg-white/[0.04] transition-all flex items-center justify-center flex-shrink-0"
                 >
                   <NextIcon />
@@ -461,6 +463,8 @@ MobilePlayer.propTypes = {
   onToggle: PropTypes.func,
   onExpand: PropTypes.func,
   onSkip: PropTypes.func,
+  onNext: PropTypes.func,
+  onPrev: PropTypes.func,
   onSeek: PropTypes.func,
   onClose: PropTypes.func,
   volume: PropTypes.number,

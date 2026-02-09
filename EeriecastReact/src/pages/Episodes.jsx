@@ -529,7 +529,11 @@ export default function Episodes() {
                 {/* Read Book — audiobooks only */}
                 {isBook && (
                   <Button
-                    className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold bg-gradient-to-r from-cyan-600/80 to-teal-600/80 hover:from-cyan-500 hover:to-teal-500 text-white shadow-lg shadow-cyan-500/10 transition-all duration-500 hover:scale-[1.02] border border-cyan-400/10"
+                    className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-white shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
+                    style={{
+                      background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                      boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
+                    }}
                     onClick={() => {
                       // TODO: restore auth gate before launch: if (!isAuthenticated) { openAuth('login'); return; }
                       setShowReader(true);

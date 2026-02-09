@@ -1,6 +1,6 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
-from .models import Episode, Comment
+from .models import Episode
 
 @admin.register(Episode)
 class EpisodeAdmin(ModelAdmin):
@@ -47,15 +47,3 @@ class EpisodeAdmin(ModelAdmin):
         seconds = obj.duration % 60
         return f"{minutes}m {seconds}s"
     duration_display.short_description = 'Duration'
-
-
-@admin.register(Comment)
-class CommentAdmin(ModelAdmin):
-    list_display = ('user', 'episode', 'content_excerpt', 'created_at')
-    list_filter = ('created_at', 'episode__podcast')
-    search_fields = ('content', 'user__username', 'user__email', 'episode__title')
-    readonly_fields = ('created_at', 'updated_at')
-
-    def content_excerpt(self, obj):
-        return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
-    content_excerpt.short_description = 'Content'

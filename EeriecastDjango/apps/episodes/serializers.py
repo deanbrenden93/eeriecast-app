@@ -1,19 +1,9 @@
 from rest_framework import serializers
-from .models import Episode, Comment
-from apps.authentication.serializers import SimpleUserSerializer
-
-class CommentSerializer(serializers.ModelSerializer):
-    user = SimpleUserSerializer(read_only=True)
-
-    class Meta:
-        model = Comment
-        fields = ['id', 'user', 'content', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+from .models import Episode
 
 class EpisodeSerializer(serializers.ModelSerializer):
     # Compute audio_url dynamically; do not expose ad_* in responses
     audio_url = serializers.SerializerMethodField(read_only=True)
-    comments = CommentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Episode
@@ -21,7 +11,6 @@ class EpisodeSerializer(serializers.ModelSerializer):
             'id', 'podcast', 'title', 'slug', 'description', 'audio_url',
             'duration', 'episode_number', 'season_number', 'is_premium',
             'transcript', 'cover_image', 'play_count', 'published_at', 'created_at',
-            'comments',
             # accept these on write but keep them out of responses
             'ad_supported_audio_url', 'ad_free_audio_url',
         ]

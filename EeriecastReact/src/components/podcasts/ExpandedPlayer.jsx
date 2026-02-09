@@ -286,7 +286,9 @@ export default function ExpandedPlayer({
   onToggle, 
   onCollapse, 
   onSeek, 
-  onSkip, 
+  onSkip,
+  onNext,
+  onPrev,
   isShuffling, 
   repeatMode, 
   onShuffleToggle, 
@@ -297,13 +299,6 @@ export default function ExpandedPlayer({
   loadAndPlay
 }) {
   const [isLiked, setIsLiked] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [commentFocused, setCommentFocused] = useState(false);
-  const [submitHover, setSubmitHover] = useState(false);
-  const [submitActive, setSubmitActive] = useState(false);
-  const [comments, setComments] = useState([]);
-  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
-  const [isPostingComment, setIsPostingComment] = useState(false);
   const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
@@ -379,69 +374,6 @@ export default function ExpandedPlayer({
     setIsLiked(!!favoriteEpisodeIds && favoriteEpisodeIds.has(Number(eid)));
   }, [episode?.id, favoriteEpisodeIds]);
 
-  useEffect(() => {
-    const fetchComments = async () => {
-      if (!episode?.id) {
-        setComments([]);
-        return;
-      }
-      try {
-        setComments([]); // Clear old comments immediately
-        setIsCommentsLoading(true);
-        const detail = await Episode.get(episode.id);
-        setComments(detail.comments || []);
-      } catch (err) {
-        console.debug('Failed to fetch comments', err);
-      } finally {
-        setIsCommentsLoading(false);
-      }
-    };
-    fetchComments();
-  }, [episode?.id]);
-
-  const handlePostComment = async (e) => {
-    e.preventDefault();
-    if (!commentText.trim() || !episode?.id) return;
-    if (!isAuthenticated) {
-      openAuth('login');
-      return;
-    }
-
-    const newCommentContent = commentText.trim();
-    
-    // Optimistic UI update
-    const tempId = Date.now();
-    const optimisticComment = {
-      id: tempId,
-      user: {
-        id: user?.id || user?.user?.id || user?.pk,
-        username: user?.username || user?.user?.username || 'You',
-        avatar: user?.avatar || user?.user?.avatar
-      },
-      content: newCommentContent,
-      created_at: new Date().toISOString(),
-      isOptimistic: true
-    };
-
-    setComments(prev => [optimisticComment, ...prev]);
-    setCommentText("");
-
-    try {
-      setIsPostingComment(true);
-      const savedComment = await Episode.postComment(episode.id, newCommentContent);
-      // Replace optimistic comment with actual one from server
-      setComments(prev => prev.map(c => c.id === tempId ? savedComment : c));
-    } catch (err) {
-      console.debug('Failed to post comment', err);
-      // Remove optimistic comment on failure
-      setComments(prev => prev.filter(c => c.id !== tempId));
-      // Restore comment text so user can try again
-      setCommentText(newCommentContent);
-      alert("Failed to post comment. Please try again.");
-    } finally {
-      setIsPostingComment(false);
-    }
-  };
 
   // Local fallbacks if parent doesn't control shuffle/repeat
   const [localShuffle, setLocalShuffle] = useState(false);
@@ -773,7 +705,7 @@ export default function ExpandedPlayer({
             <button className="player-control-large seek-btn backward-btn" title="Back 10" onClick={() => onSkip && onSkip(-10)}>
               <span className="icon"><Backward10Icon /></span>
             </button>
-            <button className="player-control-large prev-btn" title="Previous" onClick={() => onSkip && onSkip(-30)}>
+            <button className="player-control-large prev-btn" title="Previous track" onClick={() => onPrev && onPrev()}>
               <span className="icon"><PrevIcon /></span>
             </button>
             <button
@@ -784,7 +716,7 @@ export default function ExpandedPlayer({
             >
               <span className="icon">{isPlaying ? <PauseIcon /> : <PlayIcon />}</span>
             </button>
-            <button className="player-control-large next-btn" title="Next" onClick={() => onSkip && onSkip(30)}>
+            <button className="player-control-large next-btn" title="Next track" onClick={() => onNext && onNext()}>
               <span className="icon"><NextIcon /></span>
             </button>
             <button className="player-control-large seek-btn forward-btn" title="Forward 10" onClick={() => onSkip && onSkip(10)}>
@@ -815,118 +747,6 @@ export default function ExpandedPlayer({
               <div className="progress-indicator" style={{ left: `${pct}%` }} />
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Comments Section (inline styles matching original) */}
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          width: '100%',
-          maxWidth: 800,
-          margin: '40px auto 0',
-          padding: '30px 20px',
-          background: 'rgba(255, 255, 255, 0.02)',
-          borderRadius: 20,
-          border: '1px solid rgba(255, 255, 255, 0.05)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h3 style={{ color: '#fff', fontWeight: 600, fontSize: 22, margin: 0 }}>Comments</h3>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{comments.length} comment{comments.length === 1 ? '' : 's'}</span>
-        </div>
-
-        <form
-          style={{ marginBottom: 28 }}
-          onSubmit={handlePostComment}
-        >
-          <textarea
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            onFocus={() => setCommentFocused(true)}
-            onBlur={() => setCommentFocused(false)}
-            placeholder="Share your thoughts about this episode..."
-            style={{
-              width: '100%',
-              padding: '16px 18px',
-              background: commentFocused ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.05)',
-              border: `2px solid ${commentFocused ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.08)'}`,
-              borderRadius: 14,
-              color: '#ffffff',
-              fontSize: 15,
-              fontFamily: 'inherit',
-              resize: 'vertical',
-              minHeight: 100,
-              transition: 'all 0.2s ease',
-              outline: 'none',
-              boxShadow: commentFocused ? '0 0 0 4px rgba(255, 0, 64, 0.1)' : 'none'
-            }}
-          />
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="submit"
-              disabled={!commentText.trim() || isPostingComment}
-              onMouseEnter={() => setSubmitHover(true)}
-              onMouseLeave={() => { setSubmitHover(false); setSubmitActive(false); }}
-              onMouseDown={() => setSubmitActive(true)}
-              onMouseUp={() => setSubmitActive(false)}
-              style={{
-                marginTop: 12,
-                padding: '12px 24px',
-                background: 'linear-gradient(135deg, #ff0040, #9d00ff)',
-                border: 'none',
-                borderRadius: 24,
-                color: '#ffffff',
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: (commentText.trim() && !isPostingComment) ? 'pointer' : 'not-allowed',
-                opacity: (commentText.trim() && !isPostingComment) ? 1 : 0.5,
-                transition: 'all 0.2s ease',
-                boxShadow: submitHover ? '0 6px 20px rgba(255, 0, 64, 0.4)' : '0 4px 15px rgba(255, 0, 64, 0.3)',
-                transform: submitActive ? 'translateY(0)' : (submitHover ? 'translateY(-2px)' : 'translateY(0)')
-              }}
-            >
-              {isPostingComment ? 'Posting...' : 'Post Comment'}
-            </button>
-          </div>
-        </form>
-
-        {/* Comments list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {isCommentsLoading && comments.length === 0 ? (
-            <div style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '20px 0' }}>Loading comments...</div>
-          ) : comments.length === 0 ? (
-            <div style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center', padding: '20px 0' }}>No comments yet. Be the first to share your thoughts!</div>
-          ) : (
-            comments.map((comment) => (
-              <div key={comment.id} style={{ display: 'flex', gap: 16, opacity: comment.isOptimistic ? 0.7 : 1 }}>
-                <div style={{ flexShrink: 0 }}>
-                  {comment.user?.avatar ? (
-                    <img 
-                      src={comment.user.avatar} 
-                      alt={comment.user.username} 
-                      style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.1)' }}
-                    />
-                  ) : (
-                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #333, #111)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, border: '2px solid rgba(255,255,255,0.1)' }}>
-                      👤
-                    </div>
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                    <span style={{ color: '#fff', fontWeight: 600, fontSize: 15 }}>{comment.user?.username || 'Anonymous'}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{formatDate(comment.created_at)}</span>
-                  </div>
-                  <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 15, lineHeight: 1.6, margin: 0, wordWrap: 'break-word' }}>
-                    {comment.content}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
         </div>
       </div>
 
@@ -1230,6 +1050,8 @@ ExpandedPlayer.propTypes = {
   onCollapse: PropTypes.func,
   onSeek: PropTypes.func,
   onSkip: PropTypes.func,
+  onNext: PropTypes.func,
+  onPrev: PropTypes.func,
   isShuffling: PropTypes.bool,
   repeatMode: PropTypes.oneOf(['off', 'all', 'one']),
   onShuffleToggle: PropTypes.func,

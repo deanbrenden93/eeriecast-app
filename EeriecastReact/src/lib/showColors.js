@@ -20,9 +20,32 @@
  */
 
 const SHOW_COLORS = {
-  // ── Fill in your shows below ──────────────────────────────────────────
-  // 'delete-after-reading': { primary: '#f59e0b', darker: '#d97706', shadow: '#f59e0b33' },
-  // 'riscotto':             { primary: '#10b981', darker: '#059669', shadow: '#10b98133' },
+  // Unexplained Encounters AFTER HOURS — toxic green glow
+  '10':                     { primary: '#4ade80', darker: '#16a34a', shadow: '#4ade8033' },
+  // Delete After Reading — vivid crimson / blood red
+  'delete-after-reading':   { primary: '#ef4444', darker: '#b91c1c', shadow: '#ef444433' },
+  // Unexplained Encounters — deep moody red / maroon
+  'unexplained-encounters': { primary: '#dc2626', darker: '#991b1b', shadow: '#dc262633' },
+  // Tales from the Break Room — warm amber / rust
+  'tales-from-the-break-room': { primary: '#d97706', darker: '#92400e', shadow: '#d9770633' },
+  // Redwood Bureau — deep teal / forest blue
+  'redwood-bureau':            { primary: '#0d9488', darker: '#115e59', shadow: '#0d948833' },
+  // Night Watchers — vibrant purple (background glow)
+  'night-watchers':            { primary: '#a855f7', darker: '#7e22ce', shadow: '#a855f733' },
+  // Manmade Monsters — amaranth pink-red ("Manmade" title text)
+  'manmade-monsters':          { primary: '#e11d48', darker: '#9f1239', shadow: '#e11d4833' },
+  // Freaky Folklore — eerie teal-cyan (misty swamp atmosphere)
+  'freaky-folklore':           { primary: '#2dd4bf', darker: '#0f766e', shadow: '#2dd4bf33' },
+  // Destination Terror — icy steel blue (cold snowy atmosphere)
+  'destination-terror':        { primary: '#94a3b8', darker: '#475569', shadow: '#94a3b833' },
+  // Alone in the Woods — muted forest green / olive
+  'alone-in-the-woods':        { primary: '#6b8e6b', darker: '#3d5c3d', shadow: '#6b8e6b33' },
+  // Drakenblud: The Malformed King — ember orange / fire glow
+  'drakenblud-the-malformed-king': { primary: '#f97316', darker: '#c2410c', shadow: '#f9731633' },
+  // LORE – A Folklore Horror Novel — dark desaturated teal / ancient wood
+  'lore-a-folklore-horror-novel':  { primary: '#5eaaa8', darker: '#2d6a6a', shadow: '#5eaaa833' },
+  // Dogwood — dusty crimson rose (flower petals)
+  'dogwood-a-southern-gothic-body-horror-novel': { primary: '#c2455a', darker: '#8b2040', shadow: '#c2455a33' },
 };
 
 /* ── Defaults ────────────────────────────────────────────────────────────── */

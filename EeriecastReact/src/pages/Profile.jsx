@@ -126,12 +126,6 @@ export default function Profile() {
           </div>
         </div>
         
-        <div className="text-center">
-          <Button variant="outline" className="border-red-600 text-red-500 hover:bg-red-600 hover:text-white rounded-full px-6 md:px-8 py-2 md:py-3 font-semibold text-sm md:text-base transition-colors w-full sm:w-auto">
-            View All Your Comments
-          </Button>
-        </div>
-
       </div>
     </div>
   );

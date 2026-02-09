@@ -30,8 +30,12 @@ export const AudioPlayerProvider = ({ children }) => {
   const [isShuffling, setIsShuffling] = useState(false);
   const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
 
-  // Audio player hook
-  const audioPlayer = useAudioPlayer({ onEnd: () => {} });
+  // Ref-based onEnd so the audio hook always calls the latest auto-advance logic
+  const onEndedRef = useRef(null);
+  const handleAudioEnded = useCallback(() => { onEndedRef.current?.(); }, []);
+
+  // Audio player hook — auto-advance wired through handleAudioEnded
+  const audioPlayer = useAudioPlayer({ onEnd: handleAudioEnded });
   const {
     audioRef,
     episode,
@@ -136,19 +140,34 @@ export const AudioPlayerProvider = ({ children }) => {
     const map = episodeProgressMapRef.current;
     const shouldRemember = getSetting('rememberPosition');
 
+    // Ensure there is always at least a 1-item queue so next/prev and
+    // autoplay have something to work with. If setPlaybackQueue already
+    // populated the queue in this same batch, the functional updater
+    // will see the populated array and leave it alone.
+    const pod = rest.podcast;
+    setQueue(prev => {
+      if (prev.length > 0) return prev;          // queue already set
+      return [{ podcast: pod, episode: ep, resume }]; // minimal fallback
+    });
+    setQueueIndex(prev => (prev >= 0 ? prev : 0));
+    setShowPlayer(true);
+
+    let result;
     // If "remember position" is off, always start from the beginning
     if (!shouldRemember) {
-      return loadAndPlay({ ...rest, episode: ep, resume: { progress: 0 } });
-    }
-
-    // If resume.progress is 0 (default), check if we have saved progress
-    if (ep && Number.isFinite(eid) && map && (!resume || resume.progress === 0 || resume.progress == null)) {
+      result = await loadAndPlay({ ...rest, episode: ep, resume: { progress: 0 } });
+    } else if (ep && Number.isFinite(eid) && map && (!resume || resume.progress === 0 || resume.progress == null)) {
+      // If resume.progress is 0 (default), check if we have saved progress
       const saved = map.get(eid);
       if (saved && saved.progress > 0 && !saved.completed) {
-        return loadAndPlay({ ...rest, episode: ep, resume: { progress: saved.progress } });
+        result = await loadAndPlay({ ...rest, episode: ep, resume: { progress: saved.progress } });
+      } else {
+        result = await loadAndPlay({ ...rest, episode: ep, resume });
       }
+    } else {
+      result = await loadAndPlay({ ...rest, episode: ep, resume });
     }
-    return loadAndPlay({ ...rest, episode: ep, resume });
+    return result;
   }, [loadAndPlay]);
 
   // Queue helpers
@@ -219,6 +238,7 @@ export const AudioPlayerProvider = ({ children }) => {
   useEffect(() => { repeatRef.current = repeatMode; }, [repeatMode]);
   useEffect(() => { loadAndPlayRef.current = loadAndPlaySmart; }, [loadAndPlaySmart]);
 
+  // Wire the ref so the audio hook's onEnd always calls the latest auto-advance
   const onEndedFn = useCallback(async () => {
     const list = queueRef.current || [];
     const idx = idxRef.current ?? -1;
@@ -276,16 +296,8 @@ export const AudioPlayerProvider = ({ children }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Attach ended listener using stable onEndedFn
-  useEffect(() => {
-    const audio = audioRef?.current;
-    if (!audio) return;
-    const handler = () => { onEndedFn(); };
-    audio.addEventListener('ended', handler);
-    return () => {
-      audio.removeEventListener('ended', handler);
-    };
-  }, [audioRef, onEndedFn]);
+  // Keep the ref in sync so the hook's onEnd always calls the latest logic
+  useEffect(() => { onEndedRef.current = onEndedFn; }, [onEndedFn]);
 
   // Show player when episode is loaded + track in recentlyPlayed
   useEffect(() => {
@@ -335,10 +347,17 @@ export const AudioPlayerProvider = ({ children }) => {
   const [isMiniPlayerMinimized, setIsMiniPlayerMinimized] = useState(false);
 
   const handleClosePlayer = () => {
+    pause();
     setShowPlayer(false);
     setShowExpandedPlayer(false);
     setIsMiniPlayerMinimized(false);
     setMiniPlayerReady(true);
+    // Fully reset episode/podcast so re-playing the same episode triggers
+    // the useEffect that shows the player again
+    setEpisode(null);
+    setPodcast(null);
+    setQueue([]);
+    setQueueIndex(-1);
     // Clear persisted state when user explicitly closes the player
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
   };
@@ -420,6 +439,48 @@ export const AudioPlayerProvider = ({ children }) => {
     };
   }, []);
 
+  // ─── Next / Previous Track ───────────────────────────────────────
+  const playNext = useCallback(async () => {
+    const list = queueRef.current || [];
+    const idx = idxRef.current ?? -1;
+    const total = list.length;
+    if (total <= 0 || idx < 0) return;
+
+    let nextIndex = -1;
+    if (shuffleRef.current) {
+      nextIndex = Math.floor(Math.random() * total);
+      if (nextIndex === idx && total > 1) nextIndex = (idx + 1) % total;
+    } else {
+      if (idx < total - 1) nextIndex = idx + 1;
+      else if (repeatRef.current === 'all') nextIndex = 0;
+    }
+    if (nextIndex >= 0 && nextIndex < total) {
+      await playQueueIndex(nextIndex);
+    }
+  }, [playQueueIndex]);
+
+  const playPrev = useCallback(async () => {
+    const list = queueRef.current || [];
+    const idx = idxRef.current ?? -1;
+    const total = list.length;
+    if (total <= 0 || idx < 0) return;
+
+    // If more than 3 seconds in, restart current track instead
+    const audio = audioRef?.current;
+    if (audio && audio.currentTime > 3) {
+      seek(0);
+      return;
+    }
+
+    let prevIndex = -1;
+    if (idx > 0) prevIndex = idx - 1;
+    else if (repeatRef.current === 'all') prevIndex = total - 1;
+
+    if (prevIndex >= 0 && prevIndex < total) {
+      await playQueueIndex(prevIndex);
+    }
+  }, [playQueueIndex, audioRef, seek]);
+
   // ─── Handlers to expose to UI ─────────────────────────────────────
   const toggleShuffle = useCallback(() => {
     setIsShuffling((s) => !s);
@@ -463,6 +524,9 @@ export const AudioPlayerProvider = ({ children }) => {
         repeatMode,
         toggleShuffle,
         cycleRepeat,
+        // track navigation
+        playNext,
+        playPrev,
         // sleep timer api
         sleepTimerRemaining,
         sleepTimerEndTime,
@@ -494,6 +558,8 @@ export const AudioPlayerProvider = ({ children }) => {
               onClose={handleClosePlayer}
               onSeek={seek}
               onSkip={skip}
+              onNext={playNext}
+              onPrev={playPrev}
               onPlay={play}
               onPause={pause}
               // shuffle/repeat props
@@ -536,6 +602,8 @@ export const AudioPlayerProvider = ({ children }) => {
               onToggle={toggle}
               onExpand={handleExpandPlayer}
               onSkip={skip}
+              onNext={playNext}
+              onPrev={playPrev}
               onSeek={seek}
               onClose={handleClosePlayer}
               onVolumeChange={setVolume}
@@ -601,6 +669,8 @@ export const useAudioPlayerContext = () => {
       repeatMode: 'off',
       toggleShuffle: noop,
       cycleRepeat: noop,
+      playNext: noopAsync,
+      playPrev: noopAsync,
       sleepTimerRemaining: 0,
       sleepTimerEndTime: null,
       setSleepTimer: noop,

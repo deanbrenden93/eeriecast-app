@@ -96,10 +96,6 @@ export const Episode = {
   async delete(id) {
     return djangoClient.delete(`/episodes/${id}/`);
   },
-
-  async postComment(id, content) {
-    return djangoClient.post(`/episodes/${id}/comments/`, { content });
-  }
 };
 
 // Creator entity service

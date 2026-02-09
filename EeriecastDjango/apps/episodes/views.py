@@ -1,6 +1,6 @@
 from rest_framework import generics, filters, permissions
-from .models import Episode, Comment
-from .serializers import EpisodeSerializer, CommentSerializer
+from .models import Episode
+from .serializers import EpisodeSerializer
 
 class EpisodeListCreateView(generics.ListCreateAPIView):
     queryset = Episode.objects.select_related('podcast', 'podcast__creator')
@@ -23,17 +23,3 @@ class EpisodeDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method == 'GET':
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
-
-
-class CommentCreateView(generics.CreateAPIView):
-    serializer_class = CommentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def perform_create(self, serializer):
-        episode_id = self.kwargs.get('pk')
-        try:
-            episode = Episode.objects.get(pk=episode_id)
-        except Episode.DoesNotExist:
-            from rest_framework.exceptions import NotFound
-            raise NotFound("Episode not found")
-        serializer.save(user=self.request.user, episode=episode)
