@@ -543,18 +543,32 @@
   box-sizing: border-box;
 }
 
+/* Marquee scrolling animation for long titles */
+@keyframes marquee-scroll {
+  0%, 10% { transform: translateX(0); }
+  45%, 55% { transform: translateX(calc(-100% + var(--marquee-container, 100vw))); }
+  90%, 100% { transform: translateX(0); }
+}
+.animate-marquee {
+  --marquee-container: 100%;
+  animation: marquee-scroll 12s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Network Ratings */
 .rating-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 20px;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .rating-badge.rating-g {
@@ -591,8 +605,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 20px;
+  flex-wrap: nowrap;
 }
 
 .episode-description-toggle-btn,

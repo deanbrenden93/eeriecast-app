@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import PropTypes from 'prop-types';
 import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
+import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 
 export default function KeepListeningSection({
   items,
@@ -82,6 +83,11 @@ export default function KeepListeningSection({
                       <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
                         <Play className="w-5 h-5 text-black fill-black ml-0.5" />
                       </div>
+                    </div>
+
+                    {/* Three-dot menu */}
+                    <div className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-[5]" onClick={(e) => e.stopPropagation()}>
+                      <EpisodeMenu episode={episode} podcast={podcast} className="bg-black/60 backdrop-blur-sm" side="right" />
                     </div>
 
                     {/* Members-only badge */}

@@ -9,6 +9,7 @@ import { isAudiobook, formatDate } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
+import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 
 function formatDuration(raw) {
   if (!raw && raw !== 0) return null;
@@ -211,6 +212,11 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
                     >
                       <Play className="w-4 h-4 text-white ml-0.5 fill-white" />
                     </button>
+                  </div>
+
+                  {/* Three-dot menu — top-right on hover (below badge if present) */}
+                  <div className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-[5]" onClick={(e) => e.stopPropagation()}>
+                    <EpisodeMenu episode={ep} podcast={ep.podcast_data} className="bg-black/60 backdrop-blur-sm" side="right" />
                   </div>
 
                   {/* Members-only / Premium badge */}

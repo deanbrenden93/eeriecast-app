@@ -4,13 +4,14 @@ import PropTypes from 'prop-types';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Heart, Play, Plus, Trash2, Lock } from 'lucide-react';
+import { Heart, Play, Trash2, Lock } from 'lucide-react';
 import { useUser } from '@/context/UserContext.jsx';
 import { UserLibrary } from '@/api/entities';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { formatDate } from '@/lib/utils';
 import { FREE_FAVORITE_LIMIT } from '@/lib/freeTier';
 import { toast } from '@/components/ui/use-toast';
+import EpisodeMenu from '@/components/podcasts/EpisodeMenu';
 
 
 function formatDuration(secondsOrString) {
@@ -209,10 +210,11 @@ export default function EpisodesTable({
               </div>
             </div>
             <div className="flex items-center gap-2 text-gray-400 mt-3 sm:mt-0 w-full sm:w-auto justify-end">
-              {onRemoveFromPlaylist ? (
+              {/* Remove from playlist (only in playlist context) */}
+              {onRemoveFromPlaylist && (
                 <button
                   className={`p-2 transition-colors ${isRemoving ? 'text-gray-500 cursor-wait' : 'hover:text-white'}`}
-                  onClick={() => !isRemoving && onRemoveFromPlaylist && onRemoveFromPlaylist(ep)}
+                  onClick={() => !isRemoving && onRemoveFromPlaylist(ep)}
                   title={isRemoving ? 'Removing...' : 'Remove from playlist'}
                   disabled={isRemoving}
                 >
@@ -225,15 +227,10 @@ export default function EpisodesTable({
                     <Trash2 className="w-5 h-5" />
                   )}
                 </button>
-              ) : (
-                <button
-                  className={`p-2 transition-colors ${isGated ? 'text-gray-600 cursor-not-allowed' : 'hover:text-white'}`}
-                  onClick={() => { if (!isGated && onAddToPlaylist) onAddToPlaylist(ep); }}
-                  title={isGated ? 'Premium members only' : 'Add to playlist'}
-                  disabled={isGated}
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
+              )}
+              {/* Triple dots → Favorite → Play */}
+              {!isGated && (
+                <EpisodeMenu episode={ep} podcast={show || ep?.podcast} onAddToPlaylist={onAddToPlaylist} />
               )}
               <button
                 className={`p-2 transition-colors ${isGated ? 'text-gray-600 cursor-not-allowed' : 'hover:text-white'}`}

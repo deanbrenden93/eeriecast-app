@@ -481,6 +481,37 @@ export const AudioPlayerProvider = ({ children }) => {
     }
   }, [playQueueIndex, audioRef, seek]);
 
+  // ─── Add to Queue / Play Next ────────────────────────────────────
+  const addToQueue = useCallback((pod, ep) => {
+    if (!ep) return;
+    const item = { podcast: pod, episode: ep, resume: { progress: 0 } };
+    setQueue(prev => [...prev, item]);
+    // If nothing is playing, start the episode immediately
+    if (!episode) {
+      setQueueIndex(0);
+      setShowPlayer(true);
+      loadAndPlaySmart({ podcast: pod, episode: ep, resume: { progress: 0 } });
+    }
+  }, [episode, loadAndPlaySmart]);
+
+  const addNext = useCallback((pod, ep) => {
+    if (!ep) return;
+    const item = { podcast: pod, episode: ep, resume: { progress: 0 } };
+    const idx = idxRef.current ?? -1;
+    const insertAt = idx >= 0 ? idx + 1 : 0;
+    setQueue(prev => [
+      ...prev.slice(0, insertAt),
+      item,
+      ...prev.slice(insertAt),
+    ]);
+    // If nothing is playing, start the episode immediately
+    if (!episode) {
+      setQueueIndex(0);
+      setShowPlayer(true);
+      loadAndPlaySmart({ podcast: pod, episode: ep, resume: { progress: 0 } });
+    }
+  }, [episode, loadAndPlaySmart]);
+
   // ─── Handlers to expose to UI ─────────────────────────────────────
   const toggleShuffle = useCallback(() => {
     setIsShuffling((s) => !s);
@@ -527,6 +558,9 @@ export const AudioPlayerProvider = ({ children }) => {
         // track navigation
         playNext,
         playPrev,
+        // queue manipulation
+        addToQueue,
+        addNext,
         // sleep timer api
         sleepTimerRemaining,
         sleepTimerEndTime,
@@ -671,6 +705,8 @@ export const useAudioPlayerContext = () => {
       cycleRepeat: noop,
       playNext: noopAsync,
       playPrev: noopAsync,
+      addToQueue: noop,
+      addNext: noop,
       sleepTimerRemaining: 0,
       sleepTimerEndTime: null,
       setSleepTimer: noop,

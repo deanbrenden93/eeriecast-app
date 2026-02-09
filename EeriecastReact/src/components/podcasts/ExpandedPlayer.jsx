@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import PropTypes from "prop-types";
 import { Heart, X, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
@@ -277,6 +278,40 @@ InlineAddToPlaylistModal.propTypes = {
   resolving: PropTypes.bool,
 };
 
+/** Scrolling marquee for episode titles that overflow a single line. */
+function MarqueeTitle({ text }) {
+  const containerRef = useRef(null);
+  const textRef = useRef(null);
+  const [needsScroll, setNeedsScroll] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (containerRef.current && textRef.current) {
+        const cw = containerRef.current.clientWidth;
+        setContainerWidth(cw);
+        setNeedsScroll(textRef.current.scrollWidth > cw + 2);
+      }
+    };
+    checkOverflow();
+    const tid = setTimeout(checkOverflow, 500);
+    return () => clearTimeout(tid);
+  }, [text]);
+
+  return (
+    <div ref={containerRef} className="relative w-full overflow-hidden">
+      <h1
+        ref={textRef}
+        className={`text-white text-2xl font-bold whitespace-nowrap ${needsScroll ? 'animate-marquee inline-block' : 'text-center'}`}
+        style={needsScroll ? { '--marquee-container': `${containerWidth}px` } : undefined}
+      >
+        {text}
+      </h1>
+    </div>
+  );
+}
+MarqueeTitle.propTypes = { text: PropTypes.string };
+
 export default function ExpandedPlayer({ 
   podcast, 
   episode, 
@@ -298,6 +333,7 @@ export default function ExpandedPlayer({
   playQueueIndex,
   loadAndPlay
 }) {
+  const navigate = useNavigate();
   const [isLiked, setIsLiked] = useState(false);
   const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
@@ -643,9 +679,21 @@ export default function ExpandedPlayer({
         </div>
 
         {/* Track Info */}
-        <div className="mb-6 text-center max-w-md">
-          <h2 className="text-gray-400 text-sm mb-2">{podcast?.title || ''}</h2>
-          <h1 className="text-white text-2xl font-bold mb-4 line-clamp-2">{episode?.title || ''}</h1>
+        <div className="mb-6 text-center w-full max-w-md overflow-hidden">
+          <button
+            type="button"
+            onClick={() => {
+              const pid = podcast?.id || podcast?.slug;
+              if (pid) {
+                onCollapse?.();
+                navigate(`/Episodes?id=${pid}`);
+              }
+            }}
+            className="text-gray-400 text-sm mb-2 hover:text-white transition-colors hover:underline underline-offset-2 cursor-pointer bg-transparent border-none"
+          >
+            {podcast?.title || ''}
+          </button>
+          <MarqueeTitle text={episode?.title || ''} />
         </div>
 
         {/* Action buttons + Controls (exact original look) */}

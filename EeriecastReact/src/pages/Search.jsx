@@ -12,6 +12,7 @@ import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
+import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 
 /** Format duration — handles seconds (number), "HH:MM:SS" string, or "MM:SS" string */
 function formatDuration(raw) {
@@ -151,6 +152,11 @@ function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthentic
               >
                 <Heart className="w-4 h-4" />
               </button>
+              <EpisodeMenu
+                episode={episode}
+                podcast={{ id: episode.podcast_id || episode.podcast, title: episode.podcast_title }}
+                onAddToPlaylist={onAddToPlaylist}
+              />
               <button
                 className="p-1.5 text-zinc-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/[0.04]"
                 title="Play"
