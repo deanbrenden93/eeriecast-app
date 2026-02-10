@@ -555,6 +555,40 @@
   will-change: transform;
 }
 
+/* Hero gold spark rising particles — bottom-right to top-left with twirl */
+@keyframes hero-spark-rise {
+  0%   {
+    transform: translateY(0) translateX(0) rotate(0deg) scale(1);
+    opacity: 0;
+  }
+  5%   { opacity: 0.9; }
+  20%  {
+    transform: translateY(-20vh) translateX(calc(var(--spark-drift-x) * 0.2))
+               rotate(calc(var(--spark-spins) * 0.25)) scale(0.95);
+    opacity: 1;
+  }
+  40%  {
+    transform: translateY(-40vh) translateX(calc(var(--spark-drift-x) * 0.45 + var(--spark-wobble)))
+               rotate(calc(var(--spark-spins) * 0.5)) scale(0.85);
+    opacity: 0.8;
+  }
+  60%  {
+    transform: translateY(-60vh) translateX(calc(var(--spark-drift-x) * 0.65 - var(--spark-wobble) * 0.6))
+               rotate(calc(var(--spark-spins) * 0.7)) scale(0.65);
+    opacity: 0.55;
+  }
+  80%  {
+    transform: translateY(-80vh) translateX(calc(var(--spark-drift-x) * 0.85 + var(--spark-wobble) * 0.3))
+               rotate(calc(var(--spark-spins) * 0.9)) scale(0.45);
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateY(-105vh) translateX(var(--spark-drift-x))
+               rotate(var(--spark-spins)) scale(0.2);
+    opacity: 0;
+  }
+}
+
 /* Network Ratings */
 .rating-badge {
   display: inline-flex;

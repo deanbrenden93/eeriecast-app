@@ -23,6 +23,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettings } from '@/hooks/use-settings';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 /* ─── Reusable components ──────────────────────────────────────────── */
 
@@ -240,7 +242,7 @@ export default function Settings() {
             <div className="border-t border-white/[0.04] pt-3">
               <p className="text-xs text-zinc-600 mb-3">&copy; 2026 Eeriecast. All rights reserved.</p>
               <div className="flex flex-wrap gap-x-5 gap-y-2">
-                {['Terms of Service', 'Privacy Policy', 'Contact Support'].map(link => (
+                {['Terms of Service', 'Privacy Policy'].map(link => (
                   <a
                     key={link}
                     href="#"
@@ -250,6 +252,13 @@ export default function Settings() {
                     <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
                   </a>
                 ))}
+                <Link
+                  to={createPageUrl('Help')}
+                  className="text-sm text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 group"
+                >
+                  Help Center
+                  <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                </Link>
               </div>
             </div>
           </div>

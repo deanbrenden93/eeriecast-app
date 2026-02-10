@@ -3,6 +3,7 @@ import { createPageUrl } from '@/utils';
 import { useUser } from '@/context/UserContext.jsx';
 import PropTypes from 'prop-types';
 import { motion } from 'framer-motion';
+import { HelpCircle } from 'lucide-react';
 
 export default function UserMenu({ isOpen, onClose }) {
   const { user, logout } = useUser();
@@ -57,6 +58,14 @@ export default function UserMenu({ isOpen, onClose }) {
             Go Premium
           </Link>
         )}
+        <Link
+          to={createPageUrl('Help')}
+          onClick={onClose}
+          className="flex items-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-zinc-400"
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+          Help
+        </Link>
       </nav>
       <div className="h-px bg-white/5" />
       <button
