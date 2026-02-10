@@ -8,7 +8,6 @@ import {
   Crown,
   Headphones,
   BookOpen,
-  ArrowDownToLine,
   Star,
   CircleSlash,
   Sparkles,
@@ -17,38 +16,40 @@ import {
   CreditCard,
   Lock,
   ShieldCheck,
+  ListMusic,
+  Heart,
 } from 'lucide-react';
 
 const features = [
   {
-    icon: Headphones,
-    title: 'All 1,300+ Episodes',
-    desc: 'Every show, every episode, no limits',
+    icon: Star,
+    title: 'Exclusive Members-Only Shows',
+    desc: 'Full access to all premium horror content',
   },
   {
     icon: BookOpen,
-    title: 'Full Audiobooks & E-Reader',
-    desc: 'Listen and read complete horror novels',
+    title: 'Complete Audiobooks & E-Reader',
+    desc: 'Listen to and read entire horror novels — every chapter',
   },
   {
-    icon: Star,
-    title: 'Exclusive Shows',
-    desc: 'Members-only horror content',
+    icon: ListMusic,
+    title: 'Unlimited Playlists',
+    desc: 'Create and manage your own custom collections',
   },
   {
-    icon: ArrowDownToLine,
-    title: 'Offline Downloads',
-    desc: 'Listen anywhere without internet',
-  },
-  {
-    icon: Sparkles,
-    title: 'Early Access',
-    desc: 'New episodes before everyone else',
+    icon: Heart,
+    title: 'Unlimited Favorites',
+    desc: 'Save as many episodes as you want',
   },
   {
     icon: CircleSlash,
-    title: 'No Ads Ever',
-    desc: 'Pure, uninterrupted horror',
+    title: 'Ad-Free Listening',
+    desc: 'Pure, uninterrupted horror on every episode',
+  },
+  {
+    icon: Headphones,
+    title: 'All 1,300+ Episodes',
+    desc: 'Every show in the Eeriecast catalog, no restrictions',
   },
 ];
 
