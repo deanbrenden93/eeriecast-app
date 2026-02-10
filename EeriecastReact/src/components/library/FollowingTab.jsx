@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Play } from "lucide-react";
@@ -7,6 +8,7 @@ import { useUser } from "@/context/UserContext";
 import { useMemo, useState } from "react";
 
 export default function FollowingTab({ podcasts, playlists = [], onAddToPlaylist }) {
+  const navigate = useNavigate();
   const { followedPodcastIds } = useUser();
 
   // Filter podcasts to only show followed ones
@@ -47,7 +49,10 @@ export default function FollowingTab({ podcasts, playlists = [], onAddToPlaylist
         </div>
         <h2 className="text-2xl font-bold text-white mb-2">No Followed Podcasts Yet</h2>
         <p className="text-gray-400 mb-6">Start following podcasts to see them here.</p>
-        <Button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full flex items-center gap-2">
+        <Button
+          onClick={() => navigate('/Discover?tab=podcasts')}
+          className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white px-6 py-2 rounded-full flex items-center gap-2 shadow-[0_4px_16px_rgba(220,38,38,0.2)]"
+        >
           Browse Podcasts
         </Button>
       </div>

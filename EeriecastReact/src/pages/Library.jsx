@@ -447,7 +447,10 @@ export default function Library() {
         </div>
         <h2 className="text-2xl font-bold text-white mb-2">No Downloads Yet</h2>
         <p className="text-zinc-500 mb-6">Download episodes for offline listening.</p>
-        <Button className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white px-6 py-2 rounded-full flex items-center gap-2 shadow-[0_4px_16px_rgba(220,38,38,0.2)]">
+        <Button
+          onClick={() => navigate('/Discover?tab=trending')}
+          className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white px-6 py-2 rounded-full flex items-center gap-2 shadow-[0_4px_16px_rgba(220,38,38,0.2)]"
+        >
           Browse Episodes
         </Button>
       </div>

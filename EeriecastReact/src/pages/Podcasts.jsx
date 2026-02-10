@@ -240,7 +240,7 @@ export default function Podcasts() {
     <div className="min-h-screen bg-eeriecast-surface w-full">
       {/* Hero */}
       {isLoading ? (
-        <div className="h-[60vh] w-full bg-eeriecast-surface-light/30" />
+        <div className="w-full bg-eeriecast-surface-light/30" style={{ minHeight: 'clamp(380px, 50vh, 520px)' }} />
       ) : (
         heroPodcast && <FeaturedHero podcast={heroPodcast} onPlay={handleStartListening} />
       )}
