@@ -257,8 +257,8 @@ export default function MobilePlayer({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 60, opacity: 0, scale: 0.9 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`fixed left-0 right-0 z-[10050] min-[1001px]:max-w-[1600px] min-[1001px]:left-1/2 min-[1001px]:-translate-x-1/2 min-[1001px]:rounded-t-xl min-[1001px]:bottom-0 ${
-              eReaderOpen ? 'bottom-0' : 'bottom-[calc(var(--bottom-nav-h,70px)_+_env(safe-area-inset-bottom,0px))]'
+            className={`fixed left-0 right-0 z-[10050] ${
+              eReaderOpen ? 'bottom-0' : 'max-[1000px]:bottom-[calc(var(--bottom-nav-h,70px)_+_env(safe-area-inset-bottom,0px))] min-[1001px]:bottom-0'
             }`}
           >
             <div
