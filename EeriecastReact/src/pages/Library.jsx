@@ -6,6 +6,7 @@ import { Play, Edit, Plus, Download, Trash2, Headphones, Smartphone } from "luci
 import { Capacitor } from '@capacitor/core';
 import FavoritesTab from "../components/library/FavoritesTab";
 import FollowingTab from "../components/library/FollowingTab";
+import HistoryTab from "../components/library/HistoryTab";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { AnimatePresence, motion } from "framer-motion";
@@ -19,7 +20,7 @@ import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
-import EpisodesTable from "../components/podcasts/EpisodesTable";
+
 
 export default function Library() {
   const location = useLocation();
@@ -464,19 +465,11 @@ export default function Library() {
   };
 
   const renderHistoryTab = () => {
-    if (isLoadingHistory) return <div className="text-zinc-500 text-center py-10">Loading history...</div>;
-    if (!historyEpisodes.length) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-[240px] text-center text-zinc-500">
-          No listening history yet.
-        </div>
-      );
-    }
     return (
-      <EpisodesTable
-        episodes={historyEpisodes}
-        show={null}
-        onPlay={doPlayHistory}
+      <HistoryTab
+        historyEpisodes={historyEpisodes}
+        isLoading={isLoadingHistory}
+        onPlayEpisode={doPlayHistory}
         onAddToPlaylist={handleOpenAddToPlaylist}
       />
     );
