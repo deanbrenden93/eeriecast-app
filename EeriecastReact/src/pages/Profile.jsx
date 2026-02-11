@@ -301,7 +301,7 @@ export default function Profile() {
                 Recent Activity
               </h2>
               <Link
-                to={createPageUrl("Library")}
+                to={`${createPageUrl("Library")}?tab=history`}
                 className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
               >
                 View all
