@@ -99,15 +99,15 @@ export default function Audiobooks() {
       {/* Content */}
       <div className="pb-32">
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="aspect-[3/4] bg-eeriecast-surface-light/50 rounded-2xl animate-pulse" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="aspect-[2/3] bg-eeriecast-surface-light/50 rounded-xl animate-pulse" />
             ))}
           </div>
         ) : books.length === 0 ? (
           <div className="text-center py-20 text-zinc-500">No audiobooks available yet.</div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
             {books.map(book => (
               <BookCard key={book.id} podcast={book} />
             ))}

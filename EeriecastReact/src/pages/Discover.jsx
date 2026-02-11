@@ -218,6 +218,13 @@ export default function Discover() {
     } catch { return null; }
   })();
 
+  const queryCategoryParam = (() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      return (params.get('category') || '').toLowerCase() || null;
+    } catch { return null; }
+  })();
+
   const [activeTab, setActiveTab] = useState(queryTab || "Recommended");
   const { podcasts: rawPodcasts, isLoading, getById } = usePodcasts();
   const [showAddModal, setShowAddModal] = useState(false);
@@ -333,6 +340,33 @@ export default function Discover() {
     setShowFilters({ category: "all" });
     setDisplayCount(DISPLAY_PAGE_SIZE);
   }, [activeTab]);
+
+  // Pre-select a category from URL param (e.g. ?tab=Categories&category=paranormal).
+  // Uses a ref to track the last applied param so it only fires once per unique value,
+  // preventing re-selection when the user clicks "Back to Categories".
+  const lastAppliedCategoryParam = useRef(null);
+
+  useEffect(() => {
+    if (
+      queryCategoryParam &&
+      queryCategoryParam !== lastAppliedCategoryParam.current &&
+      activeTab === "Categories" &&
+      categories.length > 0
+    ) {
+      lastAppliedCategoryParam.current = queryCategoryParam;
+      const match = categories.find(c => {
+        const slug = (c.slug || '').toLowerCase();
+        const name = (c.name || '').toLowerCase();
+        return slug === queryCategoryParam || name === queryCategoryParam;
+      });
+      if (match) {
+        const slug = (match.slug || match.name || '').toLowerCase();
+        const label = (match.name || match.title || match.slug || '').toString();
+        const shows = match.podcast_count ?? match.count ?? match.total ?? null;
+        setSelectedCategory({ key: slug, label, count: shows });
+      }
+    }
+  }, [queryCategoryParam, activeTab, categories]);
 
   /* ─── episode filtering ─── */
 
@@ -662,7 +696,16 @@ export default function Discover() {
       <div>
         <div className="flex items-center gap-4 mb-6">
           <button
-            onClick={() => setSelectedCategory(null)}
+            onClick={() => {
+              setSelectedCategory(null);
+              lastAppliedCategoryParam.current = null;
+              // Clear the category URL param so a page refresh shows the grid
+              const params = new URLSearchParams(location.search);
+              if (params.has('category')) {
+                params.delete('category');
+                navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+              }
+            }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-eeriecast-surface-lighter hover:bg-white/[0.06] text-white border border-white/[0.06] transition-all duration-300"
           >
             <span className="text-lg">←</span>
