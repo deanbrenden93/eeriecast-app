@@ -46,7 +46,7 @@ export default function Library() {
   const [historyEpisodes, setHistoryEpisodes] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
-  const { isAuthenticated, isPremium, favoritePodcasts, favoritesLoading, favoriteEpisodeIds } = useUser();
+  const { isAuthenticated, isPremium, favoritePodcasts, favoriteEpisodes, favoritesLoading, favoriteEpisodeIds } = useUser();
   const { playlists, isLoadingPlaylists, addPlaylist, updatePlaylist, removePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const navigate = useNavigate();
@@ -288,10 +288,7 @@ export default function Library() {
           </div>
         )}
         <FavoritesTab
-          podcasts={podcasts}
-          playlists={playlists}
-          onAddToPlaylist={handleOpenAddToPlaylist}
-          favoritesPodcasts={favoritePodcasts}
+          favoriteEpisodes={favoriteEpisodes}
           isLoading={favoritesLoading}
           onPlayAllFavorites={handlePlayAllFavorites}
           playAllCount={playAllCount}

@@ -12,6 +12,7 @@ const UserProvider = ({ children }) => {
   const [favoriteEpisodeIds, setFavoriteEpisodeIds] = useState(() => new Set());
   const [favoritePodcastIds, setFavoritePodcastIds] = useState(() => new Set());
   const [favoritePodcasts, setFavoritePodcasts] = useState(() => []);
+  const [favoriteEpisodes, setFavoriteEpisodes] = useState(() => []);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [followedPodcastIds, setFollowedPodcastIds] = useState(() => new Set());
   const [followingsLoading, setFollowingsLoading] = useState(false);
@@ -31,6 +32,7 @@ const UserProvider = ({ children }) => {
       setFavoriteEpisodeIds(new Set());
       setFavoritePodcastIds(new Set());
       setFavoritePodcasts([]);
+      setFavoriteEpisodes([]);
       return { episodes: new Set(), podcasts: new Set(), podcastsList: [] };
     }
     setFavoritesLoading(true);
@@ -132,12 +134,28 @@ const UserProvider = ({ children }) => {
       // UI expects an array of podcast-like objects with .episodes
       setFavoritePodcasts(podcastsDisplayList);
 
+      // Build flat list of favorited episode objects (for episode-level favorites tab)
+      const flatEpisodes = [];
+      for (const item of resultsArray) {
+        if (!item) continue;
+        const favIds = new Set((Array.isArray(item.favorited_episode_ids) ? item.favorited_episode_ids : []).map(Number));
+        const eps = Array.isArray(item.episodes) ? item.episodes : [];
+        const podData = item.podcast || {};
+        for (const ep of eps) {
+          if (!ep?.id) continue;
+          if (favIds.size > 0 && !favIds.has(Number(ep.id))) continue;
+          flatEpisodes.push({ ...ep, podcast_data: podData });
+        }
+      }
+      setFavoriteEpisodes(flatEpisodes);
+
       return { episodes: episodeIdSet, podcasts: podcastIdSet, podcastsList: podcastsDisplayList };
     } catch (e) {
       console.warn('Failed to fetch favorites summary', e);
       setFavoriteEpisodeIds(new Set());
       setFavoritePodcastIds(new Set());
       setFavoritePodcasts([]);
+      setFavoriteEpisodes([]);
       return { episodes: new Set(), podcasts: new Set(), podcastsList: [] };
     } finally {
       setFavoritesLoading(false);
@@ -233,6 +251,7 @@ const UserProvider = ({ children }) => {
       setFavoriteEpisodeIds(new Set());
       setFavoritePodcastIds(new Set());
       setFavoritePodcasts([]);
+      setFavoriteEpisodes([]);
       setFollowedPodcastIds(new Set());
       setNotifications([]);
       setUnreadNotificationCount(0);
@@ -288,6 +307,7 @@ const UserProvider = ({ children }) => {
     setFavoriteEpisodeIds(new Set());
     setFavoritePodcastIds(new Set());
     setFavoritePodcasts([]);
+    setFavoriteEpisodes([]);
     setFollowedPodcastIds(new Set());
     setNotifications([]);
     setUnreadNotificationCount(0);
@@ -603,6 +623,7 @@ const UserProvider = ({ children }) => {
         favoriteEpisodeIds,
         favoritePodcastIds,
         favoritePodcasts,
+        favoriteEpisodes,
         favoritesLoading,
         refreshFavorites,
         addFavorite,

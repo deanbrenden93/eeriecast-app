@@ -115,9 +115,18 @@ function InlineAddToPlaylistModal({ open, episode, onClose, playlists = [], onAd
     if (data) {
       if (typeof data.detail === 'string') return data.detail;
       if (typeof data.message === 'string') return data.message;
-      if (data.episodes && Array.isArray(data.episodes)) return data.episodes.join(' ');
+      if (typeof data === 'object') {
+        for (const [, msgs] of Object.entries(data)) {
+          const msg = Array.isArray(msgs) ? msgs[0] : msgs;
+          if (typeof msg === 'string') {
+            if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('unique'))
+              return 'A playlist with this name already exists. Please choose a different name.';
+            return msg;
+          }
+        }
+      }
     }
-    return e?.message || 'Failed to save changes';
+    return e?.message || 'Something went wrong. Please try again.';
   };
 
   const handleSubmit = async (e) => {
@@ -434,23 +443,33 @@ export default function ExpandedPlayer({
     }
   };
 
-  const handleDownload = () => {
+  const [downloading, setDownloading] = useState(false);
+  const handleDownload = async () => {
     if (!isPremium) {
-      // setShowSubscribeModal(true); // Need to pass this or use local state
       alert("Downloads are a premium feature. Please subscribe to unlock.");
       return;
     }
-    // Placeholder for actual download logic
     const audioUrl = episode?.audio_url || episode?.ad_free_audio_url;
-    if (audioUrl) {
+    if (!audioUrl) {
+      alert("Audio URL not available for download.");
+      return;
+    }
+    try {
+      setDownloading(true);
+      const res = await fetch(audioUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = audioUrl;
-      link.download = `${episode.title}.mp3`;
+      link.href = url;
+      link.download = `${(episode.title || 'episode').replace(/[^\w\s-]/g, '')}.mp3`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else {
-      alert("Audio URL not available for download.");
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -794,9 +813,9 @@ export default function ExpandedPlayer({
         {/* Action buttons */}
         <div className="player-controls-section">
           <div className="player-action-buttons">
-            <button className="episode-download-btn" onClick={handleDownload}>
+            <button className="episode-download-btn" onClick={handleDownload} disabled={downloading}>
               <span className="icon" style={{ fontSize: 16 }}><DownloadIcon /></span>
-              <span>Download</span>
+              <span>{downloading ? 'Saving…' : 'Download'}</span>
             </button>
 
             <button

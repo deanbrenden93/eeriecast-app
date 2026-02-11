@@ -35,9 +35,20 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
     if (data) {
       if (typeof data.detail === 'string') return data.detail;
       if (typeof data.message === 'string') return data.message;
-      if (data.episodes && Array.isArray(data.episodes)) return data.episodes.join(' ');
+      // DRF field-level errors: { "name": ["..."], "episodes": ["..."] }
+      if (typeof data === 'object') {
+        for (const [field, msgs] of Object.entries(data)) {
+          const msg = Array.isArray(msgs) ? msgs[0] : msgs;
+          if (typeof msg === 'string') {
+            // Make common DRF errors more user-friendly
+            if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('unique'))
+              return `A playlist with this name already exists. Please choose a different name.`;
+            return msg;
+          }
+        }
+      }
     }
-    return e?.message || 'Failed to save changes';
+    return e?.message || 'Something went wrong. Please try again.';
   };
 
   const handleSubmit = async (e) => {

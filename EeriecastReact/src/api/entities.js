@@ -347,7 +347,7 @@ export const UserLibrary = {
   // Add to listening history (start an entry)
   async addToHistory(episodeId, progress = 0) {
     return djangoClient.post('/library/history/', {
-      episode_id: episodeId,
+      episode: episodeId,
       progress
     });
   },

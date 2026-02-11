@@ -4,8 +4,10 @@ import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Play, Crown } from "lucide-react";
 import AnimatedBackground from "../components/home/AnimatedBackground";
+import { useUser } from "@/context/UserContext";
 
 export default function Home() {
+  const { isPremium } = useUser();
   return (
     <div className="relative h-screen bg-eeriecast-surface overflow-hidden">
       <AnimatedBackground />
@@ -42,14 +44,16 @@ export default function Home() {
               START LISTENING
             </Button>
           </Link>
-          <Link to={createPageUrl("Premium")} className="w-full sm:w-auto">
-            <Button
-              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white px-8 py-6 rounded-xl text-sm font-semibold transition-all duration-500 shadow-[0_0_20px_rgba(220,38,38,0.15)] hover:shadow-[0_0_30px_rgba(220,38,38,0.3)] flex items-center justify-center gap-2"
-            >
-              <Crown className="w-4 h-4" />
-              GO PREMIUM
-            </Button>
-          </Link>
+          {!isPremium && (
+            <Link to={createPageUrl("Premium")} className="w-full sm:w-auto">
+              <Button
+                className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white px-8 py-6 rounded-xl text-sm font-semibold transition-all duration-500 shadow-[0_0_20px_rgba(220,38,38,0.15)] hover:shadow-[0_0_30px_rgba(220,38,38,0.3)] flex items-center justify-center gap-2"
+              >
+                <Crown className="w-4 h-4" />
+                GO PREMIUM
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </div>
