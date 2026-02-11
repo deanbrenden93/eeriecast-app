@@ -241,8 +241,9 @@ export const User = {
   },
 
   // Change password for the currently authenticated user
-  async changePassword(newPassword) {
+  async changePassword(currentPassword, newPassword) {
     return djangoClient.post('/auth/users/me/authenticated-change-password/', {
+      current_password: currentPassword,
       password: newPassword,
     });
   },

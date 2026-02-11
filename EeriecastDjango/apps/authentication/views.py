@@ -153,9 +153,14 @@ class UserViewSet(viewsets.ModelViewSet):
     def authenticated_change_password(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required'}, status=401)
+        current_password = request.data.get('current_password')
         new_password = request.data.get('password')
+        if not current_password:
+            return Response({'current_password': ['This field is required.']}, status=400)
         if not new_password:
             return Response({'password': ['This field is required.']}, status=400)
+        if not request.user.check_password(current_password):
+            return Response({'current_password': ['Current password is incorrect.']}, status=400)
         request.user.set_password(new_password)
         request.user.save()
         return Response(status=200)

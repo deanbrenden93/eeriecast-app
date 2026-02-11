@@ -32,6 +32,10 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
     setError(null);
 
     // Validation
+    if (!currentPassword) {
+      setError('Please enter your current password.');
+      return;
+    }
     if (newPassword.length < 8) {
       setError('New password must be at least 8 characters.');
       return;
@@ -43,7 +47,7 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
 
     setSubmitting(true);
     try {
-      await UserAPI.changePassword(newPassword);
+      await UserAPI.changePassword(currentPassword, newPassword);
       setSuccess(true);
       // Auto-close after a moment
       setTimeout(() => handleClose(), 1800);
@@ -53,6 +57,8 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
       if (data) {
         if (typeof data === 'string') {
           setError(data);
+        } else if (data.current_password) {
+          setError(Array.isArray(data.current_password) ? data.current_password.join(' ') : data.current_password);
         } else if (data.password) {
           setError(Array.isArray(data.password) ? data.password.join(' ') : data.password);
         } else if (data.detail) {
@@ -79,7 +85,7 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
             </div>
             <h2 className="text-lg font-semibold tracking-wide">Change Password</h2>
             <p className="text-xs text-gray-400 mt-1 text-center">
-              Enter a new password for your account.
+              Verify your current password, then choose a new one.
             </p>
           </div>
 
@@ -90,6 +96,21 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">
+                  Current Password
+                </label>
+                <Input
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm"
+                  placeholder="Enter your current password"
+                />
+              </div>
+              <div className="h-px bg-white/[0.06]" />
               <div>
                 <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">
                   New Password
