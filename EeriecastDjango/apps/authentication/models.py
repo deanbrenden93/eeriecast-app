@@ -16,15 +16,19 @@ class User(AbstractUser):
 
     def is_premium_member(self) -> bool:
         """
-        Return True if this user has any active subscription record.
-        This checks the billing.Subscription.is_active property rather than the cached is_premium flag.
+        Return True if this user should be treated as a premium member.
+        Checks for an active Subscription record first, then falls back
+        to the is_premium boolean flag on the user model.
         """
+        # Check the stored flag first (set via admin, test toggle, etc.)
+        if bool(getattr(self, 'is_premium', False)):
+            return True
+
         try:
             # Lazy import to avoid circular imports at import time
             from apps.billing.models import Subscription
         except Exception:
-            # If billing app is not installed, fall back to the stored flag
-            return bool(getattr(self, 'is_premium', False))
+            return False
 
         qs = Subscription.objects.filter(user=self)
         for sub in qs:
