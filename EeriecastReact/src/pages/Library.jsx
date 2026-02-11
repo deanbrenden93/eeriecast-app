@@ -254,55 +254,16 @@ export default function Library() {
   };
 
   const renderFavoritesTab = () => {
-    const handlePlayAllFavorites = async () => {
-      try {
-        const ids = Array.from(favoriteEpisodeIds || new Set());
-        if (!ids.length) return;
-        const episodes = [];
-        for (const id of ids) {
-          try {
-            const ep = await Episode.get(id);
-            if (ep) episodes.push(ep);
-          } catch { /* skip */ }
-        }
-        if (!episodes.length) return;
-        const podcastIdFromEp = (ep) => {
-          const p = ep?.podcast;
-          if (!p) return null;
-          if (typeof p === 'object') return Number(p.id || p.podcast || p.pk) || null;
-          return Number(p);
-        };
-        const uniqPodcastIds = Array.from(new Set(episodes.map(podcastIdFromEp).filter(Boolean)));
-        const podcastMap = new Map();
-        for (const pid of uniqPodcastIds) {
-          try {
-            const p = await Podcast.get(pid);
-            if (p) podcastMap.set(pid, p);
-          } catch { /* skip */ }
-        }
-        const toTs = (e) => new Date(e?.published_at || e?.created_date || e?.release_date || 0).getTime();
-        episodes.sort((a, b) => toTs(b) - toTs(a));
-        const queueItems = episodes.map((ep) => {
-          const pid = podcastIdFromEp(ep);
-          const pDetail = (pid && podcastMap.get(pid)) || (typeof ep.podcast === 'object' ? ep.podcast : null) || null;
-          const podcast = pDetail || { id: pid || `ep-${ep.id}`, title: ep?.podcast_title || ep?.title || 'Podcast' };
-          return { podcast, episode: ep };
-        });
-        await setPlaybackQueue(queueItems, 0);
-      } catch (e) {
-        console.error('Failed to play all favorite episodes:', e);
-      }
-    };
-    const playAllCount = (favoriteEpisodeIds && favoriteEpisodeIds.size) || 0;
+    const favCount = (favoriteEpisodeIds && favoriteEpisodeIds.size) || 0;
 
     return (
       <>
         {!isPremium && (
           <div className="mb-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between">
             <span className="text-sm text-zinc-400">
-              {playAllCount} / {FREE_FAVORITE_LIMIT} favorites used
+              {favCount} / {FREE_FAVORITE_LIMIT} favorites used
             </span>
-            {playAllCount >= FREE_FAVORITE_LIMIT && (
+            {favCount >= FREE_FAVORITE_LIMIT && (
               <Button
                 size="sm"
                 onClick={() => navigate(createPageUrl('Premium'))}
@@ -316,10 +277,8 @@ export default function Library() {
         <FavoritesTab
           favoriteEpisodes={favoriteEpisodes}
           isLoading={favoritesLoading}
-          onPlayAllFavorites={handlePlayAllFavorites}
           onPlayEpisode={handlePlayFollowingEpisode}
           onAddToPlaylist={handleOpenAddToPlaylist}
-          playAllCount={playAllCount}
         />
       </>
     );

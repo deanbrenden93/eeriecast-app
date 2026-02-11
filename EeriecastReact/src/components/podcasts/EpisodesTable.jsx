@@ -41,6 +41,7 @@ export default function EpisodesTable({
   lockedEpisodeIds, // Set of episode IDs locked behind the free-tier chapter limit
   accentColor, // optional { primary, darker } for play button gradient
   freeSampleEpisodeId, // ID of the admin-assigned free sample episode
+  dismissingIds, // optional Set of episode IDs being animated out (fade + slide)
   className = '',
 }) {
   const { favoriteEpisodeIds, user, refreshFavorites, isAuthenticated, isPremium, episodeProgressMap } = useUser();
@@ -118,8 +119,12 @@ export default function EpisodesTable({
         const hasProgress = progPct > 0;
         // Show a separator after the free sample row when there are more locked episodes below
         const showSeparatorAfter = isFreeSample && !isPremium && idx < rows.length - 1;
+        const isDismissing = dismissingIds instanceof Set && dismissingIds.has(ep.id);
         return (
-          <div key={ep.id || ep.slug || ep.title}>
+          <div
+            key={ep.id || ep.slug || ep.title}
+            className={`transition-all duration-300 ease-out ${isDismissing ? 'opacity-0 -translate-x-4 max-h-0 overflow-hidden py-0 my-0' : ''}`}
+          >
           <div
             className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg transition-colors group ${
               isChapterLocked
@@ -289,5 +294,6 @@ EpisodesTable.propTypes = {
     darker: PropTypes.string,
   }),
   freeSampleEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  dismissingIds: PropTypes.instanceOf(Set),
   className: PropTypes.string,
 };

@@ -11,6 +11,7 @@ export default function FollowingItem({ podcast }) {
   const { refreshFollowings, isAuthenticated } = useUser();
   const { openAuth } = useAuthModal();
   const [isUnfollowing, setIsUnfollowing] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
   const navigate = useNavigate();
 
   const creatorName = useMemo(() => {
@@ -24,28 +25,36 @@ export default function FollowingItem({ podcast }) {
 
   const handleUnfollow = async (e) => {
     e?.stopPropagation?.();
-    if (isUnfollowing || !podcast?.id) return;
+    if (isUnfollowing || isDismissed || !podcast?.id) return;
     if (!isAuthenticated) { openAuth('login'); return; }
 
     setIsUnfollowing(true);
     try {
       await UserLibrary.unfollowPodcast(podcast.id);
-      await refreshFollowings();
+      // Trigger fade-out animation, then refresh list after it completes
+      setIsDismissed(true);
+      setTimeout(() => refreshFollowings(), 400);
     } catch (err) {
       console.error('Failed to unfollow:', err);
-    } finally {
       setIsUnfollowing(false);
     }
   };
 
   const handleOpenEpisodes = () => {
+    if (isDismissed) return;
     const pid = podcast?.id;
     if (!pid) return;
     navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(pid)}`);
   };
 
   return (
-    <div className="flex-shrink-0 w-[140px]">
+    <div
+      className={`flex-shrink-0 transition-all duration-300 ease-out ${
+        isDismissed
+          ? 'opacity-0 scale-90 max-w-0 overflow-hidden mx-0 pointer-events-none'
+          : 'max-w-[140px] w-[140px]'
+      }`}
+    >
       {/* Tappable cover + info area → navigates to show */}
       <div className="cursor-pointer" onClick={handleOpenEpisodes}>
         {/* Cover art */}
@@ -84,7 +93,7 @@ export default function FollowingItem({ podcast }) {
             : 'bg-white/[0.06] border border-white/[0.08] text-zinc-300 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 active:bg-red-500/20'
           }`}
         onClick={handleUnfollow}
-        disabled={isUnfollowing}
+        disabled={isUnfollowing || isDismissed}
       >
         {isUnfollowing ? (
           <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

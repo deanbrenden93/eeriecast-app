@@ -1,22 +1,95 @@
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play, Heart, ArrowDownUp } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Play, Heart, ArrowDownUp, ListPlus } from "lucide-react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
+import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
+import { useUser } from "@/context/UserContext";
 
 export default function FavoritesTab({
   favoriteEpisodes = [],
   isLoading = false,
-  onPlayAllFavorites = () => {},
   onPlayEpisode,
   onAddToPlaylist,
-  playAllCount = 0,
 }) {
+  const { episode: currentEpisode, setPlaybackQueue, addToQueue } = useAudioPlayerContext();
+  const { favoriteEpisodeIds } = useUser();
+  const somethingPlaying = !!currentEpisode;
+
+  // ── Local episode list: mirrors favoriteEpisodes but delays removals for animation ──
+  const [localEpisodes, setLocalEpisodes] = useState(favoriteEpisodes);
+  const [dismissingIds, setDismissingIds] = useState(() => new Set());
+  const dismissTimers = useRef(new Map());
+
+  // Sync: detect additions and removals from the context
+  useEffect(() => {
+    const contextIds = favoriteEpisodeIds;
+    const localIdSet = new Set(localEpisodes.map(ep => ep.id));
+
+    // Detect removals: episodes in local list whose IDs are no longer in context
+    const removedIds = localEpisodes
+      .map(ep => ep.id)
+      .filter(id => !contextIds.has(id) && !dismissingIds.has(id));
+
+    if (removedIds.length > 0) {
+      // Mark as dismissing (triggers CSS animation)
+      setDismissingIds(prev => {
+        const next = new Set(prev);
+        removedIds.forEach(id => next.add(id));
+        return next;
+      });
+
+      // After animation completes, actually remove from local list
+      removedIds.forEach(id => {
+        if (dismissTimers.current.has(id)) clearTimeout(dismissTimers.current.get(id));
+        const timer = setTimeout(() => {
+          setLocalEpisodes(prev => prev.filter(ep => ep.id !== id));
+          setDismissingIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          dismissTimers.current.delete(id);
+        }, 400);
+        dismissTimers.current.set(id, timer);
+      });
+    }
+
+    // Detect additions: episodes in context that aren't in local list
+    const added = favoriteEpisodes.filter(ep => !localIdSet.has(ep.id));
+    if (added.length > 0) {
+      setLocalEpisodes(prev => [...prev, ...added]);
+    }
+
+    // Clean up timers on unmount
+    return () => {
+      dismissTimers.current.forEach(t => clearTimeout(t));
+    };
+  }, [favoriteEpisodeIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Also reset local list when favoriteEpisodes fully reloads (e.g. login/logout)
+  const prevFavLenRef = useRef(favoriteEpisodes.length);
+  useEffect(() => {
+    // If the favorites went from 0 to something (initial load) or completely changed, reset
+    if (prevFavLenRef.current === 0 && favoriteEpisodes.length > 0) {
+      setLocalEpisodes(favoriteEpisodes);
+    }
+    prevFavLenRef.current = favoriteEpisodes.length;
+  }, [favoriteEpisodes]);
+
+  // ── Normalize: ensure each episode has a `podcast` object for EpisodesTable ──
+  const normalizedEpisodes = useMemo(() => {
+    return localEpisodes.map(ep => {
+      if (ep.podcast && typeof ep.podcast === 'object') return ep;
+      return { ...ep, podcast: ep.podcast_data || ep.podcast || {} };
+    });
+  }, [localEpisodes]);
+
   // ── Show filter ──
   const showOptions = useMemo(() => {
     const map = new Map();
-    for (const ep of favoriteEpisodes) {
+    for (const ep of normalizedEpisodes) {
       const podcast = ep.podcast_data || ep.podcast;
       const id = podcast?.id;
       const title = podcast?.title;
@@ -25,21 +98,10 @@ export default function FavoritesTab({
     return Array.from(map.entries())
       .map(([id, title]) => ({ id, title }))
       .sort((a, b) => a.title.localeCompare(b.title));
-  }, [favoriteEpisodes]);
+  }, [normalizedEpisodes]);
 
   const [selectedShow, setSelectedShow] = useState('all');
-
-  // ── Sort ──
   const [sortOrder, setSortOrder] = useState('newest');
-
-  // ── Normalize episodes: ensure each has a `podcast` object for EpisodesTable ──
-  const normalizedEpisodes = useMemo(() => {
-    return favoriteEpisodes.map(ep => {
-      if (ep.podcast && typeof ep.podcast === 'object') return ep;
-      // Promote podcast_data to podcast so EpisodesTable can resolve show name / art
-      return { ...ep, podcast: ep.podcast_data || ep.podcast || {} };
-    });
-  }, [favoriteEpisodes]);
 
   // ── Visible episodes (filtered + sorted) ──
   const visibleEpisodes = useMemo(() => {
@@ -55,6 +117,27 @@ export default function FavoritesTab({
       sortOrder === 'newest' ? toTs(b) - toTs(a) : toTs(a) - toTs(b)
     );
   }, [normalizedEpisodes, selectedShow, sortOrder]);
+
+  // ── Play All: replace current queue with visible favorites ──
+  const handlePlayAll = useCallback(async () => {
+    if (!visibleEpisodes.length) return;
+    const queueItems = visibleEpisodes.map(ep => ({
+      podcast: ep.podcast || ep.podcast_data || {},
+      episode: ep,
+      resume: { progress: 0 },
+    }));
+    await setPlaybackQueue(queueItems, 0);
+  }, [visibleEpisodes, setPlaybackQueue]);
+
+  // ── Add All to Queue: append visible favorites to end of current queue ──
+  const handleAddAllToQueue = useCallback(() => {
+    for (const ep of visibleEpisodes) {
+      addToQueue(ep.podcast || ep.podcast_data || {}, ep);
+    }
+  }, [visibleEpisodes, addToQueue]);
+
+  // ── Count of non-dismissing episodes for display ──
+  const activeCount = visibleEpisodes.filter(ep => !dismissingIds.has(ep.id)).length;
 
   if (isLoading) {
     return <div className="text-white text-center py-10">Loading favorites...</div>;
@@ -99,15 +182,30 @@ export default function FavoritesTab({
           </Button>
         </div>
 
-        {/* Play All */}
-        <Button
-          className="bg-red-600 hover:bg-red-500 text-white px-5 py-2 rounded-full flex items-center gap-2 text-sm"
-          onClick={onPlayAllFavorites}
-          disabled={isLoading || playAllCount === 0}
-        >
-          <Play className="w-4 h-4 fill-white" />
-          Play All ({playAllCount})
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Add All to Queue — only visible when something is already playing */}
+          {somethingPlaying && activeCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAddAllToQueue}
+              className="h-9 px-4 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-zinc-300 text-sm gap-1.5 rounded-full"
+            >
+              <ListPlus className="w-4 h-4" />
+              Add to Queue
+            </Button>
+          )}
+
+          {/* Play All */}
+          <Button
+            className="bg-red-600 hover:bg-red-500 text-white px-5 py-2 rounded-full flex items-center gap-2 text-sm"
+            onClick={handlePlayAll}
+            disabled={activeCount === 0}
+          >
+            <Play className="w-4 h-4 fill-white" />
+            Play All ({activeCount})
+          </Button>
+        </div>
       </div>
 
       {visibleEpisodes.length === 0 ? (
@@ -120,6 +218,7 @@ export default function FavoritesTab({
           show={null}
           onPlay={onPlayEpisode}
           onAddToPlaylist={onAddToPlaylist}
+          dismissingIds={dismissingIds}
         />
       )}
     </div>
@@ -129,8 +228,6 @@ export default function FavoritesTab({
 FavoritesTab.propTypes = {
   favoriteEpisodes: PropTypes.array,
   isLoading: PropTypes.bool,
-  onPlayAllFavorites: PropTypes.func,
   onPlayEpisode: PropTypes.func,
   onAddToPlaylist: PropTypes.func,
-  playAllCount: PropTypes.number,
 };
