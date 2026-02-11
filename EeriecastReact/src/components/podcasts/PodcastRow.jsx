@@ -69,9 +69,7 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
                     className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-eeriecast-surface-light to-eeriecast-surface">
-                    <span className="text-3xl opacity-40">🎧</span>
-                  </div>
+                  <div className="w-full h-full cover-shimmer" />
                 )}
                 
                 {/* Play overlay */}

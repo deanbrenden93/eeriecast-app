@@ -538,13 +538,15 @@ export default function ExpandedPlayer({
   // ── Below-controls content: More episodes & Recommendations ──
   const [showEpisodes, setShowEpisodes] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
+  const [sectionsLoading, setSectionsLoading] = useState(true);
 
   // Fetch more episodes from the same podcast
   useEffect(() => {
     let cancelled = false;
     const podId = podcast?.id;
     const epId = episode?.id;
-    if (!podId) { setShowEpisodes([]); return; }
+    setSectionsLoading(true);
+    if (!podId) { setShowEpisodes([]); setSectionsLoading(false); return; }
     (async () => {
       try {
         const detail = await Podcast.get(podId);
@@ -554,6 +556,7 @@ export default function ExpandedPlayer({
         // Exclude the currently playing episode
         if (!cancelled) setShowEpisodes(eps.filter(e => e.id !== epId).slice(0, 6));
       } catch { if (!cancelled) setShowEpisodes([]); }
+      if (!cancelled) setSectionsLoading(false);
     })();
     return () => { cancelled = true; };
   }, [podcast?.id, episode?.id]);
@@ -928,9 +931,20 @@ export default function ExpandedPlayer({
           </div>
         )}
 
+        {/* ── Loading indicator for below-controls sections ── */}
+        {sectionsLoading && upNext.length === 0 && recommendations.length === 0 && showEpisodes.length === 0 && (
+          <div className="w-full max-w-2xl mt-8 flex flex-col items-center gap-3 py-6">
+            <div className="relative w-8 h-8">
+              <div className="absolute inset-0 rounded-full border-2 border-white/[0.06]" />
+              <div className="absolute inset-0 rounded-full border-2 border-t-red-500/60 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+            </div>
+            <span className="text-[11px] text-white/25 tracking-wider uppercase">Loading</span>
+          </div>
+        )}
+
         {/* ── 2. Up Next ── */}
         {upNext.length > 0 && (
-          <div className="w-full mt-8 px-6">
+          <div className="w-full max-w-2xl mt-8">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">Up Next</h3>
               <button
@@ -984,7 +998,7 @@ export default function ExpandedPlayer({
 
         {/* ── 3. Recommended Episodes ── */}
         {recommendations.length > 0 && (
-          <div className="w-full mt-8 px-6 max-w-2xl mx-auto">
+          <div className="w-full mt-8 max-w-2xl">
             <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-3">Recommended for You</h3>
             <div className="space-y-2">
               {recommendations.map((rec) => {
@@ -1042,7 +1056,7 @@ export default function ExpandedPlayer({
 
         {/* ── 4. More from this Show ── */}
         {showEpisodes.length > 0 && (
-          <div className="w-full mt-8 px-6 max-w-2xl mx-auto mb-8">
+          <div className="w-full mt-8 max-w-2xl mb-8">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">More from {podcast?.title || 'this Show'}</h3>
               <button

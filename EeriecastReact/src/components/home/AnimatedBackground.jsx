@@ -11,12 +11,30 @@ const shuffleArray = (array) => {
   return array;
 };
 
+const NUM_ROWS = 7;
+const ITEMS_PER_ROW = 12;
+
+// Build a grid of empty placeholder items (no cover images) so the
+// shimmering animation can start immediately without waiting for the API.
+function buildPlaceholderRows() {
+  const rows = Array.from({ length: NUM_ROWS }, (_, r) =>
+    Array.from({ length: ITEMS_PER_ROW * 3 }, (_, i) => ({
+      id: `ph-${r}-${i}`,
+      uniqueId: `ph-${r}-${i}`,
+      cover_image: null,
+      title: '',
+    }))
+  );
+  return rows;
+}
+
 // Module-level cache — survives unmounts, lives for the entire session.
 // On first visit we fetch + build + preload; on repeat visits we reuse instantly.
 let cachedRows = null;
 
 export default function AnimatedBackground() {
-  const [rows, setRows] = useState(cachedRows || []);
+  // Start with cached data if available, otherwise show shimmer placeholders immediately.
+  const [rows, setRows] = useState(cachedRows || buildPlaceholderRows);
 
   useEffect(() => {
     // If we already built the grid this session, nothing to do.
@@ -42,17 +60,16 @@ export default function AnimatedBackground() {
         return img.decode().catch(() => {});
       }));
 
-      const numRows = 7;
       let displayItems = [];
-      while (displayItems.length < numRows * 12) {
+      while (displayItems.length < NUM_ROWS * ITEMS_PER_ROW) {
         displayItems = [...displayItems, ...shuffleArray([...podcastItems])];
       }
 
-      const preparedRows = Array.from({ length: numRows }, () => []);
+      const preparedRows = Array.from({ length: NUM_ROWS }, () => []);
       displayItems.forEach((item, index) => {
-        preparedRows[index % numRows].push({
+        preparedRows[index % NUM_ROWS].push({
           ...item,
-          uniqueId: `${item.id}-${Math.floor(index / podcastItems.length)}-${index % numRows}`
+          uniqueId: `${item.id}-${Math.floor(index / podcastItems.length)}-${index % NUM_ROWS}`
         });
       });
 
@@ -95,7 +112,7 @@ export default function AnimatedBackground() {
                   className="w-full h-full object-cover rounded-xl filter grayscale brightness-[0.4] contrast-[1.1]"
                 />
               ) : (
-                <div className="w-full h-full rounded-xl bg-eeriecast-surface-light" />
+                <div className="w-full h-full rounded-xl cover-shimmer" />
               )}
             </div>
           ))}

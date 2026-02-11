@@ -75,9 +75,7 @@ export default function KeepListeningSection({
                         className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-eeriecast-surface-light to-eeriecast-surface">
-                        <span className="text-2xl opacity-40">🎧</span>
-                      </div>
+                      <div className="w-full h-full cover-shimmer" />
                     )}
                     {/* Play overlay */}
                     <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">

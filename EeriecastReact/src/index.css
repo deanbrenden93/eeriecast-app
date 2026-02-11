@@ -354,6 +354,22 @@ body::-webkit-scrollbar,
   height: 0;
 }
 
+/* Shimmering placeholder for cover art that hasn't loaded yet */
+@keyframes shimmer-slide {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.cover-shimmer {
+  background: linear-gradient(
+    110deg,
+    rgba(255,255,255,0.03) 30%,
+    rgba(255,255,255,0.07) 50%,
+    rgba(255,255,255,0.03) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-slide 2.4s ease-in-out infinite;
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -662,6 +678,22 @@ body::-webkit-scrollbar,
   gap: 8px;
   margin-bottom: 12px;
   flex-wrap: nowrap;
+}
+
+/* Scale toolbar buttons down on narrow screens so they never overflow */
+@media (max-width: 374px) {
+  .player-action-buttons {
+    gap: 4px;
+    transform: scale(0.88);
+    transform-origin: center;
+  }
+}
+@media (min-width: 375px) and (max-width: 420px) {
+  .player-action-buttons {
+    gap: 5px;
+    transform: scale(0.92);
+    transform-origin: center;
+  }
 }
 
 .episode-description-toggle-btn,

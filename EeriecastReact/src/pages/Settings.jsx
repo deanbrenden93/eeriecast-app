@@ -12,6 +12,10 @@ import {
   ListEnd,
   BookmarkCheck,
   Trash2,
+  Maximize,
+  FlaskConical,
+  Home,
+  RefreshCw,
 } from 'lucide-react';
 import {
   Select,
@@ -228,6 +232,48 @@ export default function Settings() {
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Clear Listening History
+            </Button>
+          </div>
+        </SettingsCard>
+
+        {/* Testing */}
+        <SettingsCard
+          icon={FlaskConical}
+          title="Testing"
+          description="Developer and testing tools"
+        >
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
+              onClick={() => {
+                const el = document.documentElement;
+                if (!document.fullscreenElement) {
+                  (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el);
+                } else {
+                  (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)?.call(document);
+                }
+              }}
+            >
+              <Maximize className="w-4 h-4 mr-2" />
+              Fullscreen
+            </Button>
+            <Link to={createPageUrl('Home')}>
+              <Button
+                variant="outline"
+                className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
+              >
+                <Home className="w-4 h-4 mr-2" />
+                Landing Screen
+              </Button>
+            </Link>
+            <Button
+              variant="outline"
+              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
             </Button>
           </div>
         </SettingsCard>
