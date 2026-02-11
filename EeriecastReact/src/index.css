@@ -784,14 +784,17 @@
    E-READER STYLES
    ═══════════════════════════════════════════════════════ */
 
-/* When the e-reader is open, hide the layout header and bottom nav
-   so they can't intercept clicks or cause stacking-context conflicts.
-   These fixed elements sit in the same viewport space as the e-reader's
-   own chrome, and some browsers resolve their z-index in unexpected
-   ways depending on ancestor stacking contexts.  */
+/* Smooth fade for layout bars when the e-reader opens/closes.
+   The bars always have a transition on opacity so they fade in/out
+   gracefully rather than snapping. */
+.layout-header,
+.layout-bottom-nav {
+  transition: opacity 0.3s ease !important;
+}
+
 html.ereader-active .layout-header,
 html.ereader-active .layout-bottom-nav {
-  visibility: hidden !important;
+  opacity: 0 !important;
   pointer-events: none !important;
 }
 

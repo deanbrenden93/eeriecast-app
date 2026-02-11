@@ -503,10 +503,10 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
     <motion.div
       key="ereader-overlay"
       className="fixed inset-0 z-[9999] flex flex-col"
-      initial={{ y: "100%", opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: "100%", opacity: 0 }}
-      transition={{ type: "spring", damping: 30, stiffness: 300 }}
+      initial={{ y: "100%" }}
+      animate={{ y: 0 }}
+      exit={{ y: "100%" }}
+      transition={{ type: "tween", duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
     >
         {/* ─── Background ──────────────────────────────────────── */}
         <div className="absolute inset-0 bg-[#0a0a10] pointer-events-none" />
