@@ -205,7 +205,12 @@ export default function Playlist() {
     const ok = await removeEpisodeFromPlaylist(playlist.id, ep.id);
     if (ok) {
       setEpisodes(prev => prev.filter(e => e.id !== ep.id));
-      setPlaylist(p => ({ ...p, episodes: (Array.isArray(p?.episodes) ? p.episodes.filter(id => id !== ep.id) : []) }));
+      setPlaylist(p => {
+        const updated = { ...p, episodes: (Array.isArray(p?.episodes) ? p.episodes.filter(id => id !== ep.id) : []) };
+        // Sync the global playlist context so Library cards update immediately
+        updatePlaylist(updated);
+        return updated;
+      });
     }
     setRemovingEpisodeId(null);
   };

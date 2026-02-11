@@ -123,7 +123,8 @@ export default function EpisodesTable({
         return (
           <div
             key={ep.id || ep.slug || ep.title}
-            className={`transition-all duration-300 ease-out ${isDismissing ? 'opacity-0 -translate-x-4 max-h-0 overflow-hidden py-0 my-0' : ''}`}
+            className={`transition-all duration-300 ease-out origin-left ${isDismissing ? 'opacity-0 scale-y-0 -translate-x-3 pointer-events-none' : 'opacity-100 scale-y-100'}`}
+            style={isDismissing ? { marginBlock: '-0.25rem' } : undefined}
           >
           <div
             className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg transition-colors group ${

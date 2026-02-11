@@ -139,11 +139,13 @@ export default function FavoritesTab({
   // ── Count of non-dismissing episodes for display ──
   const activeCount = visibleEpisodes.filter(ep => !dismissingIds.has(ep.id)).length;
 
-  if (isLoading) {
+  // Only show loading spinner for the initial fetch, not during background refreshes
+  // (refreshes set favoritesLoading=true which would unmount the list and kill animations)
+  if (isLoading && localEpisodes.length === 0) {
     return <div className="text-white text-center py-10">Loading favorites...</div>;
   }
 
-  if (!favoriteEpisodes || favoriteEpisodes.length === 0) {
+  if (!favoriteEpisodes || (favoriteEpisodes.length === 0 && localEpisodes.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[240px] text-center">
         <Heart className="w-10 h-10 text-red-500/30 mb-4" />
