@@ -557,9 +557,9 @@ export default function ExpandedPlayer({
     }
   };
 
-  // Simple formatter / sanitizer for podcast description
+  // Simple formatter / sanitizer for episode description
   const getFormattedDescription = () => {
-    let raw = podcast?.description || podcast?.summary || '';
+    let raw = episode?.description || episode?.summary || '';
     if (!raw || typeof raw !== 'string') return '<p>No description available.</p>';
     // Remove <script> blocks
     raw = raw.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
@@ -813,7 +813,7 @@ export default function ExpandedPlayer({
             </button>
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
             <div className="p-6 md:p-8 pb-4 overflow-y-auto custom-scrollbar">
-              <h2 className="text-2xl font-bold tracking-wide mb-4">About this Podcast</h2>
+              <h2 className="text-2xl font-bold tracking-wide mb-4">About this Episode</h2>
               <div className="prose prose-invert max-w-none text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: getFormattedDescription() }} />
             </div>
           </div>

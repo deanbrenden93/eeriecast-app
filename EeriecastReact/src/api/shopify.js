@@ -115,7 +115,12 @@ export async function createCart(lines = []) {
     }
     ${CART_FRAGMENT}
   `;
-  const data = await shopifyFetch(query, { input: { lines } });
+  const data = await shopifyFetch(query, {
+    input: {
+      lines,
+      attributes: [{ key: 'from_app', value: 'true' }],
+    },
+  });
   if (data.cartCreate.userErrors.length) {
     throw new Error(data.cartCreate.userErrors[0].message);
   }

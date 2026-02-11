@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import * as Shopify from '@/api/shopify';
 import { useUser } from '@/context/UserContext.jsx';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 const CART_ID_KEY = 'eeriecast_cart_id';
 const MEMBER_DISCOUNT_CODE = 'VNHGVJ57B867';
@@ -113,7 +115,13 @@ export function CartProvider({ children }) {
         }
       }
       if (finalCart.checkoutUrl) {
-        window.open(finalCart.checkoutUrl, '_blank');
+        if (Capacitor.isNativePlatform()) {
+          // Native: open in-app browser overlay (SFSafariViewController / Chrome Custom Tabs)
+          await Browser.open({ url: finalCart.checkoutUrl });
+        } else {
+          // Web: open in a new tab so the app stays in the background
+          window.open(finalCart.checkoutUrl, '_blank');
+        }
       }
     } catch (err) {
       console.error('Checkout failed:', err);

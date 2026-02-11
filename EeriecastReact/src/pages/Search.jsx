@@ -37,16 +37,38 @@ function formatDuration(raw) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/** Strip HTML tags and convert block-level boundaries to newlines */
+function stripHtml(html) {
+  if (!html || typeof html !== 'string') return '';
+  // Replace block-level closing tags and <br> with newlines
+  let text = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  // Decode common HTML entities
+  text = text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+  // Collapse 3+ newlines into 2, trim
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** Expandable description with "Show more / Show less" */
 function ExpandableDescription({ text, maxLength = 150 }) {
   const [expanded, setExpanded] = useState(false);
   if (!text) return null;
-  const needsTruncation = text.length > maxLength;
-  const displayText = !needsTruncation || expanded ? text : text.slice(0, maxLength).trimEnd() + '…';
+  const clean = stripHtml(text);
+  if (!clean) return null;
+  const needsTruncation = clean.length > maxLength;
+  const displayText = !needsTruncation || expanded ? clean : clean.slice(0, maxLength).trimEnd() + '…';
 
   return (
     <div className="mt-1.5">
-      <p className="text-zinc-500 text-xs leading-relaxed">{displayText}</p>
+      <p className="text-zinc-500 text-xs leading-relaxed whitespace-pre-line">{displayText}</p>
       {needsTruncation && (
         <button
           type="button"

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Eeriecast</string>
+    <string name="title_activity_main">Eeriecast</string>
+    <string name="package_name">com.eeriecast.app</string>
+    <string name="custom_url_scheme">com.eeriecast.app</string>
+</resources>
