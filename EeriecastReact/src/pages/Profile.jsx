@@ -15,7 +15,9 @@ import {
   HelpCircle,
   ChevronRight,
   Play,
+  Lock,
 } from "lucide-react";
+import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 
@@ -61,6 +63,9 @@ export default function Profile() {
     followedPodcastIds,
   } = useUser();
   const { loadAndPlay } = useAudioPlayerContext();
+
+  // ── Change password modal ──
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // ── History (local fetch) ──
   const [historyEpisodes, setHistoryEpisodes] = useState([]);
@@ -369,6 +374,17 @@ export default function Profile() {
               icon={BookOpen}
               label="Your Library"
             />
+            {/* Change Password (button row, not a link) */}
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-colors group w-full text-left"
+            >
+              <Lock className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
+              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">
+                Change Password
+              </span>
+              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+            </button>
             {!isPremium && (
               <QuickLink
                 to={createPageUrl("Premium")}
@@ -390,6 +406,12 @@ export default function Profile() {
           </div>
         </section>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 }

@@ -17,7 +17,9 @@ import {
   Home,
   RefreshCw,
   Crown,
+  Lock,
 } from 'lucide-react';
+import ChangePasswordModal from '@/components/auth/ChangePasswordModal';
 import {
   Select,
   SelectContent,
@@ -109,6 +111,7 @@ export default function Settings() {
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
   const { user, setUser, isAuthenticated, isPremium } = useUser();
   const [togglingPremium, setTogglingPremium] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   return (
     <div className="min-h-screen bg-eeriecast-surface text-white">
@@ -225,12 +228,22 @@ export default function Settings() {
           />
         </SettingsCard>
 
-        {/* Privacy */}
+        {/* Account & Privacy */}
         <SettingsCard
           icon={Shield}
-          title="Privacy"
+          title="Account & Privacy"
         >
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {isAuthenticated && (
+              <Button
+                variant="outline"
+                className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
+                onClick={() => setShowChangePassword(true)}
+              >
+                <Lock className="w-4 h-4 mr-2" />
+                Change Password
+              </Button>
+            )}
             <Button
               variant="outline"
               className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all"
@@ -341,6 +354,12 @@ export default function Settings() {
           </div>
         </SettingsCard>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 }

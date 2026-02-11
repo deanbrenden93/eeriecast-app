@@ -2,6 +2,7 @@ import PropTypes from "prop-types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Clock } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useUser } from "@/context/UserContext";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 
 export default function HistoryTab({
@@ -29,6 +30,25 @@ export default function HistoryTab({
   // ── Status filter ──
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'in_progress' | 'completed'
 
+  // Use the same progress source that EpisodesTable uses for its "played" badge
+  const { episodeProgressMap } = useUser();
+
+  // ── Helper: is an episode completed? ──
+  // Checks episodeProgressMap first (real-time, same as EpisodesTable), then
+  // falls back to the history API fields as a secondary source.
+  const isEpisodeCompleted = (ep) => {
+    const eid = Number(ep.id);
+    const prog = episodeProgressMap?.get(eid);
+    if (prog) {
+      if (prog.completed) return true;
+      if (prog.duration > 0 && prog.progress >= prog.duration * 0.95) return true;
+    }
+    // Fallback to history API metadata
+    if (ep._history_completed) return true;
+    if ((ep._history_percent ?? 0) >= 95) return true;
+    return false;
+  };
+
   // ── Filtered episodes ──
   const visibleEpisodes = useMemo(() => {
     let filtered = historyEpisodes;
@@ -43,21 +63,13 @@ export default function HistoryTab({
 
     // Filter by status
     if (statusFilter === 'in_progress') {
-      filtered = filtered.filter(ep => {
-        const pct = ep._history_percent ?? 0;
-        const completed = ep._history_completed;
-        return !completed && pct < 95;
-      });
+      filtered = filtered.filter(ep => !isEpisodeCompleted(ep));
     } else if (statusFilter === 'completed') {
-      filtered = filtered.filter(ep => {
-        const pct = ep._history_percent ?? 0;
-        const completed = ep._history_completed;
-        return completed || pct >= 95;
-      });
+      filtered = filtered.filter(ep => isEpisodeCompleted(ep));
     }
 
     return filtered;
-  }, [historyEpisodes, selectedShow, statusFilter]);
+  }, [historyEpisodes, selectedShow, statusFilter, episodeProgressMap]);
 
   if (isLoading) {
     return <div className="text-zinc-500 text-center py-10">Loading history...</div>;

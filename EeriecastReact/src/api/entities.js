@@ -238,7 +238,14 @@ export const User = {
       token,
       new_password: newPassword
     });
-  }
+  },
+
+  // Change password for the currently authenticated user
+  async changePassword(newPassword) {
+    return djangoClient.post('/auth/users/me/authenticated-change-password/', {
+      password: newPassword,
+    });
+  },
 };
 
 // Search service

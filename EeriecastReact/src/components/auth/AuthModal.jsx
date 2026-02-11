@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
-import { Check } from 'lucide-react';
+import { Check, ArrowLeft, Mail } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { login, register, error, isAuthenticated, loading } = useUser();
@@ -14,6 +14,11 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '' });
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState(null);
+
+  // Forgot password sub-view
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
   const FEATURES = [
     'Listening History Sync',
@@ -26,7 +31,12 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     if (isAuthenticated && isOpen) onClose();
   }, [isAuthenticated, isOpen, onClose]);
 
-  useEffect(() => { setTab(defaultTab); }, [defaultTab, isOpen]);
+  useEffect(() => {
+    setTab(defaultTab);
+    setShowForgotPassword(false);
+    setForgotEmail('');
+    setForgotSubmitted(false);
+  }, [defaultTab, isOpen]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -85,19 +95,86 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                 <TabsTrigger value="register" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Register</TabsTrigger>
               </TabsList>
               <TabsContent value="login">
-                <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
-                  <div>
-                    <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
-                    <Input type="email" required autoComplete="email" value={loginForm.email} onChange={e=>setLoginForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                {showForgotPassword ? (
+                  <div className="animate-in fade-in duration-300">
+                    {forgotSubmitted ? (
+                      /* Success state */
+                      <div className="flex flex-col items-center py-4 text-center">
+                        <div className="w-12 h-12 rounded-full bg-red-600/10 flex items-center justify-center mb-3 ring-1 ring-red-600/20">
+                          <Mail className="w-6 h-6 text-red-500" />
+                        </div>
+                        <h3 className="text-base font-semibold mb-1">Check your inbox</h3>
+                        <p className="text-xs text-gray-400 mb-4 max-w-[280px]">
+                          If an account exists for <span className="text-gray-300">{forgotEmail}</span>, we&apos;ll send a password reset link shortly.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setShowForgotPassword(false); setForgotSubmitted(false); setForgotEmail(''); }}
+                          className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1.5"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          Back to login
+                        </button>
+                      </div>
+                    ) : (
+                      /* Email input form */
+                      <div className="space-y-4">
+                        <div className="text-center mb-2">
+                          <h3 className="text-base font-semibold mb-1">Forgot your password?</h3>
+                          <p className="text-xs text-gray-400">Enter your email and we&apos;ll send you a reset link.</p>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
+                          <Input
+                            type="email"
+                            required
+                            autoComplete="email"
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
+                            className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base"
+                            placeholder="you@example.com"
+                          />
+                        </div>
+                        <Button
+                          className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base"
+                          onClick={() => {
+                            if (forgotEmail.trim()) setForgotSubmitted(true);
+                            // TODO: call User.requestPasswordReset(forgotEmail) once backend email service is configured
+                          }}
+                        >
+                          Send Reset Link
+                        </Button>
+                        <p className="text-xs text-center">
+                          <button
+                            type="button"
+                            onClick={() => { setShowForgotPassword(false); setForgotEmail(''); }}
+                            className="text-red-400 hover:text-red-300 flex items-center gap-1.5 mx-auto"
+                          >
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                            Back to login
+                          </button>
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>
-                    <Input type="password" required autoComplete="current-password" value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
-                  </div>
-                  {(localError || error) && <p className="text-red-400 text-xs sm:text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{localError || error}</p>}
-                  <Button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base" disabled={submitting || loading}>{submitting ? 'Logging in...' : 'Login'}</Button>
-                  <p className="text-xs text-center text-gray-400">Don&apos;t have an account? <button type="button" onClick={()=>setTab('register')} className="text-red-400 hover:text-red-300 underline-offset-2 hover:underline">Create one free</button></p>
-                </form>
+                ) : (
+                  <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
+                    <div>
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
+                      <Input type="email" required autoComplete="email" value={loginForm.email} onChange={e=>setLoginForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>
+                      <Input type="password" required autoComplete="current-password" value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                      <div className="text-right mt-1">
+                        <button type="button" onClick={() => setShowForgotPassword(true)} className="text-xs text-gray-500 hover:text-red-400 transition-colors">Forgot password?</button>
+                      </div>
+                    </div>
+                    {(localError || error) && <p className="text-red-400 text-xs sm:text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{localError || error}</p>}
+                    <Button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base" disabled={submitting || loading}>{submitting ? 'Logging in...' : 'Login'}</Button>
+                    <p className="text-xs text-center text-gray-400">Don&apos;t have an account? <button type="button" onClick={()=>setTab('register')} className="text-red-400 hover:text-red-300 underline-offset-2 hover:underline">Create one free</button></p>
+                  </form>
+                )}
               </TabsContent>
               <TabsContent value="register">
                 <form onSubmit={handleRegister} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
