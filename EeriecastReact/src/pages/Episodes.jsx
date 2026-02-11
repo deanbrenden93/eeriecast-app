@@ -495,9 +495,7 @@ export default function Episodes() {
                 >
                   <Play className="w-4 h-4 fill-white" />
                   {isBook
-                    ? (audiobookResume
-                      ? `Continue · Ch. ${audiobookResume.chapter?.episode_number || audiobookResume.index + 1}`
-                      : 'Start Listening')
+                    ? (audiobookResume ? 'Continue' : 'Start Listening')
                     : 'Play'}
                 </Button>
 
