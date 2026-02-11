@@ -469,7 +469,7 @@ export default function Help() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[radial-gradient(ellipse_at_center,_rgba(220,38,38,0.05),_transparent_70%)] pointer-events-none" />
 
         {/* Scrollable content */}
-        <div className="relative h-full overflow-y-auto bg-[#08080e]">
+        <div className="relative h-full overflow-y-auto bg-[#08080e] scrollbar-none">
           <div className="max-w-2xl mx-auto px-5 sm:px-6 pt-6 pb-24">
 
             {/* Top bar */}

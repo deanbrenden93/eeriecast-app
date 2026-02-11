@@ -20,7 +20,7 @@ export default function Home() {
       {/* Content */}
       <div className="relative z-20 flex flex-col items-center justify-between h-full text-center text-white p-6">
         {/* Logo and Tagline */}
-        <div className="pt-20 md:pt-28 animate-fade-in">
+        <div className="pt-20 md:pt-28">
           <img
             src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e37bc9c15_logo.png"
             alt="EERIECAST"
@@ -32,7 +32,7 @@ export default function Home() {
         </div>
 
         {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-12 w-full sm:w-auto animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+        <div className="flex flex-col sm:flex-row gap-4 mb-12 w-full sm:w-auto">
           <Link to={createPageUrl("Podcasts")} className="w-full sm:w-auto">
             <Button
               variant="outline"

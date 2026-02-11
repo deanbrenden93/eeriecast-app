@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -490,8 +490,21 @@ export default function Premium() {
   const navigate = useNavigate();
   const [showPayment, setShowPayment] = useState(false);
 
+  // Lock viewport-level overflow so no scrollbar can appear during the
+  // page-transition animation.  This page scrolls inside its own container.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflowY = 'hidden';
+    body.style.overflowY = 'hidden';
+    return () => {
+      html.style.overflowY = '';
+      body.style.overflowY = '';
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[#0a0a10] text-white relative overflow-hidden">
+    <div className="h-screen bg-[#0a0a10] text-white relative overflow-y-auto overflow-x-hidden scrollbar-none">
       {/* ── Ambient background effects ── */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[50rem] h-[40rem] rounded-full blur-[200px] opacity-[0.06] bg-gradient-to-br from-red-700 via-amber-600 to-transparent pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-[30rem] h-[30rem] rounded-full blur-[160px] opacity-[0.04] bg-gradient-to-tl from-red-900 to-transparent pointer-events-none" />

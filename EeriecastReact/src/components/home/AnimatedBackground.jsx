@@ -11,10 +11,17 @@ const shuffleArray = (array) => {
   return array;
 };
 
+// Module-level cache — survives unmounts, lives for the entire session.
+// On first visit we fetch + build + preload; on repeat visits we reuse instantly.
+let cachedRows = null;
+
 export default function AnimatedBackground() {
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(cachedRows || []);
 
   useEffect(() => {
+    // If we already built the grid this session, nothing to do.
+    if (cachedRows) return;
+
     const setupGrid = async () => {
       let allPodcasts = await Podcast.list();
       allPodcasts = allPodcasts.results || [];
@@ -25,6 +32,14 @@ export default function AnimatedBackground() {
         id: p.id,
         cover_image: p.cover_image,
         title: p.title
+      }));
+
+      // Preload all unique cover images so they appear together, not one-by-one.
+      const urls = [...new Set(podcastItems.map(p => p.cover_image).filter(Boolean))];
+      await Promise.all(urls.map(src => {
+        const img = new Image();
+        img.src = src;
+        return img.decode().catch(() => {});
       }));
 
       const numRows = 7;
@@ -40,8 +55,12 @@ export default function AnimatedBackground() {
           uniqueId: `${item.id}-${Math.floor(index / podcastItems.length)}-${index % numRows}`
         });
       });
-      
-      setRows(preparedRows.map(row => [...row, ...row, ...row]));
+
+      const finalRows = preparedRows.map(row => [...row, ...row, ...row]);
+
+      // Cache for the rest of the session
+      cachedRows = finalRows;
+      setRows(finalRows);
     };
 
     setupGrid();
@@ -61,6 +80,7 @@ export default function AnimatedBackground() {
           style={{
             animation: `float-row ${animationDurations[rowIndex % animationDurations.length]}s linear infinite`,
             animationDirection: rowIndex % 2 === 0 ? 'normal' : 'reverse',
+            willChange: 'transform',
           }}
         >
           {row.map((podcast) => (
@@ -73,7 +93,6 @@ export default function AnimatedBackground() {
                   src={podcast.cover_image}
                   alt={podcast.title}
                   className="w-full h-full object-cover rounded-xl filter grayscale brightness-[0.4] contrast-[1.1]"
-                  loading="lazy"
                 />
               ) : (
                 <div className="w-full h-full rounded-xl bg-eeriecast-surface-light" />

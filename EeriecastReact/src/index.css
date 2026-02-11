@@ -129,15 +129,25 @@
     max-width: 100%;
     overflow-x: hidden;
   }
-  /* Hide the page-level scrollbar so modals/dropdowns can't cause layout
-     shift by removing it. Page remains scrollable via wheel/trackpad/touch.
-     Inner scroll containers (episode lists, etc.) keep their scrollbars. */
-  html {
-    scrollbar-width: none;           /* Firefox */
-  }
-  html::-webkit-scrollbar {
-    display: none;                   /* Chrome, Edge, Safari */
-  }
+}
+
+/* Hide the page-level scrollbar so modals/dropdowns can't cause layout
+   shift by removing it. Page remains scrollable via wheel/trackpad/touch.
+   Inner scroll containers (episode lists, etc.) keep their scrollbars.
+   ─────────────────────────────────────────────────────────────────────
+   Covers html, body AND #root — all three have overflow-x:hidden which
+   implicitly turns overflow-y into auto, making each a potential scroll
+   container.  Must live OUTSIDE @layer base so specificity beats the
+   unlayered global ::-webkit-scrollbar { width:6px } styling below. */
+html, body, #root {
+  scrollbar-width: none;             /* Firefox */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar {
+  display: none;                     /* Chrome, Edge, Safari */
+  width: 0;
+  height: 0;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -328,10 +338,20 @@
   transform: translateY(-2px);
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling (inner containers) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
+}
+
+/* Utility: hide scrollbar on any element while keeping it scrollable */
+.scrollbar-none {
+  scrollbar-width: none;           /* Firefox */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;                   /* Chrome, Edge, Safari */
+  width: 0;
+  height: 0;
 }
 
 ::-webkit-scrollbar-track {

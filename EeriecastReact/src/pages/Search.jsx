@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
+import { Search as SearchApi, Episode as EpisodeApi, UserLibrary } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Search as SearchIcon, Heart, Play, BookOpen, Headphones, Crown, ChevronRight } from "lucide-react";
 import { isAudiobook, getPodcastCategoriesLower, formatDate } from "@/lib/utils";
@@ -110,8 +110,32 @@ function ShowCard({ podcast, onClick, isBook }) {
 }
 
 /* ── Episode card ────────────────────────────────────────────────── */
-function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthenticated, isPremium, favoriteCount, favoriteLimit, openAuth }) {
+function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthenticated, isPremium, favoriteEpisodeIds, refreshFavorites, openAuth }) {
   const formattedDur = formatDuration(episode.duration);
+  const isFav = favoriteEpisodeIds.has(episode.id);
+
+  const handleFavorite = async () => {
+    if (!isAuthenticated) {
+      openAuth('login');
+      return;
+    }
+    const alreadyFav = favoriteEpisodeIds.has(episode.id);
+    // Free-tier limit check (only when adding)
+    if (!alreadyFav && !isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
+      window.location.assign('/Premium');
+      return;
+    }
+    try {
+      if (alreadyFav) {
+        await UserLibrary.removeFavorite('episode', episode.id);
+      } else {
+        await UserLibrary.addFavorite('episode', episode.id);
+      }
+      await refreshFavorites();
+    } catch (err) {
+      if (typeof console !== 'undefined') console.debug('search favorite toggle failed', err);
+    }
+  };
 
   return (
     <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 md:p-4 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all duration-300 group">
@@ -166,11 +190,11 @@ function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthentic
                 onAddToPlaylist={onAddToPlaylist}
               />
               <button
-                className="p-1.5 text-zinc-600 hover:text-white transition-colors rounded-lg hover:bg-white/[0.04]"
-                title="Favorite"
-                onClick={() => { if (!isAuthenticated) { openAuth('login'); return; } if (!isPremium && favoriteCount >= favoriteLimit) { window.location.assign('/Premium'); return; } }}
+                className={`p-1.5 transition-colors rounded-lg hover:bg-white/[0.04] ${isFav ? 'text-red-500' : 'text-zinc-600 hover:text-white'}`}
+                title={isFav ? 'Remove from favorites' : 'Favorite'}
+                onClick={handleFavorite}
               >
-                <Heart className="w-4 h-4" />
+                <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
               </button>
               <button
                 className="p-1.5 text-zinc-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/[0.04]"
@@ -234,7 +258,7 @@ export default function Search() {
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const { isAuthenticated, isPremium, favoriteEpisodeIds } = useUser();
+  const { isAuthenticated, isPremium, favoriteEpisodeIds, refreshFavorites } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -491,8 +515,8 @@ export default function Search() {
               onShowLink={() => navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(episode.podcast_id)}`)}
               isAuthenticated={isAuthenticated}
               isPremium={isPremium}
-              favoriteCount={favoriteEpisodeIds.size}
-              favoriteLimit={FREE_FAVORITE_LIMIT}
+              favoriteEpisodeIds={favoriteEpisodeIds}
+              refreshFavorites={refreshFavorites}
               openAuth={openAuth}
             />
           ))}
