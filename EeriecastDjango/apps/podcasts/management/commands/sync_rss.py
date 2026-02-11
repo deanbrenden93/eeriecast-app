@@ -277,8 +277,9 @@ class Command(BaseCommand):
                 "duration": duration,
                 "cover_image": image or None,
                 "published_at": published_at,
-                # Maintain audio_url behavior
-                "audio_url": (audio_url or "") if variant == 'ad_supported' else "",
+                # Always populate audio_url as a fallback so episodes are
+                # playable even if no ad-supported variant exists yet.
+                "audio_url": audio_url or "",
             }
 
             # 1) Try to find an existing episode by exact title (case-insensitive) in this podcast
@@ -336,6 +337,11 @@ class Command(BaseCommand):
             else:
                 if ep.ad_free_audio_url != (audio_url or ""):
                     ep.ad_free_audio_url = audio_url or ""
+                    changed = True
+                # Backfill audio_url if it's empty, so the episode is always
+                # playable regardless of user premium status.
+                if not ep.audio_url and audio_url:
+                    ep.audio_url = audio_url
                     changed = True
 
             if created:
