@@ -2,45 +2,67 @@ import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play } from "lucide-react";
+import { ArrowDownUp } from "lucide-react";
 import FollowingItem from "./FollowingItem";
+import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import { useUser } from "@/context/UserContext";
 import { useMemo, useState } from "react";
 
-export default function FollowingTab({ podcasts, playlists = [], onAddToPlaylist }) {
+export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode }) {
   const navigate = useNavigate();
   const { followedPodcastIds } = useUser();
 
-  // Filter podcasts to only show followed ones
+  // ── Followed podcasts ──
   const followingPodcasts = useMemo(() => {
-    return podcasts.filter(podcast => followedPodcastIds.has(Number(podcast.id)));
+    return podcasts.filter(p => followedPodcastIds.has(Number(p.id)));
   }, [podcasts, followedPodcastIds]);
 
-  // Resolve creator name from possible shapes
-  const getCreatorName = (p) => {
-    if (typeof p?.author === 'string' && p.author.trim()) return p.author;
-    const c = p?.creator;
-    if (!c) return 'Unknown Creator';
-    if (typeof c === 'string' && c.trim()) return c;
-    if (typeof c === 'object') return c.display_name || c.name || c.username || 'Unknown Creator';
-    return 'Unknown Creator';
-  };
-
-  // Build unique creator list for dropdown
-  const creatorOptions = useMemo(() => {
-    const set = new Set();
-    for (const p of followingPodcasts) set.add(getCreatorName(p));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  // ── Flatten episodes from followed podcasts ──
+  const allEpisodes = useMemo(() => {
+    const seen = new Set();
+    const episodes = [];
+    for (const podcast of followingPodcasts) {
+      const eps = Array.isArray(podcast.episodes) ? podcast.episodes : [];
+      for (const ep of eps) {
+        const id = ep.id || ep.slug;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        // Attach parent podcast reference so EpisodesTable can resolve show name / art
+        episodes.push({
+          ...ep,
+          podcast: podcast,
+        });
+      }
+    }
+    return episodes;
   }, [followingPodcasts]);
 
-  // Selected creator filter
-  const [selectedCreator, setSelectedCreator] = useState('all');
+  // ── Show filter ──
+  const showOptions = useMemo(() => {
+    return followingPodcasts
+      .map(p => ({ id: p.id, title: p.title || 'Untitled' }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [followingPodcasts]);
 
-  const visiblePodcasts = useMemo(() => {
-    if (selectedCreator === 'all') return followingPodcasts;
-    return followingPodcasts.filter(p => getCreatorName(p) === selectedCreator);
-  }, [followingPodcasts, selectedCreator]);
+  const [selectedShow, setSelectedShow] = useState('all');
 
+  // ── Sort ──
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' | 'oldest'
+
+  // ── Visible episodes (filtered + sorted) ──
+  const visibleEpisodes = useMemo(() => {
+    let filtered = allEpisodes;
+    if (selectedShow !== 'all') {
+      filtered = allEpisodes.filter(ep => String(ep.podcast?.id) === String(selectedShow));
+    }
+    const toTs = (e) => new Date(e?.published_at || e?.created_date || e?.release_date || 0).getTime();
+    const sorted = [...filtered].sort((a, b) =>
+      sortOrder === 'newest' ? toTs(b) - toTs(a) : toTs(a) - toTs(b)
+    );
+    return sorted;
+  }, [allEpisodes, selectedShow, sortOrder]);
+
+  // ── Empty state ──
   if (followingPodcasts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
@@ -60,34 +82,70 @@ export default function FollowingTab({ podcasts, playlists = [], onAddToPlaylist
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <Select value={selectedCreator} onValueChange={setSelectedCreator}>
-          <SelectTrigger className="w-64 bg-gray-800 border-gray-700">
-            <SelectValue placeholder="Filter by creator:" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Creators</SelectItem>
-            {creatorOptions.map(name => (
-              <SelectItem key={name} value={name}>{name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full flex items-center gap-2">
-          <Play className="w-4 h-4 fill-white" />
-          Play All ({visiblePodcasts.length})
-        </Button>
+    <div className="space-y-6">
+      {/* ═══ Section 1: Your Shows ═══ */}
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">
+          Your Shows
+        </h3>
+        <div
+          className="flex gap-3 overflow-x-auto pb-2"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}
+        >
+          {followingPodcasts.map(podcast => (
+            <FollowingItem key={podcast.id} podcast={podcast} />
+          ))}
+        </div>
       </div>
-      
-      <div className="following-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-        {visiblePodcasts.map(episode => (
-          <FollowingItem
-            key={episode.id} 
-            episode={episode} 
-            playlists={playlists}
+
+      {/* ═══ Divider ═══ */}
+      <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+
+      {/* ═══ Section 2: Latest Episodes ═══ */}
+      <div>
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+            Latest Episodes
+          </h3>
+          <div className="flex items-center gap-3">
+            {/* Filter by show */}
+            <Select value={selectedShow} onValueChange={setSelectedShow}>
+              <SelectTrigger className="w-48 bg-gray-800 border-gray-700 text-sm h-9">
+                <SelectValue placeholder="Filter by show" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Shows</SelectItem>
+                {showOptions.map(s => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Sort toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
+              className="h-9 px-3 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-zinc-300 text-sm gap-1.5"
+            >
+              <ArrowDownUp className="w-3.5 h-3.5" />
+              {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
+            </Button>
+          </div>
+        </div>
+
+        {visibleEpisodes.length === 0 ? (
+          <div className="text-center text-zinc-500 py-10">
+            No episodes available from your followed shows.
+          </div>
+        ) : (
+          <EpisodesTable
+            episodes={visibleEpisodes}
+            show={null}
+            onPlay={onPlayEpisode}
             onAddToPlaylist={onAddToPlaylist}
           />
-        ))}
+        )}
       </div>
     </div>
   );
@@ -95,6 +153,6 @@ export default function FollowingTab({ podcasts, playlists = [], onAddToPlaylist
 
 FollowingTab.propTypes = {
   podcasts: PropTypes.array.isRequired,
-  playlists: PropTypes.array,
   onAddToPlaylist: PropTypes.func,
+  onPlayEpisode: PropTypes.func,
 };

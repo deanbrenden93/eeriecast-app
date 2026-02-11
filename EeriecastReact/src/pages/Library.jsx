@@ -227,8 +227,30 @@ export default function Library() {
     }
   };
 
+  const handlePlayFollowingEpisode = async (ep) => {
+    if (!ep) return;
+    try {
+      const podcastObj = (ep.podcast && typeof ep.podcast === 'object')
+        ? ep.podcast
+        : (ep.podcast ? { id: ep.podcast } : null);
+      await loadAndPlay({
+        podcast: podcastObj || { id: ep.podcast_id || `ep-${ep.id}`, title: ep.podcast_title || ep.title || 'Podcast' },
+        episode: ep,
+      });
+      try { await UserLibrary.addToHistory(ep.id, 0); } catch { /* ignore */ }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.debug('following episode play failed', e);
+    }
+  };
+
   const renderFollowingTab = () => {
-    return <FollowingTab podcasts={podcasts} playlists={playlists} onAddToPlaylist={handleOpenAddToPlaylist} />;
+    return (
+      <FollowingTab
+        podcasts={podcasts}
+        onAddToPlaylist={handleOpenAddToPlaylist}
+        onPlayEpisode={handlePlayFollowingEpisode}
+      />
+    );
   };
 
   const renderFavoritesTab = () => {

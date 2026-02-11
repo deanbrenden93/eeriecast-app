@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { UserCheck, Plus } from "lucide-react";
+import { X } from "lucide-react";
 import { UserLibrary } from "@/api/entities";
 import { useUser } from "@/context/UserContext";
 import { useState, useMemo } from "react";
@@ -7,38 +7,19 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 
-const formatTotalDuration = (seconds) => {
-  const s = Math.max(0, Math.floor(Number(seconds) || 0));
-  const hrs = Math.floor(s / 3600);
-  const mins = Math.floor((s % 3600) / 60);
-  if (hrs <= 0 && mins <= 0) return '0 min';
-  if (hrs <= 0) return `${mins} min`;
-  if (mins <= 0) return `${hrs} hr`;
-  return `${hrs} hr ${mins} min`;
-};
-
-export default function FollowingItem({ episode, onAddToPlaylist }) {
-  const podcast = episode; // Treat incoming prop as podcast
+export default function FollowingItem({ podcast }) {
   const { refreshFollowings, isAuthenticated } = useUser();
   const { openAuth } = useAuthModal();
   const [isUnfollowing, setIsUnfollowing] = useState(false);
   const navigate = useNavigate();
 
-  // Compute total duration from episodes (seconds -> hr/min)
-  const { totalDurationLabel, episodesCount } = useMemo(() => {
-    const eps = Array.isArray(podcast?.episodes) ? podcast.episodes : [];
-    const totalSeconds = eps.reduce((acc, ep) => acc + (Number(ep?.duration) || 0), 0);
-    return { totalDurationLabel: formatTotalDuration(totalSeconds), episodesCount: eps.length };
-  }, [podcast?.episodes]);
-
-  // Safely compute creator display name
   const creatorName = useMemo(() => {
     if (typeof podcast?.author === 'string' && podcast.author.trim()) return podcast.author;
     const c = podcast?.creator;
-    if (!c) return 'Unknown Creator';
+    if (!c) return '';
     if (typeof c === 'string' && c.trim()) return c;
-    if (typeof c === 'object') return c.display_name || c.name || c.username || 'Unknown Creator';
-    return 'Unknown Creator';
+    if (typeof c === 'object') return c.display_name || c.name || c.username || '';
+    return '';
   }, [podcast?.author, podcast?.creator]);
 
   const handleUnfollow = async (e) => {
@@ -50,17 +31,11 @@ export default function FollowingItem({ episode, onAddToPlaylist }) {
     try {
       await UserLibrary.unfollowPodcast(podcast.id);
       await refreshFollowings();
-    } catch (e) {
-      console.error('Failed to unfollow:', e);
+    } catch (err) {
+      console.error('Failed to unfollow:', err);
     } finally {
       setIsUnfollowing(false);
     }
-  };
-
-  const handleAddToPlaylistClick = (e) => {
-    e?.stopPropagation?.();
-    if (!isAuthenticated) { openAuth('login'); return; }
-    if (onAddToPlaylist) onAddToPlaylist(podcast);
   };
 
   const handleOpenEpisodes = () => {
@@ -70,79 +45,65 @@ export default function FollowingItem({ episode, onAddToPlaylist }) {
   };
 
   return (
-    <div 
-      className="following-item bg-gray-800/60 rounded-lg p-3 flex flex-col cursor-pointer hover:bg-gray-800/80 transition-colors"
-      data-following-id={podcast.id}
-      data-action="following"
+    <div
+      className="relative group flex-shrink-0 w-[140px] cursor-pointer"
       onClick={handleOpenEpisodes}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div 
-          className="cover w-12 h-12 rounded-lg flex-shrink-0"
-          style={{
-            background: podcast.cover_image
-              ? `url('${podcast.cover_image}') center/cover no-repeat`
-              : 'linear-gradient(135deg, #ff0040, #9d00ff)'
-          }}
-        >
-          {!podcast.cover_image && (
-            <div className="w-full h-full flex items-center justify-center">
-              <span className="text-lg">🎧</span>
-            </div>
-          )}
-        </div>
-        
-        <div className="actions flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="p-1 text-gray-400 hover:text-white transition-colors"
-            onClick={handleAddToPlaylistClick}
-            data-action="add-to-playlist"
-            data-episode-id={podcast.id}
-            data-episode-title={podcast.title}
-            title="Add to playlist"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-          <button
-            className={`p-1 transition-colors ${
-              isUnfollowing 
-                ? 'text-gray-500 cursor-not-allowed' 
-                : 'text-blue-500 hover:text-blue-400'
-            }`}
-            onClick={handleUnfollow}
-            disabled={isUnfollowing}
-            data-action="unfollow"
-            data-episode-id={podcast.id}
-            title="Unfollow"
-          >
-            <UserCheck className="w-4 h-4 fill-current" />
-          </button>
-        </div>
+      {/* Unfollow button — visible on hover */}
+      <button
+        className={`absolute -top-1.5 -right-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center
+          bg-black/80 border border-white/10 text-zinc-400 hover:text-white hover:bg-red-600 hover:border-red-500
+          opacity-0 group-hover:opacity-100 transition-all duration-200 ${isUnfollowing ? 'opacity-100 cursor-wait' : ''}`}
+        onClick={handleUnfollow}
+        disabled={isUnfollowing}
+        title="Unfollow"
+      >
+        {isUnfollowing ? (
+          <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+            <path d="M12 2a10 10 0 0 1 10 10" />
+          </svg>
+        ) : (
+          <X className="w-3 h-3" />
+        )}
+      </button>
+
+      {/* Cover art */}
+      <div className="w-full aspect-square rounded-xl overflow-hidden bg-white/[0.04] ring-1 ring-white/[0.06] group-hover:ring-white/[0.12] transition-all duration-200">
+        {podcast.cover_image ? (
+          <img
+            src={podcast.cover_image}
+            alt={podcast.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/30 to-red-900/30">
+            <span className="text-2xl">🎧</span>
+          </div>
+        )}
       </div>
-      
-      <div className="info flex-1">
-        <h3 className="text-white font-semibold text-sm line-clamp-2 leading-tight mb-1">
+
+      {/* Title + Creator */}
+      <div className="mt-2 px-0.5">
+        <p className="text-white text-xs font-medium line-clamp-1 leading-tight">
           {podcast.title}
-        </h3>
-        <p className="show-name text-blue-400 text-xs mb-2 line-clamp-1">
-          {creatorName}
         </p>
-        <p className="meta text-gray-400 text-xs">
-          {episodesCount > 0 ? `${episodesCount} episode${episodesCount !== 1 ? 's' : ''} • ${totalDurationLabel}` : 'No episodes yet'}
-        </p>
+        {creatorName && (
+          <p className="text-zinc-500 text-[11px] line-clamp-1 mt-0.5">
+            {creatorName}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
 FollowingItem.propTypes = {
-  episode: PropTypes.shape({
+  podcast: PropTypes.shape({
     id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
     title: PropTypes.string,
     author: PropTypes.string,
     creator: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
     cover_image: PropTypes.string,
-    episodes: PropTypes.array,
   }).isRequired,
-  onAddToPlaylist: PropTypes.func,
 };
