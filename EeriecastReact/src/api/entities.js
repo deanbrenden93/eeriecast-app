@@ -344,11 +344,14 @@ export const UserLibrary = {
     return djangoClient.get('/library/history/', { page_size: limit });
   },
 
-  // Add to listening history (start an entry)
+  // Add to listening history (start or update an entry).
+  // Uses PATCH which does get_or_create on the backend, avoiding
+  // unique-constraint 400 errors when the entry already exists.
   async addToHistory(episodeId, progress = 0) {
-    return djangoClient.post('/library/history/', {
-      episode: episodeId,
-      progress
+    return djangoClient.patch(`/library/history/${episodeId}/`, {
+      progress,
+      event: 'play',
+      source: 'web',
     });
   },
 
