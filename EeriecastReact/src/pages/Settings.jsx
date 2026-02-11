@@ -263,15 +263,17 @@ export default function Settings() {
               <Maximize className="w-4 h-4 mr-2" />
               Fullscreen
             </Button>
-            <Link to={createPageUrl('Home')}>
-              <Button
-                variant="outline"
-                className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
-              >
-                <Home className="w-4 h-4 mr-2" />
-                Landing Screen
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
+              onClick={() => {
+                sessionStorage.removeItem('eeriecast_splash_shown');
+                window.location.href = createPageUrl('Home');
+              }}
+            >
+              <Home className="w-4 h-4 mr-2" />
+              Landing Screen
+            </Button>
             <Button
               variant="outline"
               className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"

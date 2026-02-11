@@ -29,9 +29,17 @@ function easeOutQuint(t) {
 export default function SplashScreen({ onComplete }) {
   const cbRef = useRef(onComplete);
   cbRef.current = onComplete;
+  const skippedRef = useRef(false);
 
   const [logoFailed, setLogoFailed] = useState(false);
   const bubbles = useMemo(() => makeBubbles(30), []);
+
+  /** Click / tap anywhere to skip to the end of the splash */
+  const handleSkip = () => {
+    if (skippedRef.current) return;
+    skippedRef.current = true;
+    cbRef.current?.();
+  };
 
   // Direct refs to SVG filter primitives for 60 fps updates
   const displacementRef = useRef(null);
@@ -113,11 +121,12 @@ export default function SplashScreen({ onComplete }) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[100] overflow-hidden select-none"
+      className="fixed inset-0 z-[100] overflow-hidden select-none cursor-pointer"
       style={{ backgroundColor: '#000' }}
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
+      onClick={handleSkip}
     >
       {/* ── SVG filter: turbulence → flowing offset → displacement → blur ── */}
       <svg className="absolute" width="0" height="0" aria-hidden="true">

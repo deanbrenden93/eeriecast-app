@@ -19,7 +19,14 @@ function GlobalAuthModal() {
 }
 
 function App() {
-  const [splashDone, setSplashDone] = useState(false);
+  // Show splash only once per session unless explicitly reset (e.g. Settings → Landing Screen)
+  const alreadyShown = sessionStorage.getItem('eeriecast_splash_shown') === '1';
+  const [splashDone, setSplashDone] = useState(alreadyShown);
+
+  const handleSplashComplete = () => {
+    sessionStorage.setItem('eeriecast_splash_shown', '1');
+    setSplashDone(true);
+  };
 
   // Defer mounting the heavy app tree until 1 s into the splash.
   // At that point distortion is still ~100 % so any rendering jank is invisible.
@@ -45,7 +52,7 @@ function App() {
             {!splashDone && (
               <SplashScreen
                 key="splash"
-                onComplete={() => setSplashDone(true)}
+                onComplete={handleSplashComplete}
               />
             )}
           </AnimatePresence>
