@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import { useRef } from 'react';
 import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play } from 'lucide-react';
 import {
   DropdownMenu,
@@ -36,6 +37,24 @@ export default function EpisodeMenu({
 }) {
   const { addNext, addToQueue } = useAudioPlayerContext();
 
+  // ── Prevent accidental menu opens while scrolling on mobile ──
+  const touchStartRef = useRef(null);
+  const handleTouchStart = (e) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const handleTouchEnd = (e) => {
+    if (!touchStartRef.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+      // Finger moved — user was scrolling, suppress the synthetic click
+      e.preventDefault();
+    }
+    touchStartRef.current = null;
+  };
+
   if (!episode) return null;
 
   const handlePlayNext = () => {
@@ -59,6 +78,8 @@ export default function EpisodeMenu({
           type="button"
           aria-label="More options"
           className={`inline-flex items-center justify-center rounded-full p-1.5 text-white/40 hover:text-white hover:bg-white/10 transition-colors focus:outline-none ${className}`}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
           <MoreVertical className="w-4 h-4" />
         </button>

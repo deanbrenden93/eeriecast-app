@@ -5,6 +5,26 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Playlist } from '@/api/entities';
 
+function extractErrorMessage(e) {
+  const data = e?.data || e?.response?.data;
+  if (data) {
+    if (typeof data.detail === 'string') return data.detail;
+    if (typeof data.message === 'string') return data.message;
+    // DRF field-level errors: { "name": ["playlist with this name already exists."] }
+    if (typeof data === 'object') {
+      for (const [, msgs] of Object.entries(data)) {
+        const msg = Array.isArray(msgs) ? msgs[0] : msgs;
+        if (typeof msg === 'string') {
+          if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('unique'))
+            return 'A playlist with this name already exists. Please choose a different name.';
+          return msg;
+        }
+      }
+    }
+  }
+  return e?.message || 'Failed to rename playlist. Please try again.';
+}
+
 export default function PlaylistRenameModal({ isOpen, playlist, onClose, onRenamed }) {
   const [name, setName] = useState(playlist?.name || '');
   const [submitting, setSubmitting] = useState(false);
@@ -37,8 +57,7 @@ export default function PlaylistRenameModal({ isOpen, playlist, onClose, onRenam
       onRenamed && onRenamed(updated);
       onClose && onClose();
     } catch (e) {
-      const msg = e?.data?.message || e?.data?.detail || e?.message || 'Failed to rename playlist';
-      setError(msg);
+      setError(extractErrorMessage(e));
     } finally {
       setSubmitting(false);
     }

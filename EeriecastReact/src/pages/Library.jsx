@@ -284,12 +284,12 @@ export default function Library() {
     );
   };
 
-  // ── Playlist card cover: fetches first 3 episode images for mosaic ──
+  // ── Playlist card cover: 2×2 mosaic from first 4 episode images ──
   function PlaylistCardCover({ episodeIds = [] }) {
     const [images, setImages] = useState([]);
     useEffect(() => {
       let mounted = true;
-      const ids = episodeIds.slice(0, 3);
+      const ids = episodeIds.slice(0, 4);
       if (!ids.length) return;
       (async () => {
         const imgs = [];
@@ -299,47 +299,43 @@ export default function Library() {
             const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
             if (art) imgs.push(art);
           } catch { /* skip */ }
+          if (imgs.length >= 4) break;
         }
         if (mounted) setImages(imgs);
       })();
       return () => { mounted = false; };
     }, [episodeIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Empty: gradient placeholder
     if (images.length === 0) {
       return (
-        <div className="w-full h-28 bg-gradient-to-br from-violet-900/20 to-eeriecast-deep-violet/20 flex items-center justify-center">
-          <div className="w-20 h-20 rounded-lg overflow-hidden bg-eeriecast-surface-lighter flex items-center justify-center ring-1 ring-white/[0.06]">
-            <Headphones className="w-6 h-6 text-violet-400/40" />
-          </div>
+        <div className="w-full aspect-square rounded-xl bg-gradient-to-br from-violet-900/30 via-zinc-900 to-red-900/20 flex items-center justify-center">
+          <Headphones className="w-10 h-10 text-white/10" />
         </div>
       );
     }
 
+    // Single image: full cover
     if (images.length === 1) {
       return (
-        <div className="w-full h-28 overflow-hidden">
+        <div className="w-full aspect-square rounded-xl overflow-hidden">
           <img src={images[0]} alt="" className="w-full h-full object-cover" />
         </div>
       );
     }
 
-    if (images.length === 2) {
-      return (
-        <div className="w-full h-28 grid grid-cols-2 overflow-hidden">
-          <img src={images[0]} alt="" className="w-full h-full object-cover" />
-          <img src={images[1]} alt="" className="w-full h-full object-cover" />
-        </div>
-      );
-    }
-
-    // 3 images: one large left, two stacked right
+    // 2–3 images: 2×2 grid with gradient fill for empty slots
+    // 4 images: full 2×2 grid
+    const slots = [images[0], images[1], images[2] || null, images[3] || null];
     return (
-      <div className="w-full h-28 grid grid-cols-2 overflow-hidden">
-        <img src={images[0]} alt="" className="w-full h-full object-cover" />
-        <div className="flex flex-col h-full">
-          <img src={images[1]} alt="" className="w-full flex-1 object-cover" />
-          <img src={images[2]} alt="" className="w-full flex-1 object-cover" />
-        </div>
+      <div className="w-full aspect-square rounded-xl overflow-hidden grid grid-cols-2 grid-rows-2 gap-[2px] bg-black/40">
+        {slots.map((src, i) =>
+          src ? (
+            <img key={i} src={src} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div key={i} className="w-full h-full bg-gradient-to-br from-zinc-800/80 to-zinc-900" />
+          )
+        )}
       </div>
     );
   }
@@ -347,9 +343,9 @@ export default function Library() {
   const renderPlaylistsTab = () => {
     if (isLoadingPlaylists) {
       return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-48 bg-eeriecast-surface-light/50 rounded-xl animate-pulse" />
+            <div key={i} className="aspect-square bg-white/[0.03] rounded-xl animate-pulse" />
           ))}
         </div>
       );
@@ -379,46 +375,72 @@ export default function Library() {
     }
 
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
         {playlists.map((pl) => {
           const episodeCount = Array.isArray(pl.episodes) ? pl.episodes.length : 0;
           const approx = pl.approximate_length_minutes;
           return (
-            <div key={pl.id} className="eeriecast-card overflow-hidden cursor-pointer"
-                 onClick={() => navigate(`/Playlist?id=${encodeURIComponent(pl.id)}`)}>
-              {/* Cover mosaic */}
-              <PlaylistCardCover episodeIds={Array.isArray(pl.episodes) ? pl.episodes : []} />
+            <div
+              key={pl.id}
+              className="group cursor-pointer"
+              onClick={() => navigate(`/Playlist?id=${encodeURIComponent(pl.id)}`)}
+            >
+              {/* Cover mosaic — square */}
+              <div className="relative">
+                <PlaylistCardCover episodeIds={Array.isArray(pl.episodes) ? pl.episodes : []} />
+                {/* Play overlay on hover */}
+                <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(pl); }}
+                    className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center shadow-lg shadow-red-900/40 transition-transform duration-200 scale-90 group-hover:scale-100"
+                  >
+                    <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                  </button>
+                </div>
+              </div>
 
-              {/* Content */}
-              <div className="p-4">
-                <h3 className="text-white font-semibold text-base leading-tight mb-1 truncate">{pl.name}</h3>
-                <p className="text-zinc-500 text-xs mb-3">
-                  {episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'}{typeof approx === 'number' ? ` · ~${approx}m` : ''}
+              {/* Info + actions */}
+              <div className="mt-3">
+                <h3 className="text-white font-semibold text-sm leading-tight truncate group-hover:text-white/90 transition-colors">
+                  {pl.name}
+                </h3>
+                <p className="text-zinc-500 text-xs mt-1">
+                  {episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'}
+                  {typeof approx === 'number' ? ` · ${approx}m` : ''}
                 </p>
 
-                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                  <Button onClick={() => handlePlayPlaylist(pl)} className="gap-1.5 bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5 rounded-full shadow-[0_2px_8px_rgba(220,38,38,0.2)]">
-                    <Play className="w-3 h-3" />
-                    Play
-                  </Button>
-                  <Button onClick={() => handleRenamePlaylist(pl)} variant="secondary" className="gap-1.5 bg-eeriecast-surface-lighter hover:bg-white/[0.06] text-white text-xs px-3 py-1.5 rounded-full border border-white/[0.06]">
-                    <Edit className="w-3 h-3" />
+                {/* Action buttons */}
+                <div className="flex items-center gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => handleRenamePlaylist(pl)}
+                    className="text-zinc-500 hover:text-white text-[11px] px-2 py-1 rounded-md hover:bg-white/[0.06] transition-colors"
+                  >
+                    <Edit className="w-3 h-3 inline mr-1" />
                     Rename
-                  </Button>
-                  <Button onClick={() => handleDeletePlaylist(pl)} variant="secondary" className="gap-1.5 bg-eeriecast-surface-lighter hover:bg-white/[0.06] text-white text-xs px-3 py-1.5 rounded-full border border-white/[0.06]">
-                    <Trash2 className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => handleDeletePlaylist(pl)}
+                    className="text-zinc-500 hover:text-red-400 text-[11px] px-2 py-1 rounded-md hover:bg-red-500/[0.08] transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3 inline mr-1" />
                     Delete
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>
           );
         })}
 
-        <button onClick={() => setShowCreateModal(true)} className="border-2 border-dashed border-white/[0.08] hover:border-red-500/30 rounded-xl aspect-square flex flex-col items-center justify-center text-zinc-500 hover:text-red-400 cursor-pointer transition-all duration-300">
-          <Plus className="w-8 h-8 mb-2" />
-          <span className="text-xs">Create New Playlist</span>
-        </button>
+        {/* Create new playlist card */}
+        <div
+          onClick={() => setShowCreateModal(true)}
+          className="cursor-pointer group"
+        >
+          <div className="w-full aspect-square rounded-xl border-2 border-dashed border-white/[0.06] hover:border-red-500/30 flex flex-col items-center justify-center transition-all duration-300">
+            <Plus className="w-8 h-8 text-zinc-600 group-hover:text-red-400 transition-colors mb-2" />
+            <span className="text-zinc-600 group-hover:text-red-400 text-xs transition-colors">New Playlist</span>
+          </div>
+        </div>
       </div>
     );
   };
