@@ -6,6 +6,8 @@ import Pages from "@/pages/index.jsx"
 import { Toaster } from "@/components/ui/toaster"
 import { AudioPlayerProvider } from "@/context/AudioPlayerContext"
 import { AuthModalProvider, useAuthModal } from '@/context/AuthModalContext.jsx';
+import { CartProvider } from '@/context/CartContext.jsx';
+import CartDrawer from '@/components/shop/CartDrawer.jsx';
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
 
@@ -33,9 +35,11 @@ function App() {
     <AuthModalProvider>
       <Router>
         <AudioPlayerProvider>
+          <CartProvider>
           {appMounted && <Pages />}
           <Toaster />
           <GlobalAuthModal />
+          <CartDrawer />
           {/* Splash overlay */}
           <AnimatePresence>
             {!splashDone && (
@@ -45,6 +49,7 @@ function App() {
               />
             )}
           </AnimatePresence>
+          </CartProvider>
         </AudioPlayerProvider>
       </Router>
     </AuthModalProvider>

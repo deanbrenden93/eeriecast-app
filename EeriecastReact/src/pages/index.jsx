@@ -14,6 +14,7 @@ import Category from "./Category";
 import Episodes from "./Episodes";
 import Playlist from "./Playlist";
 import Help from "./Help";
+import Shop from "./Shop";
 
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect, useLayoutEffect } from 'react';
@@ -41,6 +42,7 @@ const PAGES = {
     Episodes: Episodes,
     Playlist: Playlist,
     Help: Help,
+    Shop: Shop,
 }
 
 function _getCurrentPage(url) {
@@ -170,6 +172,9 @@ function PagesContent() {
 
                     <Route path="/Help" element={<AnimatedPage><Help /></AnimatedPage>} />
                     <Route path="/help" element={<AnimatedPage><Help /></AnimatedPage>} />
+
+                    <Route path="/Shop" element={<AnimatedPage><Shop /></AnimatedPage>} />
+                    <Route path="/shop" element={<AnimatedPage><Shop /></AnimatedPage>} />
                 </Routes>
             </AnimatePresence>
         </Layout>

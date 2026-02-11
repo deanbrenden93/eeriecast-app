@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown } from "lucide-react";
+import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown, ShoppingBag } from "lucide-react";
+import { useCart } from '@/context/CartContext';
 import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
 import UserMenu from "../components/layout/UserMenu";
@@ -18,7 +19,7 @@ const menuItems = [
   { id: 'podcasts', Icon: Headphones, label: 'Podcasts', page: 'podcasts' },
   { id: 'books', Icon: BookOpen, label: 'Books', page: 'books' },
   { id: 'library', Icon: Library, label: 'Library', page: 'library' },
-  { id: 'settings', Icon: Settings, label: 'Settings', page: 'settings' }
+  { id: 'shop', Icon: ShoppingBag, label: 'Shop', page: 'shop' }
 ];
 
 const PAGE_ROUTE_MAP = {
@@ -26,10 +27,11 @@ const PAGE_ROUTE_MAP = {
   podcasts: 'Discover',
   books: 'Audiobooks',
   library: 'Library',
-  settings: 'Settings',
+  shop: 'Shop',
 };
 
 function BottomNav({ currentPageName }) {
+  const { cartCount } = useCart();
   return (
     <nav
       className="layout-bottom-nav hidden max-[1000px]:flex fixed bottom-0 left-0 right-0 z-40 bg-[#08080e]/80 backdrop-blur-xl border-t border-white/[0.04] overflow-x-hidden"
@@ -42,6 +44,7 @@ function BottomNav({ currentPageName }) {
           const routeName = PAGE_ROUTE_MAP[page] || 'Home';
           const to = createPageUrl(routeName);
           const active = currentPageName === routeName;
+          const isShop = id === 'shop';
           return (
             <li key={id} className="flex-1 min-w-0">
               <Link
@@ -51,6 +54,11 @@ function BottomNav({ currentPageName }) {
               >
                 <div className={`relative p-1.5 rounded-xl transition-all duration-300 ${active ? 'bg-white/[0.08]' : 'group-hover:bg-white/[0.04]'}`}>
                   <Icon className={`w-[18px] h-[18px] transition-all duration-300 ${active ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-300'}`} strokeWidth={active ? 2.2 : 1.8} />
+                  {isShop && cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-white text-black text-[9px] font-bold leading-none flex items-center justify-center shadow-sm">
+                      {cartCount > 99 ? '99+' : cartCount}
+                    </span>
+                  )}
                 </div>
                 <span className={`text-[10px] leading-none transition-all duration-300 ${active ? 'text-white font-semibold' : 'text-zinc-500 font-medium group-hover:text-zinc-400'}`}>
                   {label}
@@ -73,6 +81,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   const userMenuRef = useRef(null);
   const notifRef = useRef(null);
   const { isAuthenticated, isPremium, unreadNotificationCount } = useUser();
+  const { cartCount } = useCart();
   const prevAuthRef = useRef(isAuthenticated);
 
   useEffect(() => {
@@ -336,6 +345,55 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   );
                 })}
 
+                <div className="my-2 h-px bg-white/[0.04]" />
+
+                {/* Shop link */}
+                <motion.div
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 + navLinks.length * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                >
+                  <Link
+                    to={createPageUrl('Shop')}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+                      currentPageName === 'Shop'
+                        ? 'text-white bg-white/[0.06]'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <span className="relative">
+                      <ShoppingBag className="w-4 h-4" />
+                      {cartCount > 0 && (
+                        <span className="absolute -top-1.5 -right-2 min-w-[14px] h-[14px] px-[2px] rounded-full bg-white text-black text-[9px] font-bold leading-none flex items-center justify-center">
+                          {cartCount > 99 ? '99+' : cartCount}
+                        </span>
+                      )}
+                    </span>
+                    Shop
+                  </Link>
+                </motion.div>
+
+                {/* Settings link */}
+                <motion.div
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 + (navLinks.length + 1) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                >
+                  <Link
+                    to={createPageUrl('Settings')}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+                      currentPageName === 'Settings'
+                        ? 'text-white bg-white/[0.06]'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <Settings className="w-4 h-4" />
+                    Settings
+                  </Link>
+                </motion.div>
+
                 {/* Premium CTA for free users */}
                 {!isPremium && (
                   <>
@@ -343,7 +401,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     <motion.div
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.04 + navLinks.length * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                      transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                     >
                       <Link
                         to={createPageUrl('Premium')}
