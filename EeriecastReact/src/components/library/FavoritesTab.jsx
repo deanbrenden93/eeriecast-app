@@ -192,7 +192,7 @@ export default function FavoritesTab({
               className="h-9 px-4 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-zinc-300 text-sm gap-1.5 rounded-full"
             >
               <ListPlus className="w-4 h-4" />
-              Add to Queue
+              Add All to Queue ({activeCount})
             </Button>
           )}
 
