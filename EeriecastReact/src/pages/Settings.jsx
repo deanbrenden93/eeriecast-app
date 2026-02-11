@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Settings as SettingsIcon,
   Volume2,
@@ -16,6 +16,7 @@ import {
   FlaskConical,
   Home,
   RefreshCw,
+  Crown,
 } from 'lucide-react';
 import {
   Select,
@@ -27,6 +28,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettings } from '@/hooks/use-settings';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
+import { useUser } from '@/context/UserContext';
+import { User as UserAPI } from '@/api/entities';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
@@ -104,6 +107,8 @@ const PlaybackSpeedControl = ({ speed, setSpeed }) => {
 export default function Settings() {
   const { settings, updateSetting } = useSettings();
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
+  const { user, setUser, isAuthenticated, isPremium } = useUser();
+  const [togglingPremium, setTogglingPremium] = useState(false);
 
   return (
     <div className="min-h-screen bg-eeriecast-surface text-white">
@@ -275,6 +280,30 @@ export default function Settings() {
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
+            {isAuthenticated && (
+              <Button
+                variant="outline"
+                className={`transition-all ${
+                  isPremium
+                    ? 'border-amber-400/20 text-amber-400 hover:bg-amber-400/10 hover:border-amber-400/30'
+                    : 'border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15]'
+                }`}
+                disabled={togglingPremium}
+                onClick={async () => {
+                  setTogglingPremium(true);
+                  try {
+                    const updated = await UserAPI.updateMe({ is_premium: !isPremium });
+                    setUser(prev => ({ ...prev, ...updated }));
+                  } catch (err) {
+                    console.error('Failed to toggle premium:', err);
+                  }
+                  setTogglingPremium(false);
+                }}
+              >
+                <Crown className="w-4 h-4 mr-2" />
+                {togglingPremium ? 'Updating…' : isPremium ? 'Make Free User' : 'Make Premium'}
+              </Button>
+            )}
           </div>
         </SettingsCard>
 
