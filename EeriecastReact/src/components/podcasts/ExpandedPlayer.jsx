@@ -17,6 +17,7 @@ import { toast } from "@/components/ui/use-toast";
 import { createPageUrl } from "@/utils";
 import { isAudiobook } from "@/lib/utils";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
+import { Capacitor } from '@capacitor/core';
 
 // Custom SVG icons matching the MobilePlayer exactly
 const PlayIcon = () => (
@@ -446,12 +447,17 @@ export default function ExpandedPlayer({
   const [downloading, setDownloading] = useState(false);
   const handleDownload = async () => {
     if (!isPremium) {
-      alert("Downloads are a premium feature. Please subscribe to unlock.");
+      toast({ title: "Premium feature", description: "Downloads are available for premium members.", variant: "destructive" });
+      return;
+    }
+    // On web browsers, offline downloads aren't supported — nudge toward the app
+    if (!Capacitor.isNativePlatform()) {
+      toast({ title: "Available on the app", description: "Download episodes for offline listening on the Eeriecast mobile app." });
       return;
     }
     const audioUrl = episode?.audio_url || episode?.ad_free_audio_url;
     if (!audioUrl) {
-      alert("Audio URL not available for download.");
+      toast({ title: "Unavailable", description: "Audio URL not available for download.", variant: "destructive" });
       return;
     }
     try {
@@ -467,7 +473,7 @@ export default function ExpandedPlayer({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch {
-      alert("Download failed. Please try again.");
+      toast({ title: "Download failed", description: "Please try again.", variant: "destructive" });
     } finally {
       setDownloading(false);
     }

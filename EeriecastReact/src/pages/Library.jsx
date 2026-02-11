@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Podcast, UserLibrary, Episode } from "@/api/entities";
 import { Button } from "@/components/ui/button";
-import { Play, Edit, Plus, Download, Trash2, Headphones } from "lucide-react";
+import { Play, Edit, Plus, Download, Trash2, Headphones, Smartphone } from "lucide-react";
+import { Capacitor } from '@capacitor/core';
 import FavoritesTab from "../components/library/FavoritesTab";
 import FollowingTab from "../components/library/FollowingTab";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
@@ -22,7 +23,10 @@ import EpisodesTable from "../components/podcasts/EpisodesTable";
 
 export default function Library() {
   const location = useLocation();
-  const tabs = ["Following", "Favorites", "Playlists", "Downloads", "History"];
+  const isNative = Capacitor.isNativePlatform();
+  const tabs = isNative
+    ? ["Following", "Favorites", "Playlists", "Downloads", "History"]
+    : ["Following", "Favorites", "Playlists", "History"];
   const queryTab = (() => {
     try {
       const params = new URLSearchParams(location.search);
