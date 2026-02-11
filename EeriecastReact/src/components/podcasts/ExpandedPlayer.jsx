@@ -628,26 +628,44 @@ export default function ExpandedPlayer({
           <X className="w-5 h-5" />
         </button>
         <span className="text-white font-medium text-xs tracking-[0.2em]">NOW PLAYING</span>
-        <div className="relative">
-          <button 
-            onClick={() => setShowQueue(true)} 
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
-            aria-label="View Queue"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleFavoriteClick}
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 hover:text-white transition-colors disabled:opacity-60"
+            title={isLiked ? 'Favorited' : 'Add to favorites'}
+            aria-pressed={isLiked}
+            disabled={favLoading}
           >
-            <ListMusicIcon />
-            {upNext.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-[#ff0040] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-lg">
-                {upNext.length}
-              </span>
-            )}
+            <Heart className={`w-[18px] h-[18px] ${isLiked ? 'text-red-500 fill-red-500' : 'text-white/70'}`} />
           </button>
+          <button
+            onClick={handleOpenAddToPlaylist}
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
+            title="Add to playlist"
+          >
+            <Plus className="w-[18px] h-[18px]" />
+          </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowQueue(true)} 
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
+              aria-label="View Queue"
+            >
+              <ListMusicIcon />
+              {upNext.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#ff0040] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-lg">
+                  {upNext.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="relative z-[1] flex-1 flex flex-col justify-center items-center px-6 pb-8">
+      <div className="relative z-[1] flex-1 flex flex-col justify-start items-center px-6 pt-2 pb-4">
         {/* Album Art */}
-        <div className="relative w-[340px] h-[340px] mx-auto mb-6 rounded-lg overflow-hidden shadow-2xl">
+        <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] mx-auto mb-3 rounded-lg overflow-hidden shadow-2xl">
           {cover ? (
             <img
               src={cover}
@@ -659,27 +677,10 @@ export default function ExpandedPlayer({
               <span className="text-8xl">🎧</span>
             </div>
           )}
-          {/* Floating action buttons */}
-          <button
-            onClick={handleFavoriteClick}
-            className="absolute top-4 right-4 p-3 bg-black/60 backdrop-blur-sm rounded-full hover:bg-black/80 transition-colors disabled:opacity-60"
-            title={isLiked ? 'Favorited' : 'Add to favorites'}
-            aria-pressed={isLiked}
-            disabled={favLoading}
-          >
-            <Heart className={`w-5 h-5 ${isLiked ? 'text-red-500 fill-red-500' : 'text-white'}`} />
-          </button>
-          <button
-            className="absolute top-[60px] right-4 p-3 bg-black/60 backdrop-blur-sm rounded-full hover:bg-black/80 transition-colors"
-            onClick={handleOpenAddToPlaylist}
-            title="Add to playlist"
-          >
-            <Plus className="w-5 h-5 text-white" />
-          </button>
         </div>
 
         {/* Track Info */}
-        <div className="mb-6 text-center w-full max-w-md overflow-hidden">
+        <div className="mb-3 text-center w-full max-w-md overflow-hidden">
           <button
             type="button"
             onClick={() => {
@@ -696,7 +697,7 @@ export default function ExpandedPlayer({
           <MarqueeTitle text={episode?.title || ''} />
         </div>
 
-        {/* Action buttons + Controls (exact original look) */}
+        {/* Action buttons */}
         <div className="player-controls-section">
           <div className="player-action-buttons">
             <button className="rating-badge rating-pg-13">
@@ -740,7 +741,26 @@ export default function ExpandedPlayer({
               {!sleepTimerActive && playbackRate === 1 && <span>More</span>}
             </button>
           </div>
+        </div>
 
+        {/* Waveform + Progress */}
+        <div className="w-full max-w-2xl">
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+
+          <div className="player-waveform-section">
+            <div className="waveform-container" onClick={onBarClick}>
+              <div className={`waveform-wave ${isPlaying ? 'playing' : ''}`} />
+              <div className="waveform-played" style={{ ['--progress'] : `${pct}%` }} />
+              <div className="progress-indicator" style={{ left: `${pct}%` }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Playback Controls */}
+        <div className="player-controls-section">
           <div className="player-controls-large">
             <button
               className={`player-control-large shuffle-btn ${shuffleActive ? 'active' : ''}`}
@@ -778,22 +798,6 @@ export default function ExpandedPlayer({
             >
               <span className="icon"><RepeatIcon /></span>
             </button>
-          </div>
-        </div>
-
-        {/* Waveform + Progress (CSS-driven, matches provided original) */}
-        <div className="w-full max-w-2xl">
-          <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-
-          <div className="player-waveform-section">
-            <div className="waveform-container" onClick={onBarClick}>
-              <div className={`waveform-wave ${isPlaying ? 'playing' : ''}`} />
-              <div className="waveform-played" style={{ ['--progress'] : `${pct}%` }} />
-              <div className="progress-indicator" style={{ left: `${pct}%` }} />
-            </div>
           </div>
         </div>
       </div>

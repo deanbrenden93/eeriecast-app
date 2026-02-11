@@ -353,7 +353,7 @@
 
 .player-waveform-section {
   width: 100%;
-  margin: 0 auto 20px;
+  margin: 0 auto 12px;
   position: relative;
   min-width: 0;
   display: block;
@@ -640,7 +640,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   flex-wrap: nowrap;
 }
 
@@ -874,7 +874,7 @@ html.ereader-active .layout-bottom-nav {
   align-items: center;
   justify-content: center;
   gap: clamp(6px, 1.5vw, 10px);
-  margin-bottom: 24px;
+  margin-bottom: 12px;
   flex-wrap: nowrap;
 }
 .player-control-large {

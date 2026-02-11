@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Button } from "@/components/ui/button";
-import { Search as SearchIcon, Plus, Heart, Play, BookOpen, Headphones, Crown, ChevronRight } from "lucide-react";
+import { Search as SearchIcon, Heart, Play, BookOpen, Headphones, Crown, ChevronRight } from "lucide-react";
 import { isAudiobook, getPodcastCategoriesLower, formatDate } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
@@ -160,13 +160,11 @@ function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthentic
 
             {/* Action buttons */}
             <div className="flex items-center gap-0.5 flex-shrink-0">
-              <button
-                className="p-1.5 text-zinc-600 hover:text-white transition-colors rounded-lg hover:bg-white/[0.04]"
-                title="Add to playlist"
-                onClick={() => onAddToPlaylist(episode)}
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+              <EpisodeMenu
+                episode={episode}
+                podcast={{ id: episode.podcast_id || episode.podcast, title: episode.podcast_title }}
+                onAddToPlaylist={onAddToPlaylist}
+              />
               <button
                 className="p-1.5 text-zinc-600 hover:text-white transition-colors rounded-lg hover:bg-white/[0.04]"
                 title="Favorite"
@@ -174,11 +172,6 @@ function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthentic
               >
                 <Heart className="w-4 h-4" />
               </button>
-              <EpisodeMenu
-                episode={episode}
-                podcast={{ id: episode.podcast_id || episode.podcast, title: episode.podcast_title }}
-                onAddToPlaylist={onAddToPlaylist}
-              />
               <button
                 className="p-1.5 text-zinc-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/[0.04]"
                 title="Play"
