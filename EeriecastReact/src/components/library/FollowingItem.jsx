@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { X } from "lucide-react";
+import { UserCheck } from "lucide-react";
 import { UserLibrary } from "@/api/entities";
 import { useUser } from "@/context/UserContext";
 import { useState, useMemo } from "react";
@@ -45,18 +45,46 @@ export default function FollowingItem({ podcast }) {
   };
 
   return (
-    <div
-      className="relative group flex-shrink-0 w-[140px] cursor-pointer"
-      onClick={handleOpenEpisodes}
-    >
-      {/* Unfollow button — visible on hover */}
+    <div className="flex-shrink-0 w-[140px]">
+      {/* Tappable cover + info area → navigates to show */}
+      <div className="cursor-pointer" onClick={handleOpenEpisodes}>
+        {/* Cover art */}
+        <div className="w-full aspect-square rounded-xl overflow-hidden bg-white/[0.04] ring-1 ring-white/[0.06] transition-all duration-200">
+          {podcast.cover_image ? (
+            <img
+              src={podcast.cover_image}
+              alt={podcast.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/30 to-red-900/30">
+              <span className="text-2xl">🎧</span>
+            </div>
+          )}
+        </div>
+
+        {/* Title + Creator */}
+        <div className="mt-2 px-0.5">
+          <p className="text-white text-xs font-medium line-clamp-1 leading-tight">
+            {podcast.title}
+          </p>
+          {creatorName && (
+            <p className="text-zinc-500 text-[11px] line-clamp-1 mt-0.5">
+              {creatorName}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Always-visible "Following" pill — tapping unfollows */}
       <button
-        className={`absolute -top-1.5 -right-1.5 z-10 w-6 h-6 rounded-full flex items-center justify-center
-          bg-black/80 border border-white/10 text-zinc-400 hover:text-white hover:bg-red-600 hover:border-red-500
-          opacity-0 group-hover:opacity-100 transition-all duration-200 ${isUnfollowing ? 'opacity-100 cursor-wait' : ''}`}
+        className={`mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-full text-[11px] font-medium transition-all duration-200
+          ${isUnfollowing
+            ? 'bg-white/[0.04] border border-white/[0.06] text-zinc-600 cursor-wait'
+            : 'bg-white/[0.06] border border-white/[0.08] text-zinc-300 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 active:bg-red-500/20'
+          }`}
         onClick={handleUnfollow}
         disabled={isUnfollowing}
-        title="Unfollow"
       >
         {isUnfollowing ? (
           <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -64,36 +92,10 @@ export default function FollowingItem({ podcast }) {
             <path d="M12 2a10 10 0 0 1 10 10" />
           </svg>
         ) : (
-          <X className="w-3 h-3" />
+          <UserCheck className="w-3 h-3" />
         )}
+        {isUnfollowing ? 'Unfollowing...' : 'Following'}
       </button>
-
-      {/* Cover art */}
-      <div className="w-full aspect-square rounded-xl overflow-hidden bg-white/[0.04] ring-1 ring-white/[0.06] group-hover:ring-white/[0.12] transition-all duration-200">
-        {podcast.cover_image ? (
-          <img
-            src={podcast.cover_image}
-            alt={podcast.title}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/30 to-red-900/30">
-            <span className="text-2xl">🎧</span>
-          </div>
-        )}
-      </div>
-
-      {/* Title + Creator */}
-      <div className="mt-2 px-0.5">
-        <p className="text-white text-xs font-medium line-clamp-1 leading-tight">
-          {podcast.title}
-        </p>
-        {creatorName && (
-          <p className="text-zinc-500 text-[11px] line-clamp-1 mt-0.5">
-            {creatorName}
-          </p>
-        )}
-      </div>
     </div>
   );
 }
