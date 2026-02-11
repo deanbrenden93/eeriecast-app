@@ -317,6 +317,8 @@ export default function Library() {
           favoriteEpisodes={favoriteEpisodes}
           isLoading={favoritesLoading}
           onPlayAllFavorites={handlePlayAllFavorites}
+          onPlayEpisode={handlePlayFollowingEpisode}
+          onAddToPlaylist={handleOpenAddToPlaylist}
           playAllCount={playAllCount}
         />
       </>
