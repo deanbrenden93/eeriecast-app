@@ -27,6 +27,9 @@ import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
+import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
+import { useAuthModal } from "@/context/AuthModalContext.jsx";
+import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 
 export default function Podcasts() {
   const { podcasts: rawPodcasts, isLoading } = usePodcasts();
@@ -55,6 +58,19 @@ export default function Podcasts() {
   } = useAudioPlayerContext();
 
   const { isPremium, isAuthenticated, episodeProgressMap } = useUser();
+  const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
+  const { openAuth } = useAuthModal();
+
+  // Add-to-Playlist state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [episodeToAdd, setEpisodeToAdd] = useState(null);
+
+  const openAddToPlaylist = (episode) => {
+    if (!isAuthenticated) { openAuth('login'); return; }
+    if (!isPremium) { window.location.assign('/Premium'); return; }
+    setEpisodeToAdd(episode);
+    setShowAddModal(true);
+  };
 
   // Build "Keep Listening" items from the real-time episodeProgressMap.
   // This picks up both server-side history and current-session plays.
@@ -270,6 +286,7 @@ export default function Podcasts() {
               currentEpisodeId={currentEpisode?.id}
               currentTime={currentTime}
               currentDuration={duration}
+              onAddToPlaylist={openAddToPlaylist}
             />
           </div>
         )
@@ -282,6 +299,7 @@ export default function Podcasts() {
             title={<h2 className="text-2xl font-bold text-white">For You</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Recommended`}
             categoryFilter={null}
+            onAddToPlaylist={openAddToPlaylist}
           />
         </div>
       )}
@@ -297,6 +315,7 @@ export default function Podcasts() {
             title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
             ordering="-play_count"
+            onAddToPlaylist={openAddToPlaylist}
           />
         </div>
       )}
@@ -312,6 +331,7 @@ export default function Podcasts() {
             title={<h2 className="text-2xl font-bold text-white">New Releases{selectedCategoryParam ? ` — ${selectedCategoryParam}` : ''}</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Newest`}
             categoryFilter={selectedCategoryParam || null}
+            onAddToPlaylist={openAddToPlaylist}
           />
         </div>
       )}
@@ -454,6 +474,19 @@ export default function Podcasts() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Add to Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={showAddModal}
+        episode={episodeToAdd}
+        playlists={playlists}
+        onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
+        onAdded={(playlist) => {
+          updatePlaylist(playlist);
+          setShowAddModal(false);
+          setEpisodeToAdd(null);
+        }}
+      />
 
     </div>
   );

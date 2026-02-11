@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import { Heart, X, Plus } from "lucide-react";
+import { Heart, X, Plus, Settings2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/context/UserContext.jsx";
@@ -13,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/utils";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
+import { createPageUrl } from "@/utils";
+import { isAudiobook } from "@/lib/utils";
+import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 
 // Custom SVG icons matching the MobilePlayer exactly
 const PlayIcon = () => (
@@ -39,9 +43,6 @@ const ShuffleIcon = () => (
 );
 const RepeatIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-);
-const InfoIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
 );
 const DownloadIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -154,8 +155,9 @@ function InlineAddToPlaylistModal({ open, episode, onClose, playlists = [], onAd
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[3500] flex items-center justify-center">
+  // Portal to document.body to escape the ExpandedPlayer's motion.div stacking context (z-10100)
+  return createPortal(
+    <div className="fixed inset-0 z-[10200] flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70" onClick={() => !submitting && onClose && onClose()} />
       {/* Panel */}
@@ -265,7 +267,8 @@ function InlineAddToPlaylistModal({ open, episode, onClose, playlists = [], onAd
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -277,6 +280,50 @@ InlineAddToPlaylistModal.propTypes = {
   onAdded: PropTypes.func,
   resolving: PropTypes.bool,
 };
+
+/** Strips HTML tags to plain text for description preview. */
+function stripHtmlToText(html) {
+  if (!html) return '';
+  // Remove script blocks, then tags, decode entities
+  let str = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  str = str.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '');
+  str = str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  return str.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Small scrolling marquee for compact card titles. */
+function MarqueeText({ text, className = '' }) {
+  const containerRef = useRef(null);
+  const textRef = useRef(null);
+  const [needsScroll, setNeedsScroll] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const check = () => {
+      if (containerRef.current && textRef.current) {
+        const cw = containerRef.current.clientWidth;
+        setContainerWidth(cw);
+        setNeedsScroll(textRef.current.scrollWidth > cw + 2);
+      }
+    };
+    check();
+    const tid = setTimeout(check, 500);
+    return () => clearTimeout(tid);
+  }, [text]);
+
+  return (
+    <div ref={containerRef} className="relative w-full overflow-hidden">
+      <span
+        ref={textRef}
+        className={`whitespace-nowrap ${needsScroll ? 'animate-marquee inline-block' : ''} ${className}`}
+        style={needsScroll ? { '--marquee-container': `${containerWidth}px` } : undefined}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+MarqueeText.propTypes = { text: PropTypes.string, className: PropTypes.string };
 
 /** Scrolling marquee for episode titles that overflow a single line. */
 function MarqueeTitle({ text }) {
@@ -340,13 +387,16 @@ export default function ExpandedPlayer({
   const { openAuth } = useAuthModal();
 
   // Sleep timer & playback speed from context
-  const { sleepTimerRemaining, setSleepTimer, cancelSleepTimer, playbackRate, setPlaybackRate } = useAudioPlayerContext();
+  const { sleepTimerRemaining, setSleepTimer, cancelSleepTimer, playbackRate, setPlaybackRate, audioRef, removeFromQueue } = useAudioPlayerContext();
   const sleepTimerActive = sleepTimerRemaining > 0;
+
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
 
   // New: Queue sheet state
   const [showQueue, setShowQueue] = useState(false);
+
+  // (Header menu state removed — favorite & playlist moved to toolbar)
 
   // Derive a lightweight Up Next list: prefer global queue if provided
   const {
@@ -438,14 +488,6 @@ export default function ExpandedPlayer({
   }, []);
 
   const cover = episode?.cover_image || podcast?.cover_image;
-  const pct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
-
-  const onBarClick = (e) => {
-    if (!onSeek || duration <= 0) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
-    onSeek(ratio * duration);
-  };
 
   // Add favorite for the current episode (not the whole podcast)
   const handleFavoriteClick = async () => {
@@ -483,8 +525,85 @@ export default function ExpandedPlayer({
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [openingAdd, setOpeningAdd] = useState(false);
   const [resolvingAdd, setResolvingAdd] = useState(false);
-  // New: About modal state
-  const [showAbout, setShowAbout] = useState(false);
+
+  // Generic "Add to Playlist" handler for any episode (used by EpisodeMenu in sub-sections)
+  const handleAddAnyToPlaylist = (ep) => {
+    if (!isAuthenticated) { openAuth('login'); return; }
+    if (!isPremium) { window.location.assign('/Premium'); return; }
+    setEpisodeToAdd(ep);
+    setResolvingAdd(false);
+    setShowAddModal(true);
+  };
+
+  // ── Below-controls content: More episodes & Recommendations ──
+  const [showEpisodes, setShowEpisodes] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+
+  // Fetch more episodes from the same podcast
+  useEffect(() => {
+    let cancelled = false;
+    const podId = podcast?.id;
+    const epId = episode?.id;
+    if (!podId) { setShowEpisodes([]); return; }
+    (async () => {
+      try {
+        const detail = await Podcast.get(podId);
+        const eps = Array.isArray(detail?.episodes)
+          ? detail.episodes
+          : (detail?.episodes?.results || []);
+        // Exclude the currently playing episode
+        if (!cancelled) setShowEpisodes(eps.filter(e => e.id !== epId).slice(0, 6));
+      } catch { if (!cancelled) setShowEpisodes([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [podcast?.id, episode?.id]);
+
+  // Fetch recommended episodes (free DB for free/unauth, full non-audiobook DB for premium)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // Fetch episodes and podcasts in parallel
+        const [epResult, podResult] = await Promise.all([
+          Episode.list('-published_at', 60),
+          Podcast.list(undefined, 200),
+        ]);
+        const allEps = Array.isArray(epResult) ? epResult : (epResult?.results || []);
+        const allPods = Array.isArray(podResult) ? podResult : (podResult?.results || []);
+
+        // Build podcast lookup for filtering
+        const podMap = {};
+        const audiobookIds = new Set();
+        for (const p of allPods) {
+          podMap[p.id] = p;
+          if (isAudiobook(p)) audiobookIds.add(p.id);
+        }
+
+        let filtered = allEps.filter(ep => {
+          const podId = typeof ep.podcast === 'object' ? ep.podcast?.id : ep.podcast;
+          // Exclude audiobooks
+          if (audiobookIds.has(podId)) return false;
+          // Exclude current episode
+          if (ep.id === episode?.id) return false;
+          // Free/unauth users only see free episodes
+          if (!isPremium) {
+            const pod = podMap[podId];
+            if (ep.is_premium || pod?.is_exclusive) return false;
+          }
+          return true;
+        });
+
+        // Enrich with podcast data
+        filtered = filtered.map(ep => {
+          const podId = typeof ep.podcast === 'object' ? ep.podcast?.id : ep.podcast;
+          return { ...ep, _podcast: podMap[podId] || null };
+        });
+
+        if (!cancelled) setRecommendations(filtered.slice(0, 10));
+      } catch { if (!cancelled) setRecommendations([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [podcast?.id, episode?.id, isPremium]);
 
 
   // Resolve an episode just like EpisodeCard/Show flows before opening modal
@@ -557,22 +676,6 @@ export default function ExpandedPlayer({
     }
   };
 
-  // Simple formatter / sanitizer for episode description
-  const getFormattedDescription = () => {
-    let raw = episode?.description || episode?.summary || '';
-    if (!raw || typeof raw !== 'string') return '<p>No description available.</p>';
-    // Remove <script> blocks
-    raw = raw.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
-    // Strip on* event handler attributes (very naive)
-    raw = raw.replace(/on\w+\s*=\s*"[^"]*"/gi, '').replace(/on\w+\s*=\s*'[^']*'/gi, '');
-    // If it looks like plain text (no tags), convert double newlines to paragraphs
-    if (!/[<][a-zA-Z!/]/.test(raw)) {
-      const parts = raw.trim().split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-      raw = parts.map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`).join('');
-    }
-    return raw;
-  };
-
   return (
     <div className="fixed inset-0 z-[3000] flex flex-col overflow-y-auto overscroll-contain touch-pan-y" style={{ background: '#0a0a0f' }}>
       {/* Animated atmospheric background */}
@@ -620,45 +723,28 @@ export default function ExpandedPlayer({
       `}</style>
 
       {/* Header */}
-      <div className="relative z-[1] flex items-center justify-between px-6 py-5">
+      <div className="relative z-[2] flex items-center justify-between px-6 py-5">
         <button 
           onClick={onCollapse} 
           className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
-        <span className="text-white font-medium text-xs tracking-[0.2em]">NOW PLAYING</span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleFavoriteClick}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 hover:text-white transition-colors disabled:opacity-60"
-            title={isLiked ? 'Favorited' : 'Add to favorites'}
-            aria-pressed={isLiked}
-            disabled={favLoading}
-          >
-            <Heart className={`w-[18px] h-[18px] ${isLiked ? 'text-red-500 fill-red-500' : 'text-white/70'}`} />
-          </button>
-          <button
-            onClick={handleOpenAddToPlaylist}
+        <span className="absolute left-1/2 -translate-x-1/2 text-white font-medium text-xs tracking-[0.2em] pointer-events-none select-none max-w-[calc(100%-120px)] truncate">NOW PLAYING</span>
+
+        <div className="relative">
+          <button 
+            onClick={() => setShowQueue(true)} 
             className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
-            title="Add to playlist"
+            aria-label="View Queue"
           >
-            <Plus className="w-[18px] h-[18px]" />
+            <ListMusicIcon />
+            {upNext.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-[#ff0040] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-lg">
+                {upNext.length}
+              </span>
+            )}
           </button>
-          <div className="relative">
-            <button 
-              onClick={() => setShowQueue(true)} 
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
-              aria-label="View Queue"
-            >
-              <ListMusicIcon />
-              {upNext.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#ff0040] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-lg">
-                  {upNext.length}
-                </span>
-              )}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -681,37 +767,30 @@ export default function ExpandedPlayer({
 
         {/* Track Info */}
         <div className="mb-3 text-center w-full max-w-md overflow-hidden">
-          <button
-            type="button"
-            onClick={() => {
-              const pid = podcast?.id || podcast?.slug;
-              if (pid) {
-                onCollapse?.();
-                navigate(`/Episodes?id=${pid}`);
-              }
-            }}
-            className="text-gray-400 text-sm mb-2 hover:text-white transition-colors hover:underline underline-offset-2 cursor-pointer bg-transparent border-none"
-          >
-            {podcast?.title || ''}
-          </button>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => {
+                const pid = podcast?.id || podcast?.slug;
+                if (pid) {
+                  onCollapse?.();
+                  navigate(`/Episodes?id=${pid}`);
+                }
+              }}
+              className="text-gray-400 text-sm hover:text-white transition-colors hover:underline underline-offset-2 cursor-pointer bg-transparent border-none"
+            >
+              {podcast?.title || ''}
+            </button>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide text-amber-400/80 border border-amber-400/25 bg-amber-400/[0.08] leading-none select-none">
+              PG-13
+            </span>
+          </div>
           <MarqueeTitle text={episode?.title || ''} />
         </div>
 
         {/* Action buttons */}
         <div className="player-controls-section">
           <div className="player-action-buttons">
-            <button className="rating-badge rating-pg-13">
-              <span className="icon" style={{ fontSize: 16 }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-              </span>
-              <span className="rating-text">PG-13</span>
-            </button>
-
-            <button className="episode-description-toggle-btn" onClick={() => setShowAbout(true)} aria-haspopup="dialog" aria-expanded={showAbout}>
-              <span className="icon" style={{ fontSize: 16 }}><InfoIcon /></span>
-              <span>About</span>
-            </button>
-
             <button className="episode-download-btn" onClick={handleDownload}>
               <span className="icon" style={{ fontSize: 16 }}><DownloadIcon /></span>
               <span>Download</span>
@@ -734,27 +813,52 @@ export default function ExpandedPlayer({
                 <span className="text-[11px] font-semibold text-indigo-400 tabular-nums">{playbackRate}x</span>
               )}
               {!sleepTimerActive && playbackRate === 1 && (
-                <span className="icon" style={{ fontSize: 16 }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-                </span>
+                <span className="icon" style={{ fontSize: 16 }}><Settings2 className="w-4 h-4" /></span>
               )}
-              {!sleepTimerActive && playbackRate === 1 && <span>More</span>}
+              {!sleepTimerActive && playbackRate === 1 && <span>Options</span>}
+            </button>
+
+            <button
+              className="episode-download-btn"
+              onClick={handleOpenAddToPlaylist}
+              title="Add to playlist"
+            >
+              <span className="icon" style={{ fontSize: 16 }}><Plus className="w-4 h-4" /></span>
+              <span>Playlist</span>
+            </button>
+
+            <button
+              className={`episode-download-btn ${isLiked ? '!text-red-500 !border-red-500/30 !bg-red-500/10' : ''}`}
+              onClick={handleFavoriteClick}
+              title={isLiked ? 'Favorited' : 'Add to favorites'}
+              disabled={favLoading}
+            >
+              <span className="icon" style={{ fontSize: 16 }}><Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500' : ''}`} /></span>
+              <span>{isLiked ? 'Liked' : 'Like'}</span>
             </button>
           </div>
         </div>
 
         {/* Waveform + Progress */}
-        <div className="w-full max-w-2xl">
+        <div className="w-full max-w-2xl my-3">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
 
           <div className="player-waveform-section">
-            <div className="waveform-container" onClick={onBarClick}>
+            <div
+              className="waveform-container"
+              onClick={(e) => {
+                if (!onSeek || !duration) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                onSeek(ratio * duration);
+              }}
+            >
               <div className={`waveform-wave ${isPlaying ? 'playing' : ''}`} />
-              <div className="waveform-played" style={{ ['--progress'] : `${pct}%` }} />
-              <div className="progress-indicator" style={{ left: `${pct}%` }} />
+              <div className="waveform-played" style={{ '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
+              <div className="progress-indicator" style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
             </div>
           </div>
         </div>
@@ -800,29 +904,231 @@ export default function ExpandedPlayer({
             </button>
           </div>
         </div>
-      </div>
 
-      {/* About Modal Overlay */}
-      {showAbout && (
-        <div className="fixed inset-0 z-[3400] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setShowAbout(false)} />
-          <div className="relative w-[92vw] max-w-[720px] max-h-[80vh] bg-gradient-to-br from-black via-[#121316] to-[#1f2128] text-white border border-red-600/40 rounded-xl shadow-2xl shadow-red-900/40 overflow-hidden flex flex-col">
-            <button
-              type="button"
-              onClick={() => setShowAbout(false)}
-              className="absolute right-4 top-4 text-white/70 hover:text-white"
-              aria-label="Close About"
+        {/* ═══════════════════════════════════════════════════════════
+            BELOW-CONTROLS CONTENT SECTIONS
+            ═══════════════════════════════════════════════════════════ */}
+
+        {/* ── 1. Episode Description Preview ── */}
+        {(episode?.description || episode?.summary) && (
+          <div className="w-full max-w-2xl mt-6">
+            <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-3">About this Episode</h3>
+            <div
+              className="relative rounded-xl bg-white/[0.04] border border-white/[0.06] overflow-hidden"
+              style={{ maxHeight: 140 }}
             >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="p-6 md:p-8 pb-4 overflow-y-auto custom-scrollbar">
-              <h2 className="text-2xl font-bold tracking-wide mb-4">About this Episode</h2>
-              <div className="prose prose-invert max-w-none text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: getFormattedDescription() }} />
+              <div className="p-4 overflow-y-auto custom-scrollbar" style={{ maxHeight: 140 }}>
+                <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line">
+                  {stripHtmlToText(episode?.description || episode?.summary || '')}
+                </p>
+              </div>
+              {/* Bottom fade hint */}
+              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#0a0a0f] to-transparent pointer-events-none" />
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* ── 2. Up Next ── */}
+        {upNext.length > 0 && (
+          <div className="w-full mt-8 px-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">Up Next</h3>
+              <button
+                onClick={() => setShowQueue(true)}
+                className="text-[10px] font-semibold tracking-wider text-white/30 hover:text-white/60 uppercase transition-colors"
+              >
+                View Queue
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-0" style={{ scrollbarWidth: 'none' }}>
+              {upNext.slice(0, 8).map((item, idx) => {
+                const ep = item.episode || item;
+                const pd = item.podcast || podcast;
+                const absoluteIndex = (Array.isArray(queue) && queue.length > 0 && queueIndex >= 0) ? (queueIndex + 1 + idx) : undefined;
+                return (
+                  <div key={ep?.id || idx} className="flex-shrink-0 w-28 group relative">
+                    {/* Thumbnail */}
+                    <div
+                      className="relative w-28 h-28 rounded-lg overflow-hidden bg-white/5 mb-2 shadow-lg group-hover:shadow-xl transition-shadow cursor-pointer"
+                      onClick={() => handlePlayFromQueue(item, absoluteIndex)}
+                    >
+                      <img
+                        src={ep?.cover_image || pd?.cover_image || cover}
+                        alt={ep?.title || 'Episode'}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      {/* Triple-dot menu */}
+                      <div className="absolute bottom-1 right-1 z-[5]" onClick={(e) => e.stopPropagation()}>
+                        <EpisodeMenu
+                          episode={ep}
+                          podcast={pd}
+                          className="bg-black/60 backdrop-blur-sm"
+                          side="right"
+                          inline
+                          onRemoveFromQueue={typeof absoluteIndex === 'number' ? () => removeFromQueue(absoluteIndex) : undefined}
+                          onAddToPlaylist={handleAddAnyToPlaylist}
+                        />
+                      </div>
+                    </div>
+                    {/* Title + Show */}
+                    <div className="w-28 cursor-pointer" onClick={() => handlePlayFromQueue(item, absoluteIndex)}>
+                      <MarqueeText text={ep?.title || 'Episode'} className="text-xs font-semibold text-white/90" />
+                      <p className="text-[10px] text-white/40 mt-0.5 truncate">{pd?.title || ''}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── 3. Recommended Episodes ── */}
+        {recommendations.length > 0 && (
+          <div className="w-full mt-8 px-6 max-w-2xl mx-auto">
+            <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-3">Recommended for You</h3>
+            <div className="space-y-2">
+              {recommendations.map((rec) => {
+                const recPod = rec._podcast || {};
+                return (
+                  <div
+                    key={rec.id}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors group"
+                  >
+                    <div
+                      className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 shadow-md cursor-pointer"
+                      onClick={() => {
+                        if (typeof loadAndPlay === 'function') {
+                          loadAndPlay({ podcast: recPod, episode: rec, resume: { progress: 0 } });
+                        }
+                      }}
+                    >
+                      {(rec.cover_image || recPod.cover_image) ? (
+                        <img src={rec.cover_image || recPod.cover_image} alt={rec.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/20 text-lg">🎧</div>
+                      )}
+                    </div>
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => {
+                        if (typeof loadAndPlay === 'function') {
+                          loadAndPlay({ podcast: recPod, episode: rec, resume: { progress: 0 } });
+                        }
+                      }}
+                    >
+                      <div className="text-sm font-semibold text-white/90 truncate group-hover:text-white transition-colors">{rec.title}</div>
+                      <div className="text-[11px] text-white/35 truncate mt-0.5">{recPod.title || ''}</div>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <EpisodeMenu
+                        episode={rec}
+                        podcast={recPod}
+                        side="left"
+                        inline
+                        onPlayNow={() => {
+                          if (typeof loadAndPlay === 'function') {
+                            loadAndPlay({ podcast: recPod, episode: rec, resume: { progress: 0 } });
+                          }
+                        }}
+                        onAddToPlaylist={handleAddAnyToPlaylist}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── 4. More from this Show ── */}
+        {showEpisodes.length > 0 && (
+          <div className="w-full mt-8 px-6 max-w-2xl mx-auto mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">More from {podcast?.title || 'this Show'}</h3>
+              <button
+                onClick={() => {
+                  const pid = podcast?.id || podcast?.slug;
+                  if (pid) { onCollapse?.(); navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(pid)}`); }
+                }}
+                className="text-[10px] font-semibold tracking-wider text-white/30 hover:text-white/60 uppercase transition-colors"
+              >
+                View All
+              </button>
+            </div>
+            <div className="flex gap-3 sm:gap-4 items-start">
+              {/* Left: Podcast cover art */}
+              <button
+                onClick={() => {
+                  const pid = podcast?.id || podcast?.slug;
+                  if (pid) { onCollapse?.(); navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(pid)}`); }
+                }}
+                className="flex-shrink-0 w-[120px] sm:w-[140px] group"
+              >
+                <div className="w-full aspect-square rounded-xl overflow-hidden shadow-xl bg-white/5">
+                  <img
+                    src={podcast?.cover_image || cover}
+                    alt={podcast?.title || 'Podcast'}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+                <p className="text-xs font-semibold text-white/70 mt-2 text-center truncate group-hover:text-white transition-colors">{podcast?.title || ''}</p>
+              </button>
+
+              {/* Right: Stacked episode cards */}
+              <div className="flex-1 min-w-0 flex flex-col gap-2">
+                {showEpisodes.slice(0, 3).map((ep) => (
+                  <div
+                    key={ep.id}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group"
+                  >
+                    <div
+                      className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 cursor-pointer"
+                      onClick={() => {
+                        if (typeof loadAndPlay === 'function') {
+                          loadAndPlay({ podcast, episode: ep, resume: { progress: 0 } });
+                        }
+                      }}
+                    >
+                      <img
+                        src={ep.cover_image || podcast?.cover_image || cover}
+                        alt={ep.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => {
+                        if (typeof loadAndPlay === 'function') {
+                          loadAndPlay({ podcast, episode: ep, resume: { progress: 0 } });
+                        }
+                      }}
+                    >
+                      <div className="text-xs font-semibold text-white/80 truncate group-hover:text-white transition-colors">{ep.title}</div>
+                      <div className="text-[10px] text-white/30 mt-0.5 truncate">{ep.published_at ? formatDate(ep.published_at) : ''}</div>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <EpisodeMenu
+                        episode={ep}
+                        podcast={podcast}
+                        inline
+                        onPlayNow={() => {
+                          if (typeof loadAndPlay === 'function') {
+                            loadAndPlay({ podcast, episode: ep, resume: { progress: 0 } });
+                          }
+                        }}
+                        onAddToPlaylist={handleAddAnyToPlaylist}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom spacer for safe area */}
+        <div className="h-8" />
+      </div>
 
       {/* Player Options Modal (Sleep Timer + Playback Speed) */}
       <AnimatePresence>

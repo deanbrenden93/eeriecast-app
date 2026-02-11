@@ -8,6 +8,8 @@ import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
+import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
+import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 
 function useQuery() {
   const { search } = useLocation();
@@ -72,9 +74,21 @@ export default function Playlist() {
   const [sortOrder, setSortOrder] = useState('Custom');
 
   const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
-  const { isAuthenticated, removeEpisodeFromPlaylist } = useUser();
+  const { isAuthenticated, isPremium, removeEpisodeFromPlaylist } = useUser();
   const { openAuth } = useAuthModal();
   const { getById: getPodcastById } = usePodcasts();
+  const { playlists, updatePlaylist } = usePlaylistContext();
+
+  // Add-to-Playlist modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [episodeToAdd, setEpisodeToAdd] = useState(null);
+
+  const handleOpenAddToPlaylist = (episode) => {
+    if (!isAuthenticated) { openAuth('login'); return; }
+    if (!isPremium) { window.location.assign('/Premium'); return; }
+    setEpisodeToAdd(episode);
+    setShowAddModal(true);
+  };
 
   // ── Fetch playlist + episodes ───────────────────────────────────
   useEffect(() => {
@@ -357,9 +371,23 @@ export default function Playlist() {
             onPlay={doPlay}
             onRemoveFromPlaylist={handleRemoveFromPlaylist}
             removingEpisodeId={removingEpisodeId}
+            onAddToPlaylist={handleOpenAddToPlaylist}
           />
         )}
       </div>
+
+      {/* Add to Playlist Modal */}
+      <AddToPlaylistModal
+        isOpen={showAddModal}
+        episode={episodeToAdd}
+        playlists={playlists}
+        onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
+        onAdded={(pl) => {
+          updatePlaylist(pl);
+          setShowAddModal(false);
+          setEpisodeToAdd(null);
+        }}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ export default function KeepListeningSection({
   currentEpisodeId,
   currentTime = 0,
   currentDuration = 0,
+  onAddToPlaylist,
 }) {
   const scrollRef = useRef(null);
 
@@ -87,7 +88,7 @@ export default function KeepListeningSection({
 
                     {/* Three-dot menu */}
                     <div className="absolute bottom-1.5 right-1.5 z-[5]" onClick={(e) => e.stopPropagation()}>
-                      <EpisodeMenu episode={episode} podcast={podcast} className="bg-black/60 backdrop-blur-sm" side="right" />
+                      <EpisodeMenu episode={episode} podcast={podcast} onAddToPlaylist={onAddToPlaylist} className="bg-black/60 backdrop-blur-sm" side="right" />
                     </div>
 
                     {/* Members-only badge */}
@@ -138,4 +139,5 @@ KeepListeningSection.propTypes = {
   currentEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   currentTime: PropTypes.number,
   currentDuration: PropTypes.number,
+  onAddToPlaylist: PropTypes.func,
 };

@@ -78,7 +78,7 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose && onClose(); }}>
-      <DialogContent className="w-[92vw] max-w-[560px] bg-gradient-to-br from-black via-[#121316] to-[#1f2128] text-white border border-red-600/40 shadow-2xl shadow-red-900/40 p-0 overflow-hidden z-[5000]">
+      <DialogContent className="w-[92vw] max-w-[560px] bg-gradient-to-br from-black via-[#121316] to-[#1f2128] text-white border border-red-600/40 shadow-2xl shadow-red-900/40 p-0 overflow-hidden z-[10200]">
         <div className="relative p-6 md:p-8">
           <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
 

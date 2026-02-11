@@ -512,6 +512,22 @@ export const AudioPlayerProvider = ({ children }) => {
     }
   }, [episode, loadAndPlaySmart]);
 
+  const removeFromQueue = useCallback((absoluteIndex) => {
+    if (typeof absoluteIndex !== 'number') return;
+    const currentIdx = idxRef.current ?? -1;
+    // Don't remove the currently playing item
+    if (absoluteIndex === currentIdx) return;
+
+    setQueue(prev => {
+      if (absoluteIndex < 0 || absoluteIndex >= prev.length) return prev;
+      return [...prev.slice(0, absoluteIndex), ...prev.slice(absoluteIndex + 1)];
+    });
+    // Adjust queueIndex if removed item was before the current
+    if (absoluteIndex < currentIdx) {
+      setQueueIndex(prev => prev - 1);
+    }
+  }, []);
+
   // ─── Handlers to expose to UI ─────────────────────────────────────
   const toggleShuffle = useCallback(() => {
     setIsShuffling((s) => !s);
@@ -561,11 +577,14 @@ export const AudioPlayerProvider = ({ children }) => {
         // queue manipulation
         addToQueue,
         addNext,
+        removeFromQueue,
         // sleep timer api
         sleepTimerRemaining,
         sleepTimerEndTime,
         setSleepTimer,
         cancelSleepTimer,
+        // audio element ref (for Web Audio API waveform)
+        audioRef,
       }}
     >
       {children}
@@ -707,6 +726,7 @@ export const useAudioPlayerContext = () => {
       playPrev: noopAsync,
       addToQueue: noop,
       addNext: noop,
+      removeFromQueue: noop,
       sleepTimerRemaining: 0,
       sleepTimerEndTime: null,
       setSleepTimer: noop,

@@ -33,7 +33,7 @@ function formatDuration(raw) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function NewReleasesRow({ title, viewAllTo, categoryFilter, ordering = "-published_at", maxItems = 20 }) {
+export default function NewReleasesRow({ title, viewAllTo, categoryFilter, ordering = "-published_at", maxItems = 20, onAddToPlaylist }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
   const { podcasts, getById } = usePodcasts();
@@ -216,7 +216,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
 
                   {/* Three-dot menu — top-right on hover (below badge if present) */}
                   <div className="absolute bottom-1.5 right-1.5 z-[5]" onClick={(e) => e.stopPropagation()}>
-                    <EpisodeMenu episode={ep} podcast={ep.podcast_data} className="bg-black/60 backdrop-blur-sm" side="right" />
+                    <EpisodeMenu episode={ep} podcast={ep.podcast_data} onAddToPlaylist={onAddToPlaylist} className="bg-black/60 backdrop-blur-sm" side="right" />
                   </div>
 
                   {/* Members-only / Premium badge */}
@@ -277,4 +277,5 @@ NewReleasesRow.propTypes = {
   categoryFilter: PropTypes.string,
   ordering: PropTypes.string,
   maxItems: PropTypes.number,
+  onAddToPlaylist: PropTypes.func,
 };

@@ -34,6 +34,7 @@ export function useAudioPlayer({ onEnd } = {}) {
   // init audio element once
   if (!audioRef.current && typeof window !== 'undefined') {
     audioRef.current = new Audio();
+    audioRef.current.crossOrigin = 'anonymous'; // Required for Web Audio API (AnalyserNode) with cross-origin audio
     audioRef.current.preload = 'metadata';
     audioRef.current.volume = 0.7; // Set initial volume
     try { audioRef.current.playbackRate = parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { /* */ }

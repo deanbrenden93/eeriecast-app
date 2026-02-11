@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { MoreVertical, SkipForward, ListPlus, Plus } from 'lucide-react';
+import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -12,11 +12,12 @@ import { toast } from '@/components/ui/use-toast';
 
 /**
  * Three-dot overflow menu for episode actions.
- * Provides "Play Next", "Add to Queue", and optionally "Add to Playlist".
  *
  * Props:
  *  - episode      – the episode object
  *  - podcast      – the parent podcast/show object
+ *  - onPlayNow    – optional callback; when provided, shows "Play Now" at the top
+ *  - onRemoveFromQueue – optional callback; when provided, replaces "Add to Queue" with "Remove from Queue"
  *  - onAddToPlaylist – optional callback to trigger the Add-to-Playlist modal
  *  - className    – optional extra classes on the trigger button
  *  - side         – dropdown placement side (default "bottom")
@@ -25,10 +26,13 @@ import { toast } from '@/components/ui/use-toast';
 export default function EpisodeMenu({
   episode,
   podcast,
+  onPlayNow,
+  onRemoveFromQueue,
   onAddToPlaylist,
   className = '',
   side = 'bottom',
   align = 'end',
+  inline = false,
 }) {
   const { addNext, addToQueue } = useAudioPlayerContext();
 
@@ -49,7 +53,7 @@ export default function EpisodeMenu({
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={inline ? false : undefined}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -63,8 +67,19 @@ export default function EpisodeMenu({
       <DropdownMenuContent
         side={side}
         align={align}
-        className="min-w-[180px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-1"
+        usePortal={!inline}
+        className="min-w-[180px] bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-1 z-[9999]"
       >
+        {onPlayNow && (
+          <DropdownMenuItem
+            onClick={onPlayNow}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
+          >
+            <Play className="w-4 h-4" />
+            Play Now
+          </DropdownMenuItem>
+        )}
+
         <DropdownMenuItem
           onClick={handlePlayNext}
           className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
@@ -73,13 +88,23 @@ export default function EpisodeMenu({
           Play Next
         </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onClick={handleAddToQueue}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
-        >
-          <ListPlus className="w-4 h-4" />
-          Add to Queue
-        </DropdownMenuItem>
+        {onRemoveFromQueue ? (
+          <DropdownMenuItem
+            onClick={onRemoveFromQueue}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-400/80 hover:text-red-300 hover:bg-red-500/10 cursor-pointer text-sm"
+          >
+            <ListMinus className="w-4 h-4" />
+            Remove from Queue
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={handleAddToQueue}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
+          >
+            <ListPlus className="w-4 h-4" />
+            Add to Queue
+          </DropdownMenuItem>
+        )}
 
         {onAddToPlaylist && (
           <>
@@ -101,8 +126,11 @@ export default function EpisodeMenu({
 EpisodeMenu.propTypes = {
   episode: PropTypes.object,
   podcast: PropTypes.object,
+  onPlayNow: PropTypes.func,
+  onRemoveFromQueue: PropTypes.func,
   onAddToPlaylist: PropTypes.func,
   className: PropTypes.string,
   side: PropTypes.string,
   align: PropTypes.string,
+  inline: PropTypes.bool,
 };
