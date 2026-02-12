@@ -5,10 +5,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
+import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { Check, ArrowLeft, Mail } from 'lucide-react';
 
 export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { login, register, error, isAuthenticated, loading } = useUser();
+  const { afterLoginAction, subtitle } = useAuthModal();
   const [tab, setTab] = useState(defaultTab);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '' });
@@ -30,12 +32,14 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const prevAuthRef = useRef(isAuthenticated);
 
   useEffect(() => {
-    // Only auto-close if we transition from NOT authenticated to authenticated while the modal is open
-    if (!prevAuthRef.current && isAuthenticated && isOpen) {
+    // Only auto-close if we transition from NOT authenticated to authenticated while the modal is open.
+    // If afterLoginAction is pending, let GlobalAuthModal handle the close + callback
+    // simultaneously for a seamless transition (no flicker between modals).
+    if (!prevAuthRef.current && isAuthenticated && isOpen && !afterLoginAction?.fn) {
       onClose();
     }
     prevAuthRef.current = isAuthenticated;
-  }, [isAuthenticated, isOpen, onClose]);
+  }, [isAuthenticated, isOpen, onClose, afterLoginAction]);
 
   useEffect(() => {
     setTab(defaultTab);
@@ -51,7 +55,8 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     const success = await login(loginForm);
     if (!success) setLocalError('Invalid credentials');
     setSubmitting(false);
-    if (success) onClose();
+    // If afterLoginAction is pending, GlobalAuthModal handles close + callback seamlessly
+    if (success && !afterLoginAction?.fn) onClose();
   };
 
   const handleRegister = async (e) => {
@@ -66,7 +71,8 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     const success = await register(registerForm);
     if (!success) setLocalError('Registration failed');
     setSubmitting(false);
-    if (success) onClose();
+    // If afterLoginAction is pending, GlobalAuthModal handles close + callback seamlessly
+    if (success && !afterLoginAction?.fn) onClose();
   };
 
   return (
@@ -85,12 +91,12 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                 {tab === 'login' ? (
                   <>
                     <h2 className="text-lg sm:text-xl font-semibold tracking-wide">Welcome Back</h2>
-                    <p className="text-xs sm:text-sm text-gray-400 px-2">Log in to continue your eerie listening journey.</p>
+                    <p className="text-xs sm:text-sm text-gray-400 px-2">{subtitle || 'Log in to continue your eerie listening journey.'}</p>
                   </>
                 ) : (
                   <>
                     <h2 className="text-lg sm:text-xl font-semibold tracking-wide">Create Your Account</h2>
-                    <p className="text-xs sm:text-sm text-gray-400 px-2">Sign up for members-only features like favorites, history, playlists, follows and downloads!</p>
+                    <p className="text-xs sm:text-sm text-gray-400 px-2">{subtitle || 'Sign up for members-only features like favorites, history, playlists, follows and downloads!'}</p>
                   </>
                 )}
               </div>

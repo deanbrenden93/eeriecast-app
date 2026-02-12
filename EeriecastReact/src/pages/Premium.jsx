@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   ListMusic,
   Heart,
+  BadgePercent,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useUser } from '@/context/UserContext.jsx';
@@ -52,6 +54,11 @@ const features = [
     icon: Headphones,
     title: 'All 1,300+ Episodes',
     desc: 'Every show in the Eeriecast catalog, no restrictions',
+  },
+  {
+    icon: ShoppingBag,
+    title: '20% Off the Eeriecast Store',
+    desc: 'Exclusive member discount on merch — only through the app',
   },
 ];
 
@@ -181,8 +188,10 @@ function CardBrandBadge({ number }) {
 
 /* ─── Payment form modal ──────────────────────────────────────────── */
 
-function PaymentFormModal({ open, onClose, onSuccess }) {
+function PaymentFormModal({ open, onClose, onSuccess, plan = 'monthly' }) {
   const { user, fetchUser } = useUser();
+  const planLabel = plan === 'yearly' ? '$69.99/year' : '$7.99/month';
+  const planShort = plan === 'yearly' ? '$69.99/yr' : '$7.99/mo';
   const [form, setForm] = useState({
     cardholderName: '',
     cardNumber: '',
@@ -387,14 +396,21 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
               autoComplete="on"
             >
               {/* Header */}
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500/20 to-amber-500/10 border border-red-500/[0.08] flex items-center justify-center">
                   <CreditCard className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">Payment Details</h2>
-                  <p className="text-xs text-zinc-500">7 days free, then $7.99/month</p>
+                  <p className="text-xs text-zinc-500">7-day free trial &middot; {planShort} after</p>
                 </div>
+              </div>
+
+              {/* Charge disclosure */}
+              <div className="mb-6 px-3.5 py-2.5 rounded-lg bg-amber-500/[0.06] border border-amber-500/[0.1]">
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Your free trial begins today. You will <span className="text-zinc-200 font-medium">not be charged</span> during the 7-day trial period. After the trial ends, you&apos;ll be automatically billed <span className="text-zinc-200 font-medium">{planLabel}</span> until you cancel. You can cancel anytime from your account settings.
+                </p>
               </div>
 
               <div className="space-y-3">
@@ -563,13 +579,14 @@ export default function Premium() {
   const { openAuth } = useAuthModal();
   const [showPayment, setShowPayment] = useState(false);
   const [localSuccess, setLocalSuccess] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('yearly');
 
   const queryParams = new URLSearchParams(location.search);
   const successMessage = queryParams.get('success') === 'true' || localSuccess;
 
   const handleStartTrial = useCallback(async () => {
     if (!isAuthenticated) {
-      openAuth('register', handleStartTrial);
+      openAuth('register', handleStartTrial, 'Create an account to start your free trial.');
       return;
     }
     
@@ -672,37 +689,112 @@ export default function Premium() {
           </div>
         )}
 
-        {/* ── Pricing card ── */}
-        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 sm:p-8 mb-8 relative overflow-hidden">
-          {/* Card glow */}
-          <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-60 h-32 rounded-full blur-[80px] opacity-[0.08] bg-gradient-to-br from-red-500 to-amber-500 pointer-events-none" />
+        {/* ── Pricing cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-8">
+          {/* Annual plan */}
+          <button
+            type="button"
+            onClick={() => setSelectedPlan('yearly')}
+            className={`relative rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 overflow-hidden ${
+              selectedPlan === 'yearly'
+                ? 'bg-white/[0.06] border-2 border-amber-500/40 ring-1 ring-amber-500/20'
+                : 'bg-white/[0.02] border-2 border-white/[0.06] hover:border-white/[0.12]'
+            }`}
+          >
+            {/* Card glow for selected */}
+            {selectedPlan === 'yearly' && (
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-[60px] opacity-[0.1] bg-gradient-to-br from-amber-400 to-red-500 pointer-events-none" />
+            )}
 
-          <div className="relative">
-            {/* Badge */}
-            <div className="flex justify-center mb-5">
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-amber-400/90 bg-amber-500/10 border border-amber-400/[0.08] px-3 py-1 rounded-full">
-                <Sparkles className="w-3 h-3" />
-                Most Popular
-              </span>
-            </div>
-
-            {/* Price */}
-            <div className="text-center mb-6">
-              <div className="flex items-baseline justify-center gap-1">
-                <span className="text-5xl sm:text-6xl font-bold tracking-tight text-white">$7.99</span>
-                <span className="text-lg text-zinc-500 font-medium">/mo</span>
+            <div className="relative">
+              {/* Best Value badge */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-amber-400/90 bg-amber-500/10 border border-amber-400/[0.12] px-2.5 py-0.5 rounded-full">
+                  <BadgePercent className="w-3 h-3" />
+                  Best Value
+                </span>
               </div>
-              <p className="text-xs text-zinc-600 mt-2">7 days free, then $7.99/month. Cancel anytime.</p>
-            </div>
 
-            {/* CTA */}
-            <Button
-              onClick={handleStartTrial}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold text-base shadow-lg shadow-red-600/20 transition-all hover:scale-[1.01] active:scale-[0.99] border border-red-500/20"
-            >
-              Start Free Trial
-            </Button>
-          </div>
+              {/* Price */}
+              <div className="mb-2">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-bold tracking-tight text-white">$69.99</span>
+                  <span className="text-sm text-zinc-500 font-medium">/yr</span>
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1">Just $5.83/mo &middot; billed annually</p>
+              </div>
+
+              {/* Savings callout */}
+              <div className="mt-3 px-3 py-2 rounded-lg bg-emerald-500/[0.08] border border-emerald-500/[0.12]">
+                <p className="text-[11px] font-semibold text-emerald-400">
+                  Save $25.89/yr &mdash; 27% off vs. monthly
+                </p>
+              </div>
+
+              {/* Selection indicator */}
+              <div className={`absolute top-5 right-5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                selectedPlan === 'yearly' ? 'border-amber-400 bg-amber-400' : 'border-zinc-600'
+              }`}>
+                {selectedPlan === 'yearly' && <Check className="w-3 h-3 text-black" />}
+              </div>
+            </div>
+          </button>
+
+          {/* Monthly plan */}
+          <button
+            type="button"
+            onClick={() => setSelectedPlan('monthly')}
+            className={`relative rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 overflow-hidden ${
+              selectedPlan === 'monthly'
+                ? 'bg-white/[0.06] border-2 border-red-500/40 ring-1 ring-red-500/20'
+                : 'bg-white/[0.02] border-2 border-white/[0.06] hover:border-white/[0.12]'
+            }`}
+          >
+            <div className="relative">
+              {/* Label */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                  Monthly
+                </span>
+              </div>
+
+              {/* Price */}
+              <div className="mb-2">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-bold tracking-tight text-white">$7.99</span>
+                  <span className="text-sm text-zinc-500 font-medium">/mo</span>
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1">Billed monthly</p>
+              </div>
+
+              {/* Annual comparison */}
+              <div className="mt-3 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.04]">
+                <p className="text-[11px] text-zinc-500">
+                  $95.88/yr &middot; <span className="text-zinc-400 line-through">save with annual</span>
+                </p>
+              </div>
+
+              {/* Selection indicator */}
+              <div className={`absolute top-5 right-5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                selectedPlan === 'monthly' ? 'border-red-500 bg-red-500' : 'border-zinc-600'
+              }`}>
+                {selectedPlan === 'monthly' && <Check className="w-3 h-3 text-white" />}
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* ── CTA button ── */}
+        <div className="mb-8">
+          <Button
+            onClick={handleStartTrial}
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold text-base shadow-lg shadow-red-600/20 transition-all hover:scale-[1.01] active:scale-[0.99] border border-red-500/20"
+          >
+            Start Free Trial
+          </Button>
+          <p className="text-[11px] text-zinc-600 text-center mt-3">
+            7 days free, then {selectedPlan === 'yearly' ? '$69.99/year' : '$7.99/month'}. Cancel anytime.
+          </p>
         </div>
 
         {/* ── Features grid ── */}
@@ -748,6 +840,7 @@ export default function Premium() {
             open={showPayment}
             onClose={() => setShowPayment(false)}
             onSuccess={() => setLocalSuccess(true)}
+            plan={selectedPlan}
           />
         )}
       </AnimatePresence>
