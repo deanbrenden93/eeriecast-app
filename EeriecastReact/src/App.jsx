@@ -6,13 +6,25 @@ import Pages from "@/pages/index.jsx"
 import { Toaster } from "@/components/ui/toaster"
 import { AudioPlayerProvider } from "@/context/AudioPlayerContext"
 import { AuthModalProvider, useAuthModal } from '@/context/AuthModalContext.jsx';
+import { useUser } from '@/context/UserContext.jsx';
 import { CartProvider } from '@/context/CartContext.jsx';
 import CartDrawer from '@/components/shop/CartDrawer.jsx';
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
 
 function GlobalAuthModal() {
-  const { open, closeAuth, defaultTab } = useAuthModal();
+  const { open, closeAuth, defaultTab, afterLoginAction, setAfterLoginAction } = useAuthModal();
+  const { isAuthenticated } = useUser();
+
+  useEffect(() => {
+    if (isAuthenticated && afterLoginAction?.fn) {
+      const callback = afterLoginAction.fn;
+      // Clear action FIRST to avoid any potential loops if callback re-opens modal
+      setAfterLoginAction(null);
+      callback();
+    }
+  }, [isAuthenticated, afterLoginAction, setAfterLoginAction]);
+
   return (
     <AuthModal isOpen={open} onClose={closeAuth} defaultTab={defaultTab} />
   );

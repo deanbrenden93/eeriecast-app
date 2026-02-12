@@ -6,6 +6,7 @@ class User(AbstractUser):
     avatar = models.URLField(blank=True, null=True)
     bio = models.TextField(blank=True)
     is_premium = models.BooleanField(default=False)
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     minutes_listened = models.IntegerField(default=0)
     subscription_expires = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

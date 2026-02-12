@@ -8,9 +8,9 @@ services:
     volumes:
       - aisalesman_postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: eeriecast
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: webtest123
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
   redis:
     image: redis:7-alpine
@@ -27,14 +27,11 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
       DEBUG: True
-      DB_NAME: eeriecast
-      DB_USER: postgres
-      DB_PASSWORD: webtest123
-      DB_HOST: db
-      DB_PORT: 5432
       REACT_URL: http://localhost:5173
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -47,14 +44,11 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
       DEBUG: True
-      DB_NAME: eeriecast
-      DB_USER: postgres
-      DB_PASSWORD: webtest123
-      DB_HOST: db
-      DB_PORT: 5432
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
 
@@ -66,14 +60,11 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
       DEBUG: True
-      DB_NAME: eeriecast
-      DB_USER: postgres
-      DB_PASSWORD: webtest123
-      DB_HOST: db
-      DB_PORT: 5432
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
 

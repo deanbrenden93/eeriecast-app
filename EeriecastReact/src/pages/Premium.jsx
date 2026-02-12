@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -19,6 +19,8 @@ import {
   ListMusic,
   Heart,
 } from 'lucide-react';
+import { useAuthModal } from '@/context/AuthModalContext.jsx';
+import { useUser } from '@/context/UserContext.jsx';
 
 const features = [
   {
@@ -179,7 +181,8 @@ function CardBrandBadge({ number }) {
 
 /* ─── Payment form modal ──────────────────────────────────────────── */
 
-function PaymentFormModal({ open, onClose }) {
+function PaymentFormModal({ open, onClose, onSuccess }) {
+  const { user, fetchUser } = useUser();
   const [form, setForm] = useState({
     cardholderName: '',
     cardNumber: '',
@@ -188,6 +191,17 @@ function PaymentFormModal({ open, onClose }) {
     zip: '',
     email: '',
   });
+
+  useEffect(() => {
+    if (open && user) {
+      setForm(prev => ({
+        ...prev,
+        email: prev.email || user.email || '',
+        cardholderName: prev.cardholderName || user.username || '',
+      }));
+    }
+  }, [open, user]);
+
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState('form'); // 'form' | 'processing' | 'success'
@@ -254,17 +268,73 @@ function PaymentFormModal({ open, onClose }) {
     setSubmitting(true);
     setStep('processing');
 
-    // Simulate payment processing
-    await new Promise(r => setTimeout(r, 2200));
+    try {
+      console.log('[Stripe] Starting tokenization via REST API...');
+      
+      const [mm, yy] = form.expiry.split('/');
+      const expYear = yy.length === 2 ? `20${yy}` : yy;
+      
+      // Since Stripe.js v3 doesn't support raw card data for tokens, 
+      // we call the REST API directly to tokenize.
+      const params = new URLSearchParams();
+      params.append('card[number]', form.cardNumber.replace(/\s/g, ''));
+      params.append('card[exp_month]', mm);
+      params.append('card[exp_year]', expYear);
+      params.append('card[cvc]', form.cvc);
+      params.append('card[name]', form.cardholderName);
+      params.append('card[address_zip]', form.zip);
 
-    setStep('success');
-    setSubmitting(false);
+      const stripeRes = await fetch('https://api.stripe.com/v1/tokens', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_STRIPE_PUBLIC_KEY}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
 
-    // Close after success animation
-    setTimeout(() => {
-      onClose?.();
-      toast({ title: 'Welcome to Eeriecast Premium', description: 'Your free trial has started', duration: 4000 });
-    }, 1800);
+      const token = await stripeRes.json();
+      
+      if (!stripeRes.ok || token.error) {
+        console.error('[Stripe] Tokenization error:', token.error);
+        throw new Error(token.error?.message || 'Failed to tokenize card.');
+      }
+
+      console.log('[Stripe] Token created:', token.id);
+
+      const { djangoClient } = await import('@/api/djangoClient');
+      console.log('[Backend] Calling start-trial endpoint...');
+      const response = await djangoClient.post('/billing/start-trial/', {
+        stripeToken: token.id,
+        email: form.email,
+      });
+      console.log('[Backend] Signup response:', response);
+      
+      // Refresh user state to reflect premium status
+      if (fetchUser) {
+        console.log('[User] Refreshing user data...');
+        await fetchUser();
+      }
+
+      onSuccess?.();
+      setStep('success');
+      setSubmitting(false);
+
+      // Close after success animation
+      setTimeout(() => {
+        onClose?.();
+        toast({ title: 'Welcome to Eeriecast Premium', description: 'Your free trial has started', duration: 4000 });
+      }, 1800);
+    } catch (err) {
+      console.error('[Checkout] Error:', err);
+      setStep('form');
+      setSubmitting(false);
+      toast({
+        title: 'Payment Failed',
+        description: err.message || err.detail || 'There was an error processing your card.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (!open) return null;
@@ -488,7 +558,51 @@ function PaymentFormModal({ open, onClose }) {
 
 export default function Premium() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, isAuthenticated } = useUser();
+  const { openAuth } = useAuthModal();
   const [showPayment, setShowPayment] = useState(false);
+  const [localSuccess, setLocalSuccess] = useState(false);
+
+  const queryParams = new URLSearchParams(location.search);
+  const successMessage = queryParams.get('success') === 'true' || localSuccess;
+
+  const handleStartTrial = useCallback(async () => {
+    if (!isAuthenticated) {
+      openAuth('register', handleStartTrial);
+      return;
+    }
+    
+    // Check if user is already premium to avoid opening the modal
+    if (user?.is_premium) {
+      toast({
+        title: 'Already Subscribed',
+        description: 'You already have an active Premium subscription.',
+      });
+      return;
+    }
+
+    setShowPayment(true);
+  }, [isAuthenticated, openAuth, user]);
+
+  // Check for success or canceled status in URL
+  useEffect(() => {
+    if (successMessage) {
+      toast({
+        title: 'Welcome to Premium',
+        description: 'Your 7-day free trial has started!',
+        duration: 5000,
+      });
+      // Optionally refresh user state to reflect premium status
+    }
+    if (queryParams.get('canceled') === 'true') {
+      toast({
+        title: 'Subscription Canceled',
+        description: 'You canceled the subscription process.',
+        variant: 'destructive',
+      });
+    }
+  }, [successMessage, location.search]);
 
   // Lock viewport-level overflow so no scrollbar can appear during the
   // page-transition animation.  This page scrolls inside its own container.
@@ -551,6 +665,13 @@ export default function Premium() {
           </p>
         </div>
 
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-8 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-center text-sm">
+            Successfully subscribed! Your 7-day free trial has started.
+          </div>
+        )}
+
         {/* ── Pricing card ── */}
         <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 sm:p-8 mb-8 relative overflow-hidden">
           {/* Card glow */}
@@ -576,7 +697,7 @@ export default function Premium() {
 
             {/* CTA */}
             <Button
-              onClick={() => setShowPayment(true)}
+              onClick={handleStartTrial}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold text-base shadow-lg shadow-red-600/20 transition-all hover:scale-[1.01] active:scale-[0.99] border border-red-500/20"
             >
               Start Free Trial
@@ -626,6 +747,7 @@ export default function Premium() {
           <PaymentFormModal
             open={showPayment}
             onClose={() => setShowPayment(false)}
+            onSuccess={() => setLocalSuccess(true)}
           />
         )}
       </AnimatePresence>

@@ -22,13 +22,29 @@ function getChapterCount(podcast) {
   return eps || null;
 }
 
+function extractBrief(description) {
+  if (!description) return '';
+  // Strip leading promo lines like "*Exclusive to..." and URLs
+  let clean = description
+    .replace(/^\*Exclusive[^\n]*\n*/i, '')
+    .replace(/https?:\/\/[^\s]+/g, '')
+    .trim();
+  // Take first ~160 chars at a word boundary
+  if (clean.length > 160) {
+    clean = clean.slice(0, 160).replace(/\s+\S*$/, '') + '...';
+  }
+  return clean;
+}
+
 export default function BookCard({ podcast }) {
   const navigate = useNavigate();
   const { ensureDetail } = usePodcasts();
   const isMembersOnly = !!podcast?.is_exclusive;
   const chapters = getChapterCount(podcast);
   const runtime = formatRuntime(podcast?.total_duration);
+  const brief = extractBrief(podcast?.description);
 
+  // The list endpoint doesn't include description — fetch full detail lazily
   useEffect(() => {
     if (podcast?.id && !podcast?.description) {
       ensureDetail(podcast.id).catch(() => {});
@@ -99,6 +115,22 @@ export default function BookCard({ podcast }) {
           <h3 className="text-white font-semibold text-xs sm:text-sm leading-snug line-clamp-2">
             {podcast?.title}
           </h3>
+
+          {/* Brief description */}
+          {brief && (
+            <p className="text-zinc-400 text-xs sm:text-[13px] leading-relaxed line-clamp-2 mb-3 group-hover:text-zinc-300 transition-colors duration-500">
+              {brief}
+            </p>
+          )}
+
+          {/* CTA button */}
+          <button
+            className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/[0.06] backdrop-blur-md border border-white/[0.08] text-sm font-medium text-white hover:bg-white/[0.12] hover:border-white/[0.15] group-hover:bg-white/[0.10] transition-all duration-500"
+            onClick={(e) => { e.stopPropagation(); handleClick(); }}
+          >
+            <Headphones className="w-4 h-4" />
+            Start Listening
+          </button>
         </div>
       </div>
     </div>

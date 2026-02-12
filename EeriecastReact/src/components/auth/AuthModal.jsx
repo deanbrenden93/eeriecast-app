@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -27,8 +27,14 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     'Sample Exclusive Content',
   ];
 
+  const prevAuthRef = useRef(isAuthenticated);
+
   useEffect(() => {
-    if (isAuthenticated && isOpen) onClose();
+    // Only auto-close if we transition from NOT authenticated to authenticated while the modal is open
+    if (!prevAuthRef.current && isAuthenticated && isOpen) {
+      onClose();
+    }
+    prevAuthRef.current = isAuthenticated;
   }, [isAuthenticated, isOpen, onClose]);
 
   useEffect(() => {
