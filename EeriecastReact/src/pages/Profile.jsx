@@ -528,66 +528,7 @@ export default function Profile() {
         </section>
 
         {/* ════════════════════════════════════════════════════════════ */}
-        {/*  SECTION 3: Account Actions                                */}
-        {/* ════════════════════════════════════════════════════════════ */}
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
-            Account Actions
-          </h2>
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] divide-y divide-white/[0.04] overflow-hidden">
-            {/* Change Password */}
-            <button
-              onClick={() => setShowChangePassword(true)}
-              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group w-full text-left"
-            >
-              <Lock className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
-              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">Change Password</span>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
-            </button>
-
-            {/* Settings */}
-            <Link
-              to={createPageUrl("Settings")}
-              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group"
-            >
-              <Settings className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
-              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">Settings</span>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
-            </Link>
-
-            {/* Help */}
-            <Link
-              to={createPageUrl("Help")}
-              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group"
-            >
-              <HelpCircle className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
-              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">Help & Support</span>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
-            </Link>
-
-            {/* Delete Account */}
-            <button
-              onClick={() => toast({ title: "Contact Support", description: "Please email support@eeriecasts.com to request account deletion." })}
-              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group w-full text-left"
-            >
-              <Trash2 className="w-5 h-5 text-gray-600 group-hover:text-red-400 transition-colors" />
-              <span className="text-sm flex-1 text-gray-500 group-hover:text-red-400 transition-colors">Delete Account</span>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
-            </button>
-
-            {/* Sign Out */}
-            <button
-              onClick={handleSignOut}
-              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group w-full text-left"
-            >
-              <LogOut className="w-5 h-5 text-gray-500 group-hover:text-red-400 transition-colors" />
-              <span className="text-sm flex-1 text-gray-300 group-hover:text-red-400 transition-colors">Sign Out</span>
-            </button>
-          </div>
-        </section>
-
-        {/* ════════════════════════════════════════════════════════════ */}
-        {/*  SECTION 4: Listening Stats                                */}
+        {/*  SECTION 3: Listening Stats                                */}
         {/* ════════════════════════════════════════════════════════════ */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
@@ -645,6 +586,65 @@ export default function Profile() {
             </div>
           </section>
         )}
+
+        {/* ════════════════════════════════════════════════════════════ */}
+        {/*  SECTION 4: Account Actions                                */}
+        {/* ════════════════════════════════════════════════════════════ */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
+            Account Actions
+          </h2>
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] divide-y divide-white/[0.04] overflow-hidden">
+            {/* Change Password */}
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group w-full text-left"
+            >
+              <Lock className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
+              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">Change Password</span>
+              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+            </button>
+
+            {/* Settings */}
+            <Link
+              to={createPageUrl("Settings")}
+              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group"
+            >
+              <Settings className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
+              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">Settings</span>
+              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+            </Link>
+
+            {/* Help */}
+            <Link
+              to={createPageUrl("Help")}
+              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group"
+            >
+              <HelpCircle className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors" />
+              <span className="text-sm flex-1 text-gray-300 group-hover:text-white transition-colors">Help & Support</span>
+              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+            </Link>
+
+            {/* Delete Account */}
+            <button
+              onClick={() => toast({ title: "Contact Support", description: "Please email support@eeriecasts.com to request account deletion." })}
+              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group w-full text-left"
+            >
+              <Trash2 className="w-5 h-5 text-gray-600 group-hover:text-red-400 transition-colors" />
+              <span className="text-sm flex-1 text-gray-500 group-hover:text-red-400 transition-colors">Delete Account</span>
+              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+            </button>
+
+            {/* Sign Out */}
+            <button
+              onClick={handleSignOut}
+              className="flex items-center gap-3 px-5 py-4 hover:bg-white/[0.03] transition-colors group w-full text-left"
+            >
+              <LogOut className="w-5 h-5 text-gray-500 group-hover:text-red-400 transition-colors" />
+              <span className="text-sm flex-1 text-gray-300 group-hover:text-red-400 transition-colors">Sign Out</span>
+            </button>
+          </div>
+        </section>
       </div>
 
       {/* Change Password Modal */}
