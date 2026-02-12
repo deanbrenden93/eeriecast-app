@@ -8,11 +8,14 @@ from rest_framework.response import Response
 from rest_framework import status, viewsets
 
 import stripe
+import logging
 from datetime import datetime
 
 from .models import Subscription
 from .serializers import SubscriptionSerializer
 from .utils import get_or_create_stripe_customer
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
@@ -182,6 +185,10 @@ def create_checkout_session(request):
     Create a Stripe Checkout Session for the monthly subscription with a 7-day trial.
     """
     user = request.user
+    
+    if user.is_premium_member():
+        return Response({"detail": "You already have an active subscription."}, status=status.HTTP_400_BAD_REQUEST)
+
     stripe.api_key = settings.STRIPE_SECRET_KEY
     
     if not settings.STRIPE_MONTHLY_PRICE_ID:
@@ -204,10 +211,67 @@ def create_checkout_session(request):
             },
             success_url=settings.REACT_BASE_URL + '/premium?success=true&session_id={CHECKOUT_SESSION_ID}',
             cancel_url=settings.REACT_BASE_URL + '/premium?canceled=true',
+            allow_promotion_codes=True,
         )
         return Response({'url': checkout_session.url})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def start_trial_custom(request):
+    """
+    Start a 7-day trial using a Stripe token from the frontend.
+    Attaches the token to the customer and starts the subscription.
+    """
+    user = request.user
+    data = request.data
+    
+    if user.is_premium_member():
+        return Response({"detail": "You already have an active subscription."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    logger.info(f"Custom trial signup started for user {user.email}")
+    
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    
+    stripe_token = data.get('stripeToken')
+    
+    if not stripe_token:
+        logger.warning(f"Missing stripeToken in request for user {user.email}")
+        return Response({"detail": "Missing payment token"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # 1. Get or create customer
+        customer_id = get_or_create_stripe_customer(user)
+        logger.info(f"Stripe customer ID: {customer_id}")
+        
+        # 2. Attach token to customer (set as default source)
+        logger.info(f"Attaching token {stripe_token} to customer {customer_id}")
+        stripe.Customer.modify(customer_id, source=stripe_token)
+        
+        # 3. Create subscription
+        logger.info(f"Creating subscription with price {settings.STRIPE_MONTHLY_PRICE_ID} and {settings.STRIPE_TRIAL_DAYS} days trial")
+        stripe_sub = stripe.Subscription.create(
+            customer=customer_id,
+            items=[{"price": settings.STRIPE_MONTHLY_PRICE_ID}],
+            trial_period_days=settings.STRIPE_TRIAL_DAYS,
+        )
+        logger.info(f"Stripe subscription created: {stripe_sub.id}")
+        
+        # 5. Sync locally
+        handle_subscription_change(stripe_sub)
+        logger.info(f"Local subscription sync completed for {stripe_sub.id}")
+        
+        sub = Subscription.objects.get(stripe_subscription_id=stripe_sub.id)
+        return Response(SubscriptionSerializer(sub).data)
+        
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error during custom trial signup: {str(e)}")
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Unexpected error during custom trial signup: {str(e)}")
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["POST"])
@@ -272,30 +336,44 @@ def handle_subscription_change(stripe_sub):
     """
     stripe_subscription_id = stripe_sub.get("id")
     customer_id = stripe_sub.get("customer")
+    status_str = stripe_sub.get("status")
+    
+    logger.info(f"Handling subscription change: {stripe_subscription_id} (Customer: {customer_id}, Status: {status_str})")
     
     # Try to find the user
     User = get_user_model()
     user = User.objects.filter(stripe_customer_id=customer_id).first()
     
     if not user:
+        logger.info(f"User not found by stripe_customer_id {customer_id}, searching by email...")
         # Fallback to searching by email if customer ID match fails
         try:
             customer = stripe.Customer.retrieve(customer_id)
             user = User.objects.filter(email=customer.email).first()
             if user and not user.stripe_customer_id:
+                logger.info(f"Found user by email {customer.email}, updating stripe_customer_id")
                 user.stripe_customer_id = customer_id
                 user.save(update_fields=["stripe_customer_id"])
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error retrieving customer from Stripe: {str(e)}")
             pass
 
     if not user:
+        logger.warning(f"Could not find user for customer {customer_id}")
         return
 
+    logger.info(f"Syncing subscription for user {user.email}")
+
     # Upsert the subscription record
-    sub, _created = Subscription.objects.get_or_create(
+    sub, created = Subscription.objects.get_or_create(
         stripe_subscription_id=stripe_subscription_id,
-        defaults={"user": user, "status": stripe_sub.get("status", "incomplete")},
+        defaults={"user": user, "status": status_str or "incomplete"},
     )
+    
+    if created:
+        logger.info(f"Created new local subscription record for {stripe_subscription_id}")
+    else:
+        logger.info(f"Updating existing local subscription record for {stripe_subscription_id}")
     
     # Update fields
     sub.user = user

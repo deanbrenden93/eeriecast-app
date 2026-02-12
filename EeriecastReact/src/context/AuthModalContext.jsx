@@ -6,14 +6,26 @@ const AuthModalContext = createContext();
 export function AuthModalProvider({ children }) {
   const [open, setOpen] = useState(false);
   const [defaultTab, setDefaultTab] = useState('login');
+  const [afterLoginAction, setAfterLoginAction] = useState(null);
 
-  const openAuth = (tab = 'login') => {
+  const openAuth = (tab = 'login', onComplete = null) => {
     setDefaultTab(tab || 'login');
+    setAfterLoginAction(onComplete ? { fn: onComplete } : null);
     setOpen(true);
   };
-  const closeAuth = () => setOpen(false);
+  const closeAuth = () => {
+    setOpen(false);
+    setAfterLoginAction(null);
+  };
 
-  const value = useMemo(() => ({ open, defaultTab, openAuth, closeAuth }), [open, defaultTab]);
+  const value = useMemo(() => ({
+    open,
+    defaultTab,
+    afterLoginAction,
+    openAuth,
+    closeAuth,
+    setAfterLoginAction
+  }), [open, defaultTab, afterLoginAction]);
 
   return (
     <AuthModalContext.Provider value={value}>

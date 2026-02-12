@@ -52,7 +52,7 @@ REST_FRAMEWORK = {
     'COERCE_DECIMAL_TO_STRING': False,
 }
 
-REACT_BASE_URL = 'http://localhost:3000'
+REACT_BASE_URL = config('REACT_URL', default='http://localhost:5173')
 
 UNFOLD = {
     "SITE_HEADER": "Eeriecast Admin",
@@ -250,7 +250,8 @@ if _CSRF_TRUSTED:
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://localhost:5173",  # Vite default
+    "http://localhost:5173",
+    "http://localhost:5178",
 ]
 
 # JWT Settings
