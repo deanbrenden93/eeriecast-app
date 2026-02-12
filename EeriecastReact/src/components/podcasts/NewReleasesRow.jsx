@@ -109,6 +109,7 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
   const handleEpisodePlay = async (ep) => {
     const podcastData = ep.podcast_data || getById(ep.podcast_id);
     if (podcastData) {
+      // loadAndPlay will resolve audio URL via history endpoint if needed
       const played = await loadAndPlay({ podcast: podcastData, episode: ep, resume: { progress: 0 } });
       if (played === false) {
         toast({

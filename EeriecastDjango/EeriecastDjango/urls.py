@@ -28,7 +28,6 @@ urlpatterns = [
     path('api/categories/', include('apps.categories.urls')),
     path('api/library/', include('apps.library.urls')),
     path('api/search/', include('apps.search.urls')),
-    path('api/integrations/', include('apps.integrations.urls')),
     path('api/billing/', include('apps.billing.urls')),
 ]
 

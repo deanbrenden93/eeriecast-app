@@ -38,6 +38,10 @@ services:
       REACT_URL: http://localhost:5173
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      STRIPE_SECRET_KEY: sk_test_51NgsNSDZQqr6bWzenpD5ekAndKhlkwaPc6hRJcbo8QYExHMomDd1iW6FKPdAUKnIRjH6gSV6zsrzPe6sBgLtvdPg00UCXNbn9o
+      STRIPE_PUBLIC_KEY: pk_test_51NgsNSDZQqr6bWzeMdhzAHgTAEntrvf1CYPyXTuuiUwJg5Tw23MzLNTN2lnvsExdCgwLNdFUGIxB4GDUsWTP8mHP00IQ9YjptB
+      STRIPE_WEBHOOK_SECRET: whsec_jCyj9WBHGc8ODVOtwc9o7VA4PJLoM91o
+      STRIPE_MONTHLY_PRICE_ID: price_1QVkCFDZQqr6bWze584rDEz0
 
   celery_worker:
     build: .

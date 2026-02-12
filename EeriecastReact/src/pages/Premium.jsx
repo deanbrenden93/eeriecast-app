@@ -551,6 +551,13 @@ export default function Premium() {
           </p>
         </div>
 
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-8 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-center text-sm">
+            Successfully subscribed! Your 7-day free trial has started.
+          </div>
+        )}
+
         {/* ── Pricing card ── */}
         <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 sm:p-8 mb-8 relative overflow-hidden">
           {/* Card glow */}

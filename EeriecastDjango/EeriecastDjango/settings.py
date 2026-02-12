@@ -261,14 +261,17 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
 }
 
-# Environment variables for integrations
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# Environment variables
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
 USE_S3 = os.getenv('USE_S3', 'False').lower() == 'true'
 # Stripe
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY', '')
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_MONTHLY_PRICE_ID = os.getenv('STRIPE_MONTHLY_PRICE_ID', 'price_1QVkCFDZQqr6bWze584rDEz0')
+STRIPE_TRIAL_DAYS = 7
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 9999999
 
