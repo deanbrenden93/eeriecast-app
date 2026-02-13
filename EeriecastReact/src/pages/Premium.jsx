@@ -24,6 +24,11 @@ import {
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 
+const MONTHLY_PRICE = 7.99;
+const YEARLY_PRICE = 69.96;
+const SAVINGS_PER_YEAR = 12 * MONTHLY_PRICE - YEARLY_PRICE;
+const FREE_MONTHS_EQUIVALENT = Math.floor(SAVINGS_PER_YEAR / MONTHLY_PRICE);
+
 const features = [
   {
     icon: Star,
@@ -190,8 +195,8 @@ function CardBrandBadge({ number }) {
 
 function PaymentFormModal({ open, onClose, onSuccess, plan = 'monthly' }) {
   const { user, fetchUser } = useUser();
-  const planLabel = plan === 'yearly' ? '$69.99/year' : '$7.99/month';
-  const planShort = plan === 'yearly' ? '$69.99/yr' : '$7.99/mo';
+  const planLabel = plan === 'yearly' ? `$${YEARLY_PRICE}/year` : `$${MONTHLY_PRICE}/month`;
+  const planShort = plan === 'yearly' ? `$${YEARLY_PRICE}/yr` : `$${MONTHLY_PRICE}/mo`;
   const [form, setForm] = useState({
     cardholderName: '',
     cardNumber: '',
@@ -695,43 +700,46 @@ export default function Premium() {
           <button
             type="button"
             onClick={() => setSelectedPlan('yearly')}
-            className={`relative rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 overflow-hidden ${
+            className={`relative rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 overflow-hidden border-2 ${
               selectedPlan === 'yearly'
-                ? 'bg-white/[0.06] border-2 border-amber-500/40 ring-1 ring-amber-500/20'
-                : 'bg-white/[0.02] border-2 border-white/[0.06] hover:border-white/[0.12]'
+                ? 'bg-white/[0.06] border-amber-400/60 ring-1 ring-amber-400/25 premium-yearly-gold-shimmer'
+                : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.12]'
             }`}
           >
             {/* Card glow for selected */}
             {selectedPlan === 'yearly' && (
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-[60px] opacity-[0.1] bg-gradient-to-br from-amber-400 to-red-500 pointer-events-none" />
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-[60px] opacity-[0.15] bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600 pointer-events-none" />
             )}
 
             <div className="relative">
-              {/* Best Value badge */}
-              <div className="flex items-center gap-2 mb-3">
+              {/* Best Value badge + Annual label */}
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-amber-400/90 bg-amber-500/10 border border-amber-400/[0.12] px-2.5 py-0.5 rounded-full">
                   <BadgePercent className="w-3 h-3" />
                   Best Value
                 </span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                  Annual
+                </span>
               </div>
 
-              {/* Price */}
+              {/* Price: $5.83/mo, then yearly */}
               <div className="mb-2">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl sm:text-4xl font-bold tracking-tight text-white">$69.99</span>
-                  <span className="text-sm text-zinc-500 font-medium">/yr</span>
+                  <span className="text-3xl sm:text-4xl font-bold tracking-tight text-white">${(YEARLY_PRICE / 12).toFixed(2)}</span>
+                  <span className="text-sm text-zinc-400 font-medium">/mo</span>
                 </div>
-                <p className="text-[11px] text-zinc-500 mt-1">Just $5.83/mo &middot; billed annually</p>
+                <p className="text-[11px] text-zinc-500 mt-1">${YEARLY_PRICE.toFixed(2)}/yr &middot; billed annually</p>
               </div>
 
-              {/* Savings callout */}
+              {/* Savings: free months equivalent */}
               <div className="mt-3 px-3 py-2 rounded-lg bg-emerald-500/[0.08] border border-emerald-500/[0.12]">
                 <p className="text-[11px] font-semibold text-emerald-400">
-                  Save $25.89/yr &mdash; 27% off vs. monthly
+                  {FREE_MONTHS_EQUIVALENT} months free — you save ${SAVINGS_PER_YEAR.toFixed(2)}/yr vs. monthly
                 </p>
               </div>
 
-              {/* Selection indicator */}
+              {/* Selection indicator — gold */}
               <div className={`absolute top-5 right-5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
                 selectedPlan === 'yearly' ? 'border-amber-400 bg-amber-400' : 'border-zinc-600'
               }`}>
@@ -746,7 +754,7 @@ export default function Premium() {
             onClick={() => setSelectedPlan('monthly')}
             className={`relative rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 overflow-hidden ${
               selectedPlan === 'monthly'
-                ? 'bg-white/[0.06] border-2 border-red-500/40 ring-1 ring-red-500/20'
+                ? 'bg-white/[0.06] border-2 border-slate-400/50 ring-1 ring-slate-400/20'
                 : 'bg-white/[0.02] border-2 border-white/[0.06] hover:border-white/[0.12]'
             }`}
           >
@@ -774,11 +782,11 @@ export default function Premium() {
                 </p>
               </div>
 
-              {/* Selection indicator */}
+              {/* Selection indicator — silver */}
               <div className={`absolute top-5 right-5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                selectedPlan === 'monthly' ? 'border-red-500 bg-red-500' : 'border-zinc-600'
+                selectedPlan === 'monthly' ? 'border-slate-400 bg-slate-400' : 'border-zinc-600'
               }`}>
-                {selectedPlan === 'monthly' && <Check className="w-3 h-3 text-white" />}
+                {selectedPlan === 'monthly' && <Check className="w-3 h-3 text-slate-900" />}
               </div>
             </div>
           </button>
@@ -793,7 +801,7 @@ export default function Premium() {
             Start Free Trial
           </Button>
           <p className="text-[11px] text-zinc-600 text-center mt-3">
-            7 days free, then {selectedPlan === 'yearly' ? '$69.99/year' : '$7.99/month'}. Cancel anytime.
+            7 days free, then {selectedPlan === 'yearly' ? `$${YEARLY_PRICE}/year` : `$${MONTHLY_PRICE}/month`}. Cancel anytime.
           </p>
         </div>
 
