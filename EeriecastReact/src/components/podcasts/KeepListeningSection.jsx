@@ -110,7 +110,7 @@ export default function KeepListeningSection({
                 </div>
 
                 {/* Episode info */}
-                <div className="p-2.5 space-y-0.5 mt-auto min-h-[3rem] flex flex-col justify-end">
+                <div className="p-2.5 space-y-0.5 mt-auto min-h-[3rem] flex flex-col justify-start">
                   <h3 className="text-white/90 font-semibold text-xs line-clamp-2 leading-tight group-hover:text-red-400 transition-colors duration-300">
                     {episode.title}
                   </h3>
