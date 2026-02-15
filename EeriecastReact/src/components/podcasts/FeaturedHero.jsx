@@ -348,8 +348,13 @@ export default function FeaturedHero({ onPlay }) {
         {/* Grain */}
         <div className="absolute inset-0 opacity-[0.018]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
 
-        {/* Bottom fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-eeriecast-surface to-transparent" />
+        {/* Bottom feather — tall multi-stop gradient for a soft, organic dissolve */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-40 sm:h-44"
+          style={{
+            background: 'linear-gradient(to top, #0A0A12 0%, #0A0A12 8%, rgba(10,10,18,0.85) 30%, rgba(10,10,18,0.5) 55%, rgba(10,10,18,0.18) 78%, transparent 100%)',
+          }}
+        />
       </div>
 
       {/* ── Gold sparkle particles (promo slide) ── */}
