@@ -110,13 +110,23 @@ export default function KeepListeningSection({
                 </div>
 
                 {/* Episode info */}
-                <div className="p-2.5 space-y-0.5 mt-auto min-h-[3rem] flex flex-col justify-start">
+                <div className="p-2.5 space-y-0.5 min-h-[3rem] flex flex-col justify-start">
                   <h3 className="text-white/90 font-semibold text-xs line-clamp-2 leading-tight group-hover:text-red-400 transition-colors duration-300">
                     {episode.title}
                   </h3>
-                  <p className="text-zinc-500 text-[10px] leading-tight line-clamp-1">
-                    {podcast?.title || podcast?.author || ''}
-                  </p>
+                  {podcast?.title ? (
+                    <Link
+                      to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id || podcast.slug)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-zinc-500 text-[10px] leading-tight line-clamp-1 hover:text-red-400 transition-colors duration-200"
+                    >
+                      {podcast.title}
+                    </Link>
+                  ) : (
+                    <p className="text-zinc-500 text-[10px] leading-tight line-clamp-1">
+                      {podcast?.author || ''}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

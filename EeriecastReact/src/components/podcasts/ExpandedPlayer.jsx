@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import { Heart, X, Plus, Settings2 } from "lucide-react";
+import { Heart, X, Plus, Settings2, UserPlus, UserCheck } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/context/UserContext.jsx";
@@ -336,7 +336,7 @@ function MarqueeText({ text, className = '' }) {
 MarqueeText.propTypes = { text: PropTypes.string, className: PropTypes.string };
 
 /** Scrolling marquee for episode titles that overflow a single line. */
-function MarqueeTitle({ text }) {
+function MarqueeTitle({ text, suffix }) {
   const containerRef = useRef(null);
   const textRef = useRef(null);
   const [needsScroll, setNeedsScroll] = useState(false);
@@ -353,7 +353,7 @@ function MarqueeTitle({ text }) {
     checkOverflow();
     const tid = setTimeout(checkOverflow, 500);
     return () => clearTimeout(tid);
-  }, [text]);
+  }, [text, suffix]);
 
   return (
     <div ref={containerRef} className="relative w-full overflow-hidden">
@@ -363,11 +363,12 @@ function MarqueeTitle({ text }) {
         style={needsScroll ? { '--marquee-container': `${containerWidth}px` } : undefined}
       >
         {text}
+        {suffix && <span className="text-[11px] font-normal text-white/30 tracking-wide ml-3 align-middle">{suffix}</span>}
       </h1>
     </div>
   );
 }
-MarqueeTitle.propTypes = { text: PropTypes.string };
+MarqueeTitle.propTypes = { text: PropTypes.string, suffix: PropTypes.string };
 
 export default function ExpandedPlayer({ 
   podcast, 
@@ -392,7 +393,7 @@ export default function ExpandedPlayer({
 }) {
   const navigate = useNavigate();
   const [isLiked, setIsLiked] = useState(false);
-  const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium } = useUser();
+  const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium, followedPodcastIds, refreshFollowings } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
 
@@ -402,6 +403,32 @@ export default function ExpandedPlayer({
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
+
+  // Follow state
+  const isFollowing = followedPodcastIds?.has(Number(podcast?.id));
+  const [isFollowingLoading, setIsFollowingLoading] = useState(false);
+  const [followAnim, setFollowAnim] = useState(null); // 'followed' | 'unfollowed' | null
+
+  const handleFollowToggle = async () => {
+    if (!podcast?.id) return;
+    if (!isAuthenticated) { openAuth('login'); return; }
+    const wasFollowing = isFollowing;
+    setIsFollowingLoading(true);
+    try {
+      if (wasFollowing) {
+        await UserLibrary.unfollowPodcast(podcast.id);
+      } else {
+        await UserLibrary.followPodcast(podcast.id);
+      }
+      await refreshFollowings();
+      setFollowAnim(wasFollowing ? 'unfollowed' : 'followed');
+      setTimeout(() => setFollowAnim(null), 900);
+    } catch (e) {
+      console.error('Failed to toggle follow', e);
+    } finally {
+      setIsFollowingLoading(false);
+    }
+  };
 
   // New: Queue sheet state
   const [showQueue, setShowQueue] = useState(false);
@@ -812,8 +839,28 @@ export default function ExpandedPlayer({
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide text-amber-400/80 border border-amber-400/25 bg-amber-400/[0.08] leading-none select-none">
               PG-13
             </span>
+            {/* Follow button */}
+            <button
+              type="button"
+              onClick={handleFollowToggle}
+              disabled={isFollowingLoading}
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border transition-all duration-300 select-none ${
+                isFollowing
+                  ? 'text-red-400/90 border-red-500/30 bg-red-500/10 hover:bg-red-500/20 hover:border-red-500/40'
+                  : 'text-white/60 border-white/15 bg-white/[0.05] hover:bg-white/[0.1] hover:text-white/90 hover:border-white/25'
+              } ${isFollowingLoading ? 'opacity-60 cursor-not-allowed' : ''} ${followAnim === 'followed' ? 'animate-pulse' : ''}`}
+            >
+              {isFollowing
+                ? <UserCheck className="w-3 h-3" />
+                : <UserPlus className="w-3 h-3" />
+              }
+              <span>{isFollowing ? 'Following' : 'Follow'}</span>
+            </button>
           </div>
-          <MarqueeTitle text={episode?.title || ''} />
+          <MarqueeTitle
+            text={episode?.title || ''}
+            suffix={formatDate(episode?.published_at || episode?.created_date || episode?.release_date)}
+          />
         </div>
 
         {/* Action buttons */}

@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
+import { useMediaSession } from '@/hooks/use-media-session';
 import { getEpisodeAudioUrl, isAudiobook } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
@@ -480,6 +481,24 @@ export const AudioPlayerProvider = ({ children }) => {
       await playQueueIndex(prevIndex);
     }
   }, [playQueueIndex, audioRef, seek]);
+
+  // ─── Lock Screen / Media Session ─────────────────────────────────
+  // Syncs metadata, playback state, and transport controls to the OS
+  // lock screen, notification shade, and hardware media keys.
+  useMediaSession({
+    episode,
+    podcast,
+    isPlaying,
+    currentTime,
+    duration,
+    playbackRate,
+    onPlay: play,
+    onPause: pause,
+    onNext: playNext,
+    onPrev: playPrev,
+    onSeek: seek,
+    onSkip: skip,
+  });
 
   // ─── Add to Queue / Play Next ────────────────────────────────────
   const addToQueue = useCallback((pod, ep) => {
