@@ -127,7 +127,7 @@ export default function EpisodeMenu({
   };
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange} modal={inline ? false : undefined}>
+    <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"

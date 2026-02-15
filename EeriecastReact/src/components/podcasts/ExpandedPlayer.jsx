@@ -531,11 +531,13 @@ export default function ExpandedPlayer({
   };
 
   useEffect(() => {
-    // Prevent background page from scrolling when expanded player is open
-    const prevOverflow = document.body.style.overflow;
+    // Prevent background page from scrolling when expanded player is open.
+    // Always restore to '' (auto) on unmount rather than capturing the
+    // previous value in a closure, which can get stale if another component
+    // (e.g. EReader, Radix modal) also sets overflow:hidden concurrently.
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = prevOverflow;
+      document.body.style.overflow = '';
     };
   }, []);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
@@ -74,22 +74,29 @@ export default function Podcasts() {
 
   // Build "Keep Listening" items from the real-time episodeProgressMap.
   // This picks up both server-side history and current-session plays.
+  // IMPORTANT: episodeProgressMap is kept in a ref (not a dependency) to
+  // prevent this heavy effect (iterates all episodes + makes up to 8 API
+  // calls) from re-running every 3 seconds when progress updates.
+  const progressMapRef = useRef(episodeProgressMap);
+  useEffect(() => { progressMapRef.current = episodeProgressMap; }, [episodeProgressMap]);
+
   useEffect(() => {
     if (!podcasts.length) { setKeepListeningItems([]); return; }
     const podcastMap = new Map(podcasts.map(p => [p.id, p]));
+    const progressMap = progressMapRef.current;
 
     // Also merge with localStorage recentlyPlayed for ordering
     const recentPodcastIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
 
     // Build items from episodeProgressMap (partially played episodes)
     const items = [];
-    if (episodeProgressMap && episodeProgressMap.size > 0) {
+    if (progressMap && progressMap.size > 0) {
       // We need episode details, but the map only has IDs + progress.
       // Scan podcast episodes to find matches.
       for (const p of podcasts) {
         const eps = Array.isArray(p.episodes) ? p.episodes : [];
         for (const ep of eps) {
-          const prog = episodeProgressMap.get(Number(ep.id));
+          const prog = progressMap.get(Number(ep.id));
           if (prog && prog.progress > 0 && !prog.completed) {
             const pct = prog.duration > 0 ? Math.min(100, (prog.progress / prog.duration) * 100) : 0;
             if (pct > 0 && pct < 95) {
@@ -150,7 +157,8 @@ export default function Podcasts() {
       }
     })();
     return () => { cancelled = true; };
-  }, [podcasts, episodeProgressMap]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [podcasts]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;
