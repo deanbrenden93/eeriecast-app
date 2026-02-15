@@ -43,6 +43,20 @@ export default function EpisodeMenu({
   // Track whether the current touch gesture is a scroll (not a tap)
   const touchStartRef = useRef(null);
   const isScrollingRef = useRef(false);
+  // Track whether the current interaction is touch (vs mouse)
+  const isTouchRef = useRef(false);
+
+  // Intercept pointerDown: on touch devices, prevent Radix from opening
+  // the menu on touch-start. For mouse users, let it work normally.
+  const handlePointerDown = (e) => {
+    if (e.pointerType === 'touch') {
+      // Stop Radix's onPointerDown from firing — we'll open on tap release instead
+      e.preventDefault();
+      isTouchRef.current = true;
+    } else {
+      isTouchRef.current = false;
+    }
+  };
 
   const handleTouchStart = (e) => {
     const t = e.touches[0];
@@ -63,16 +77,21 @@ export default function EpisodeMenu({
 
   const handleTouchEnd = (e) => {
     if (isScrollingRef.current) {
-      // User was scrolling — block the synthetic click from firing
+      // User was scrolling — suppress everything
       e.preventDefault();
       e.stopPropagation();
+    } else if (isTouchRef.current && touchStartRef.current) {
+      // Clean tap (finger didn't move) — open the menu now on release
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuOpen(true);
     }
     touchStartRef.current = null;
-    // Keep isScrollingRef true briefly so onOpenChange can read it
+    isTouchRef.current = false;
     setTimeout(() => { isScrollingRef.current = false; }, 50);
   };
 
-  // Block the menu from opening if the gesture was a scroll
+  // Block the menu from opening via Radix internals if user was scrolling
   const handleOpenChange = useCallback((nextOpen) => {
     if (nextOpen && isScrollingRef.current) return;
     setMenuOpen(nextOpen);
@@ -114,6 +133,7 @@ export default function EpisodeMenu({
           type="button"
           aria-label="More options"
           className={`inline-flex items-center justify-center rounded-full p-1.5 text-white/40 hover:text-white hover:bg-white/10 transition-colors focus:outline-none ${className}`}
+          onPointerDown={handlePointerDown}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
