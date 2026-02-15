@@ -24,6 +24,42 @@ async function shopifyFetch(query, variables = {}) {
   return json.data;
 }
 
+// ─── Image Helpers ───
+
+/**
+ * Append Shopify CDN width parameter to an image URL for optimised delivery.
+ * Shopify's CDN supports `?width=N` natively — this reduces bandwidth
+ * dramatically for thumbnails without any quality loss at the rendered size.
+ * Returns the original URL unchanged if it's falsy or not a Shopify CDN URL.
+ */
+export function shopifyImageUrl(url, width) {
+  if (!url || !width) return url || '';
+  try {
+    const u = new URL(url);
+    u.searchParams.set('width', String(Math.round(width)));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Preload an array of image URLs into the browser cache in the background.
+ * Uses <link rel="prefetch"> when available, falls back to Image() objects.
+ */
+function preloadImages(urls) {
+  for (const url of urls) {
+    if (!url) continue;
+    if (typeof document !== 'undefined' && document.createElement) {
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.as = 'image';
+      link.href = url;
+      document.head.appendChild(link);
+    }
+  }
+}
+
 // ─── Products ───
 
 export async function fetchProducts(first = 50) {
@@ -90,12 +126,37 @@ export async function fetchProducts(first = 50) {
     }
   `;
   const data = await shopifyFetch(query, { first });
-  return data.products.edges.map(({ node }, index) => ({
+  const products = data.products.edges.map(({ node }, index) => ({
     ...node,
     images: node.images.edges.map(e => e.node),
     variants: node.variants.edges.map(e => e.node),
     popularityRank: index,
   }));
+
+  // Cache the result for subsequent navigations
+  _productCache = { data: products, fetchedAt: Date.now() };
+
+  // Preload primary images (sized for card thumbnails) so they're in the
+  // browser cache before the user scrolls. This prevents the pop-in effect.
+  const imageUrls = products.map(p => {
+    const url = p.variants?.[0]?.image?.url || p.images?.[0]?.url;
+    return shopifyImageUrl(url, 400);
+  }).filter(Boolean);
+  preloadImages(imageUrls);
+
+  return products;
+}
+
+// In-memory product cache — survives route navigations within the same session.
+// Avoids re-fetching + loading skeleton every time the user visits the Shop page.
+let _productCache = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function getCachedProducts() {
+  if (_productCache && (Date.now() - _productCache.fetchedAt) < CACHE_TTL_MS) {
+    return _productCache.data;
+  }
+  return null;
 }
 
 // ─── Cart ───

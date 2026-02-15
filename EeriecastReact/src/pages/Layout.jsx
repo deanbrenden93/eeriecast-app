@@ -140,7 +140,6 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
     { name: 'Podcasts', route: 'Discover' },
     { name: 'Audiobooks', route: 'Audiobooks' },
     { name: 'Library', route: 'Library' },
-    { name: 'Settings', route: 'Settings' },
   ];
 
   const NavLinks = ({ onClick }) => (
@@ -375,11 +374,31 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   </Link>
                 </motion.div>
 
-                {/* Settings link */}
+                {/* Profile link */}
                 <motion.div
                   initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.04 + (navLinks.length + 1) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                >
+                  <Link
+                    to={createPageUrl('Profile')}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+                      currentPageName === 'Profile'
+                        ? 'text-white bg-white/[0.06]'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <User className="w-4 h-4" />
+                    Profile
+                  </Link>
+                </motion.div>
+
+                {/* Settings link */}
+                <motion.div
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                 >
                   <Link
                     to={createPageUrl('Settings')}
@@ -402,7 +421,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     <motion.div
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                      transition={{ delay: 0.04 + (navLinks.length + 3) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                     >
                       <Link
                         to={createPageUrl('Premium')}

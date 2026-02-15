@@ -735,47 +735,69 @@ export default function ExpandedPlayer({
 
   return (
     <div className="fixed inset-0 z-[3000] flex flex-col overflow-y-auto overscroll-contain touch-pan-y" style={{ background: '#0a0a0f' }}>
-      {/* Animated atmospheric background */}
+      {/* ── Atmospheric background layers ── */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        {/* Slow-drifting gradient orbs */}
-        <div className="absolute w-[40rem] h-[40rem] rounded-full blur-[160px] opacity-[0.07]"
+
+        {/* Layer 0: Cover-art ambient wash — gives each episode a unique colour mood */}
+        {cover && (
+          <div className="absolute inset-0" style={{ opacity: 0.22 }}>
+            <img
+              src={cover}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full object-cover scale-[1.3] blur-[60px] sm:blur-[80px] saturate-[1.4]"
+            />
+            {/* Dark vignette over the blurred art */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0f]/50 via-transparent to-[#0a0a0f]/70" />
+          </div>
+        )}
+
+        {/* Layer 1: Slow-drifting gradient orbs — viewport-relative sizing */}
+        <div className="absolute rounded-full blur-[80px] sm:blur-[140px] opacity-[0.10] sm:opacity-[0.07]"
           style={{
+            width: '80vw', height: '80vw',
+            maxWidth: '40rem', maxHeight: '40rem',
             background: 'radial-gradient(circle, #dc2626, transparent 70%)',
-            top: '-10%', left: '-15%',
+            top: '-5%', left: '-10%',
             animation: 'ep-drift-1 25s ease-in-out infinite alternate',
           }}
         />
-        <div className="absolute w-[35rem] h-[35rem] rounded-full blur-[140px] opacity-[0.05]"
+        <div className="absolute rounded-full blur-[70px] sm:blur-[120px] opacity-[0.08] sm:opacity-[0.05]"
           style={{
+            width: '70vw', height: '70vw',
+            maxWidth: '35rem', maxHeight: '35rem',
             background: 'radial-gradient(circle, #7c3aed, transparent 70%)',
-            bottom: '-10%', right: '-10%',
+            bottom: '0%', right: '-5%',
             animation: 'ep-drift-2 30s ease-in-out infinite alternate',
           }}
         />
-        <div className="absolute w-[25rem] h-[25rem] rounded-full blur-[120px] opacity-[0.04]"
+        <div className="absolute rounded-full blur-[60px] sm:blur-[100px] opacity-[0.06] sm:opacity-[0.04]"
           style={{
+            width: '55vw', height: '55vw',
+            maxWidth: '25rem', maxHeight: '25rem',
             background: 'radial-gradient(circle, #0ea5e9, transparent 70%)',
-            top: '40%', left: '50%',
+            top: '35%', left: '30%',
             animation: 'ep-drift-3 20s ease-in-out infinite alternate',
           }}
         />
-        {/* Subtle noise texture overlay */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
+
+        {/* Layer 2: Subtle noise texture */}
+        <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
       </div>
 
-      {/* Keyframes for background animation */}
+      {/* Keyframes for background animations */}
       <style>{`
         @keyframes ep-drift-1 {
           0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(60px, 40px) scale(1.15); }
+          100% { transform: translate(30px, 25px) scale(1.12); }
         }
         @keyframes ep-drift-2 {
           0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(-50px, -30px) scale(1.1); }
+          100% { transform: translate(-25px, -20px) scale(1.08); }
         }
         @keyframes ep-drift-3 {
-          0% { transform: translate(-50%, -50%) scale(1); }
-          100% { transform: translate(calc(-50% + 40px), calc(-50% - 30px)) scale(1.2); }
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(20px, -15px) scale(1.15); }
         }
       `}</style>
 
@@ -808,7 +830,7 @@ export default function ExpandedPlayer({
       {/* Content */}
       <div className="relative z-[1] flex-1 flex flex-col justify-start items-center px-6 pt-2 pb-4">
         {/* Album Art */}
-        <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] mx-auto mb-3 rounded-lg overflow-hidden shadow-2xl">
+        <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] mx-auto mb-3 rounded-2xl overflow-hidden shadow-[0_8px_60px_-12px_rgba(0,0,0,0.8)] ring-1 ring-white/[0.06]">
           {cover ? (
             <img
               src={cover}
@@ -820,6 +842,8 @@ export default function ExpandedPlayer({
               <span className="text-8xl">🎧</span>
             </div>
           )}
+          {/* Glass reflection highlight on album art */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/[0.06] via-transparent to-transparent pointer-events-none" />
         </div>
 
         {/* Track Info */}
