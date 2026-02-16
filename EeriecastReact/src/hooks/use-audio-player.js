@@ -191,8 +191,8 @@ export function useAudioPlayer({ onEnd } = {}) {
       try {
         const fullEp = await EpisodeApi.get(ep.id);
         if (fullEp) {
-          url = getEpisodeAudioUrl(fullEp) || fullEp.audio_url;
-          if (url) ep = { ...ep, audio_url: url };
+          url = getEpisodeAudioUrl(fullEp);
+          if (url) ep = { ...ep, ...fullEp, audio_url: url };
         }
       } catch { /* endpoint unavailable */ }
     }

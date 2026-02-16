@@ -112,11 +112,13 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
       // loadAndPlay will resolve audio URL via history endpoint if needed
       const played = await loadAndPlay({ podcast: podcastData, episode: ep, resume: { progress: 0 } });
       if (played === false) {
+        const pod = ep.podcast_data || getById(ep.podcast_id);
+        const isPremiumContent = ep.is_premium || pod?.is_exclusive;
         toast({
           title: "Unable to play",
-          description: isAuthenticated
-            ? "This episode doesn't have audio available yet."
-            : "Please sign in to play episodes.",
+          description: !isAuthenticated && isPremiumContent
+            ? "Sign in to play premium episodes."
+            : "This episode's audio isn't available yet. Please try again later.",
           variant: "destructive",
         });
       }

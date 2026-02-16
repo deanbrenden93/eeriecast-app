@@ -282,11 +282,12 @@ export default function Podcasts() {
               onEpisodePlay={async (item) => {
                 const played = await loadAndPlay({ podcast: item.podcast, episode: item.episode, resume: item.resumeData || { progress: 0 } });
                 if (played === false) {
+                  const isPremiumContent = item.episode?.is_premium || item.podcast?.is_exclusive;
                   toast({
                     title: "Unable to play",
-                    description: isAuthenticated
-                      ? "This episode doesn't have audio available yet."
-                      : "Please sign in to play episodes.",
+                    description: !isAuthenticated && isPremiumContent
+                      ? "Sign in to play premium episodes."
+                      : "This episode's audio isn't available yet. Please try again later.",
                     variant: "destructive",
                   });
                 }
