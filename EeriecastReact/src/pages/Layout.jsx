@@ -10,6 +10,7 @@ import UserMenu from "../components/layout/UserMenu";
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 import { cn } from "@/lib/utils";
+import { FeatureGate } from '@/lib/featureFlags';
 import logo from '@/assets/logo.png';
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -413,6 +414,20 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     Settings
                   </Link>
                 </motion.div>
+
+                {/* Staff indicator — only visible to admin/staff accounts */}
+                <FeatureGate flag="staff-indicator">
+                  <motion.div
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.04 + (navLinks.length + 3) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                  >
+                    <div className="flex items-center gap-2 px-3 py-2 mt-1 rounded-lg bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-[11px] font-semibold text-emerald-400/90 tracking-wide uppercase">Staff Mode</span>
+                    </div>
+                  </motion.div>
+                </FeatureGate>
 
                 {/* Premium CTA for free users */}
                 {!isPremium && (

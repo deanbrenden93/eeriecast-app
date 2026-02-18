@@ -458,6 +458,9 @@ const UserProvider = ({ children }) => {
     return flag && notExpired;
   }, [user]);
 
+  // Derived flag: whether the user is a staff/admin member (for feature flags)
+  const isStaff = useMemo(() => !!user?.is_staff, [user]);
+
   // --- Favorite management helpers (episodes & podcasts) ---
   // Track inflight operations to avoid duplicate calls per (type,id)
   const inflightFavoriteOpsRef = useRef(new Set());
@@ -619,6 +622,7 @@ const UserProvider = ({ children }) => {
         logout,
         isAuthenticated: !!user || !!djangoClient.getToken(),
         isPremium,
+        isStaff,
         // favorites
         favoriteEpisodeIds,
         favoritePodcastIds,

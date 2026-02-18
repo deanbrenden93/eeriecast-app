@@ -6,9 +6,10 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
-                 'avatar', 'bio', 'is_premium', 'stripe_customer_id', 'minutes_listened',
+                 'avatar', 'bio', 'is_premium', 'is_staff',
+                 'stripe_customer_id', 'minutes_listened',
                  'subscription_expires', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'is_staff', 'created_at']
 
 # Added lightweight list serializer used by UserViewSet list endpoint
 class SimpleUserSerializer(serializers.ModelSerializer):
