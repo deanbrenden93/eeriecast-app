@@ -1,6 +1,16 @@
 /**
  * Sample comic — placeholder entry to exercise the data structure end-to-end.
  * Replace with real comic data once pages/artwork are ready.
+ *
+ * ── Page Spec ──────────────────────────────────────────────────────
+ * Canonical page size : 1600 × 2400 px  (2:3 aspect ratio)
+ * Format              : JPEG or WebP, ≤ 300 KB per page recommended
+ * Bleed (print-ready) : add 0.125″ (≈ 30 px) per side for physical trim
+ *
+ * 2:3 matches standard US comic trim (6.625″ × 10.25″) and manga
+ * digest (5″ × 7.5″). Cover images share the same 2:3 ratio used by
+ * the grid tiles in Audiobooks.jsx (`aspect-[2/3]`).
+ * ───────────────────────────────────────────────────────────────────
  */
 const sampleComic = {
   id: "dark-harvest-1",

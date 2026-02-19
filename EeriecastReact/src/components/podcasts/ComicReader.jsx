@@ -13,6 +13,8 @@ import {
   Trash2,
   ImageIcon,
   Music,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FREE_READ_CHAPTER_LIMIT, canAccessChapter } from "@/lib/freeTier";
@@ -93,6 +95,13 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
   const tocBtnRef = useRef(null);
   const settingsBtnRef = useRef(null);
   const restoredRef = useRef(false);
+
+  // Page flip direction for transition animation ("forward" | "backward" | null)
+  const flipDirectionRef = useRef(null);
+
+  // Image loading state for current page
+  const [imgStatus, setImgStatus] = useState("loading");
+  const [retryCount, setRetryCount] = useState(0);
 
   // Chapter-crossing transition
   const [chapterFade, setChapterFade] = useState(null);
@@ -206,6 +215,28 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
     if (comic?.id) saveProgress(comic.id, { chapter: chapterIdx, page: pageIndex });
   }, [comic?.id, chapterIdx, pageIndex]);
 
+  /* ─── Reset image status when page/chapter changes ──────── */
+  const pageSrc = chapter?.pages?.[clampedPage] || null;
+  useEffect(() => {
+    setImgStatus(pageSrc ? "loading" : "loaded");
+    setRetryCount(0);
+  }, [pageSrc]);
+
+  /* ─── Preload adjacent pages ──────────────────────────────── */
+  useEffect(() => {
+    if (!chapter?.pages?.length) return;
+    const toPreload = [];
+    for (let i = 1; i <= 2; i++) {
+      if (clampedPage + i < totalPages) toPreload.push(chapter.pages[clampedPage + i]);
+    }
+    if (clampedPage > 0) toPreload.push(chapter.pages[clampedPage - 1]);
+    if (clampedPage >= totalPages - 3 && chapterIdx < totalChapters - 1) {
+      const nextCh = comic.chapters[chapterIdx + 1];
+      if (nextCh?.pages?.[0]) toPreload.push(nextCh.pages[0]);
+    }
+    toPreload.forEach((src) => { const img = new Image(); img.src = src; });
+  }, [clampedPage, chapterIdx, chapter, totalPages, totalChapters, comic]);
+
   /* ─── Chapter-crossing transition ────────────────────────── */
   const changeChapter = useCallback((newIdx, goToLastPage, direction) => {
     if (chapterFade) return;
@@ -287,6 +318,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
 
   /* ─── Page navigation ────────────────────────────────────── */
   const nextPage = useCallback(() => {
+    flipDirectionRef.current = "forward";
     if (pageIndex < totalPages - 1) {
       setPageIndex((p) => p + 1);
     } else if (chapterIdx < totalChapters - 1) {
@@ -299,6 +331,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
   }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, changeChapter, onSubscribe]);
 
   const prevPage = useCallback(() => {
+    flipDirectionRef.current = "backward";
     if (pageIndex > 0) {
       setPageIndex((p) => p - 1);
     } else if (chapterIdx > 0) {
@@ -837,7 +870,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
         ) : (
           /* ═══ Comic page display ═══ */
           <div
-            className="flex-1 flex items-center justify-center overflow-hidden p-2 sm:p-4"
+            className="flex-1 flex items-center justify-center overflow-hidden p-2 sm:p-4 relative"
             style={{
               opacity: chapterFade ? 0 : 1,
               transform:
@@ -849,14 +882,60 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
               transition: "opacity 0.15s ease, transform 0.15s ease",
             }}
           >
-            <img
-              key={`${chapterIdx}-${clampedPage}`}
-              src={chapter.pages[clampedPage]}
-              alt={`Page ${clampedPage + 1}`}
-              className={imgFitClass}
-              draggable={false}
-              style={{ touchAction: "pinch-zoom" }}
-            />
+            {/* Loading skeleton — visible until image loads */}
+            {imgStatus === "loading" && (
+              <div className="absolute inset-0 flex items-center justify-center z-[1]">
+                <div className="comic-page-skeleton aspect-[2/3] rounded-lg flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-zinc-600 animate-spin" />
+                </div>
+              </div>
+            )}
+
+            {/* Error state */}
+            {imgStatus === "error" && (
+              <div className="absolute inset-0 flex items-center justify-center z-[1]">
+                <div className="flex flex-col items-center gap-4 text-center px-6">
+                  <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                    <AlertTriangle className="w-6 h-6 text-red-400" />
+                  </div>
+                  <p className="text-sm text-zinc-400">Failed to load page</p>
+                  <button
+                    type="button"
+                    onClick={() => { setRetryCount((c) => c + 1); setImgStatus("loading"); }}
+                    className="px-5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-zinc-300 hover:text-white transition-all"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Page image with slide+fade transition */}
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.img
+                key={`${chapterIdx}-${clampedPage}-${retryCount}`}
+                src={pageSrc + (retryCount ? `?_r=${retryCount}` : "")}
+                alt={`Page ${clampedPage + 1}`}
+                className={imgFitClass}
+                draggable={false}
+                style={{ touchAction: "pinch-zoom" }}
+                onLoad={() => setImgStatus("loaded")}
+                onError={() => setImgStatus("error")}
+                initial={{
+                  opacity: 0,
+                  x: flipDirectionRef.current === "forward" ? "3%" : flipDirectionRef.current === "backward" ? "-3%" : 0,
+                }}
+                animate={{
+                  opacity: imgStatus === "error" ? 0 : 1,
+                  x: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  x: flipDirectionRef.current === "forward" ? "-3%" : flipDirectionRef.current === "backward" ? "3%" : 0,
+                }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              />
+            </AnimatePresence>
           </div>
         )}
       </div>

@@ -3,6 +3,9 @@
  * When adding a new comic, import it here and add an entry to COMIC_CATALOG.
  *
  * The comic reader looks up comics by ID from this catalog.
+ *
+ * Page spec: all comic page images should be 1600 × 2400 px (2:3).
+ * See sample-comic.js for the full spec comment.
  */
 
 import sampleComic from "./sample-comic";

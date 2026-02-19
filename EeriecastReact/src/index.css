@@ -965,6 +965,26 @@ html.ereader-active .layout-bottom-nav {
   object-fit: contain;
 }
 
+/* Loading skeleton — 2:3 aspect ratio placeholder */
+.comic-page-skeleton {
+  width: min(50vh * 0.667, 80vw);
+  max-width: 400px;
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0.02) 30%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.02) 70%
+  );
+  background-size: 200% 100%;
+  animation: comic-skeleton-shimmer 1.8s ease-in-out infinite;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+@keyframes comic-skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ═══════════════════════════════════════════════════════
    PLAYER CONTROLS (continued)
    ═══════════════════════════════════════════════════════ */
