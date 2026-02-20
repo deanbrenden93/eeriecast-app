@@ -186,14 +186,16 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
                   className="relative aspect-square bg-eeriecast-surface-light overflow-hidden rounded-t-lg"
                   onClick={() => handleEpisodePlay(ep)}
                 >
-                  {ep.cover_image ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-eeriecast-surface-light">
+                    <span className="text-2xl opacity-30">🎧</span>
+                  </div>
+                  {ep.cover_image && (
                     <img
                       src={ep.cover_image}
                       alt={ep.title}
-                      className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+                      className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+                      onError={(e) => { e.target.style.display = 'none'; }}
                     />
-                  ) : (
-                    <div className="w-full h-full cover-shimmer" />
                   )}
 
                   {/* Completed overlay */}

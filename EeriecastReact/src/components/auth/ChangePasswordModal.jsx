@@ -4,7 +4,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { User as UserAPI } from '@/api/entities';
-import { Lock, CheckCircle } from 'lucide-react';
+import { Lock, CheckCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function ChangePasswordModal({ isOpen, onClose }) {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -13,6 +13,9 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   const resetForm = () => {
     setCurrentPassword('');
@@ -20,6 +23,9 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
     setConfirmPassword('');
     setError(null);
     setSuccess(false);
+    setShowCurrentPw(false);
+    setShowNewPw(false);
+    setShowConfirmPw(false);
   };
 
   const handleClose = () => {
@@ -100,44 +106,59 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
                 <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">
                   Current Password
                 </label>
-                <Input
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm"
-                  placeholder="Enter your current password"
-                />
+                <div className="relative">
+                  <Input
+                    type={showCurrentPw ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm pr-10"
+                    placeholder="Enter your current password"
+                  />
+                  <button type="button" tabIndex={-1} onClick={() => setShowCurrentPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
+                    {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div className="h-px bg-white/[0.06]" />
               <div>
                 <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">
                   New Password
                 </label>
-                <Input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm"
-                  placeholder="At least 8 characters"
-                />
+                <div className="relative">
+                  <Input
+                    type={showNewPw ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm pr-10"
+                    placeholder="At least 8 characters"
+                  />
+                  <button type="button" tabIndex={-1} onClick={() => setShowNewPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
+                    {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">
                   Confirm New Password
                 </label>
-                <Input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm"
-                  placeholder="Re-enter new password"
-                />
+                <div className="relative">
+                  <Input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm pr-10"
+                    placeholder="Re-enter new password"
+                  />
+                  <button type="button" tabIndex={-1} onClick={() => setShowConfirmPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
+                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {error && (

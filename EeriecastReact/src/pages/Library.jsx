@@ -22,6 +22,59 @@ import { createPageUrl } from "@/utils";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 
 
+// ── Playlist card cover: 2x2 mosaic from first 4 episode images ──
+// Defined at module level to maintain a stable component identity across re-renders.
+function PlaylistCardCover({ episodeIds = [] }) {
+  const [images, setImages] = useState([]);
+  useEffect(() => {
+    let mounted = true;
+    const ids = episodeIds.slice(0, 4);
+    if (!ids.length) return;
+    (async () => {
+      const imgs = [];
+      for (const id of ids) {
+        try {
+          const ep = await Episode.get(id);
+          const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
+          if (art) imgs.push(art);
+        } catch { /* skip */ }
+        if (imgs.length >= 4) break;
+      }
+      if (mounted) setImages(imgs);
+    })();
+    return () => { mounted = false; };
+  }, [episodeIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (images.length === 0) {
+    return (
+      <div className="w-full aspect-square rounded-xl bg-gradient-to-br from-violet-900/30 via-zinc-900 to-red-900/20 flex items-center justify-center">
+        <Headphones className="w-10 h-10 text-white/10" />
+      </div>
+    );
+  }
+
+  if (images.length === 1) {
+    return (
+      <div className="w-full aspect-square rounded-xl overflow-hidden">
+        <img src={images[0]} alt="" className="w-full h-full object-cover" />
+      </div>
+    );
+  }
+
+  const slots = [images[0], images[1], images[2] || null, images[3] || null];
+  return (
+    <div className="w-full aspect-square rounded-xl overflow-hidden grid grid-cols-2 grid-rows-2 gap-[2px] bg-black/40">
+      {slots.map((src, i) =>
+        src ? (
+          <img key={i} src={src} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div key={i} className="w-full h-full bg-gradient-to-br from-zinc-800/80 to-zinc-900" />
+        )
+      )}
+    </div>
+  );
+}
+
 export default function Library() {
   const location = useLocation();
   const isNative = Capacitor.isNativePlatform();
@@ -284,62 +337,6 @@ export default function Library() {
       </>
     );
   };
-
-  // ── Playlist card cover: 2×2 mosaic from first 4 episode images ──
-  function PlaylistCardCover({ episodeIds = [] }) {
-    const [images, setImages] = useState([]);
-    useEffect(() => {
-      let mounted = true;
-      const ids = episodeIds.slice(0, 4);
-      if (!ids.length) return;
-      (async () => {
-        const imgs = [];
-        for (const id of ids) {
-          try {
-            const ep = await Episode.get(id);
-            const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
-            if (art) imgs.push(art);
-          } catch { /* skip */ }
-          if (imgs.length >= 4) break;
-        }
-        if (mounted) setImages(imgs);
-      })();
-      return () => { mounted = false; };
-    }, [episodeIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Empty: gradient placeholder
-    if (images.length === 0) {
-      return (
-        <div className="w-full aspect-square rounded-xl bg-gradient-to-br from-violet-900/30 via-zinc-900 to-red-900/20 flex items-center justify-center">
-          <Headphones className="w-10 h-10 text-white/10" />
-        </div>
-      );
-    }
-
-    // Single image: full cover
-    if (images.length === 1) {
-      return (
-        <div className="w-full aspect-square rounded-xl overflow-hidden">
-          <img src={images[0]} alt="" className="w-full h-full object-cover" />
-        </div>
-      );
-    }
-
-    // 2–3 images: 2×2 grid with gradient fill for empty slots
-    // 4 images: full 2×2 grid
-    const slots = [images[0], images[1], images[2] || null, images[3] || null];
-    return (
-      <div className="w-full aspect-square rounded-xl overflow-hidden grid grid-cols-2 grid-rows-2 gap-[2px] bg-black/40">
-        {slots.map((src, i) =>
-          src ? (
-            <img key={i} src={src} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <div key={i} className="w-full h-full bg-gradient-to-br from-zinc-800/80 to-zinc-900" />
-          )
-        )}
-      </div>
-    );
-  }
 
   const renderPlaylistsTab = () => {
     if (isLoadingPlaylists) {

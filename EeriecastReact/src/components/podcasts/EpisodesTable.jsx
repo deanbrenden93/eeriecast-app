@@ -136,12 +136,16 @@ export default function EpisodesTable({
             <div className="flex items-start sm:items-center gap-4 flex-1 min-w-0">
               {/* Artwork with progress/lock overlay */}
               <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
-                {getArtwork(ep) ? (
-                  <img src={getArtwork(ep)} alt={ep.title} className={`w-full h-full object-cover ${isChapterLocked ? 'grayscale' : ''}`} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="text-2xl">🎧</span>
-                  </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl">🎧</span>
+                </div>
+                {getArtwork(ep) && (
+                  <img
+                    src={getArtwork(ep)}
+                    alt={ep.title}
+                    className={`relative w-full h-full object-cover ${isChapterLocked ? 'grayscale' : ''}`}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
                 )}
                 {isChapterLocked && (
                   <div className="absolute inset-0 bg-black/60 flex items-center justify-center">

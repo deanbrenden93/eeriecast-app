@@ -68,14 +68,16 @@ export default function KeepListeningSection({
                 {/* Cover image with play overlay */}
                 <div className="relative bg-eeriecast-surface-light">
                   <div className="aspect-square overflow-hidden rounded-t-lg">
-                    {cover ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-eeriecast-surface-light">
+                      <span className="text-2xl opacity-30">🎧</span>
+                    </div>
+                    {cover && (
                       <img
                         src={cover}
                         alt={episode.title}
-                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+                        className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+                        onError={(e) => { e.target.style.display = 'none'; }}
                       />
-                    ) : (
-                      <div className="w-full h-full cover-shimmer" />
                     )}
                     {/* Play overlay */}
                     <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">

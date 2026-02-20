@@ -12,16 +12,16 @@ export default function PodcastCard({ podcast, onPlay }) {
       onClick={onPlay}
     >
       <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-eeriecast-surface-light eeriecast-card">
-        {podcast.cover_image ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-eeriecast-surface-light to-eeriecast-surface">
+          <span className="text-4xl opacity-40">🎧</span>
+        </div>
+        {podcast.cover_image && (
           <img
             src={podcast.cover_image}
             alt={podcast.title}
-            className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+            className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+            onError={(e) => { e.target.style.display = 'none'; }}
           />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-eeriecast-surface-light to-eeriecast-surface">
-            <span className="text-4xl opacity-40">🎧</span>
-          </div>
         )}
         
         {/* Hover overlay */}
