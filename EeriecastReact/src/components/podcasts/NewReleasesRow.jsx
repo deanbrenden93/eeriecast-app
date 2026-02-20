@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
-import { Episode as EpisodeApi } from "@/api/entities";
+import { useEpisodeList } from "@/hooks/useQueries";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { isAudiobook, formatDate } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -39,64 +39,48 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
   const { podcasts, getById } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
   const { episodeProgressMap, isAuthenticated } = useUser() || {};
-  const [episodes, setEpisodes] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  // Build a set of audiobook podcast IDs for filtering
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const resp = await EpisodeApi.list(ordering, 40);
-        const allEps = Array.isArray(resp) ? resp : (resp?.results || []);
+  const { data: rawEpisodeData, isLoading: loading } = useEpisodeList(ordering, 40);
 
-        // Filter out audiobook episodes and enrich with podcast data
-        const audiobookIds = new Set(
-          podcasts.filter((p) => isAudiobook(p)).map((p) => p.id)
-        );
+  const episodes = useMemo(() => {
+    const allEps = Array.isArray(rawEpisodeData)
+      ? rawEpisodeData
+      : (rawEpisodeData?.results || []);
 
-        let enriched = allEps
-          .filter((ep) => {
-            const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-            return !audiobookIds.has(podId);
-          })
-          .map((ep) => {
-            const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-            const podcastData = getById(podId);
-            return {
-              ...ep,
-              podcast_id: podId,
-              podcast_data: podcastData || (typeof ep.podcast === "object" ? ep.podcast : null),
-              cover_image: ep.cover_image || podcastData?.cover_image || "",
-            };
-          });
+    const audiobookIds = new Set(
+      podcasts.filter((p) => isAudiobook(p)).map((p) => p.id)
+    );
 
-        // Optional category filter
-        if (categoryFilter) {
-          const lower = categoryFilter.toLowerCase();
-          enriched = enriched.filter((ep) => {
-            const pd = ep.podcast_data;
-            if (!pd) return true;
-            const cats = Array.isArray(pd.categories)
-              ? pd.categories.map((c) => (typeof c === "string" ? c : c?.name || "").toLowerCase())
-              : [];
-            return cats.some((c) => c.includes(lower));
-          });
-        }
+    let enriched = allEps
+      .filter((ep) => {
+        const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
+        return !audiobookIds.has(podId);
+      })
+      .map((ep) => {
+        const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
+        const podcastData = getById(podId);
+        return {
+          ...ep,
+          podcast_id: podId,
+          podcast_data: podcastData || (typeof ep.podcast === "object" ? ep.podcast : null),
+          cover_image: ep.cover_image || podcastData?.cover_image || "",
+        };
+      });
 
-        if (!cancelled) {
-          setEpisodes(enriched.slice(0, maxItems));
-        }
-      } catch (err) {
-        console.error("Failed to load new releases:", err);
-        if (!cancelled) setEpisodes([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [podcasts, getById, categoryFilter, ordering, maxItems]);
+    if (categoryFilter) {
+      const lower = categoryFilter.toLowerCase();
+      enriched = enriched.filter((ep) => {
+        const pd = ep.podcast_data;
+        if (!pd) return true;
+        const cats = Array.isArray(pd.categories)
+          ? pd.categories.map((c) => (typeof c === "string" ? c : c?.name || "").toLowerCase())
+          : [];
+        return cats.some((c) => c.includes(lower));
+      });
+    }
+
+    return enriched.slice(0, maxItems);
+  }, [rawEpisodeData, podcasts, getById, categoryFilter, maxItems]);
 
   const scroll = (direction) => {
     const { current } = scrollRef;
@@ -193,6 +177,9 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
                     <img
                       src={ep.cover_image}
                       alt={ep.title}
+                      loading="lazy"
+                      width={176}
+                      height={176}
                       className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                       onError={(e) => { e.target.style.display = 'none'; }}
                     />

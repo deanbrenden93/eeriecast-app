@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
 import { isAudiobook, hasCategory } from "@/lib/utils";
+import { useKeepListeningResume } from "@/hooks/useQueries";
 
 // TODO [PRE-LAUNCH]: These frontend overrides for is_exclusive must be migrated to the
 // Django backend (set is_exclusive=True on podcast IDs 10 & 4 in the admin panel) and
@@ -72,27 +73,39 @@ export default function Podcasts() {
     setShowAddModal(true);
   };
 
-  // Build "Keep Listening" items from the real-time episodeProgressMap.
-  // This picks up both server-side history and current-session plays.
-  // IMPORTANT: episodeProgressMap is kept in a ref (not a dependency) to
-  // prevent this heavy effect (iterates all episodes + makes up to 8 API
-  // calls) from re-running every 3 seconds when progress updates.
+  // Build "Keep Listening" items from the real-time episodeProgressMap
+  // and parallel resume API calls (via TanStack Query).
   const progressMapRef = useRef(episodeProgressMap);
   useEffect(() => { progressMapRef.current = episodeProgressMap; }, [episodeProgressMap]);
+
+  const recentPodcastIds = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('recentlyPlayed') || '[]'); }
+    catch { return []; }
+  }, []);
+
+  // Parallel resume calls — TanStack Query fires all at once, deduplicates, and caches
+  const resumeResults = useKeepListeningResume(
+    recentPodcastIds.slice(0, 8),
+    isAuthenticated,
+  );
+
+  // Stabilize resume data: useQueries returns a new array ref every render,
+  // so we derive a stable value keyed on when the data actually changed.
+  const resumeDataKey = resumeResults.map(r => r.dataUpdatedAt ?? 0).join(',');
+  const stableResumeData = useMemo(
+    () => resumeResults.map(r => r.data ?? null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resumeDataKey],
+  );
 
   useEffect(() => {
     if (!podcasts.length) { setKeepListeningItems([]); return; }
     const podcastMap = new Map(podcasts.map(p => [p.id, p]));
     const progressMap = progressMapRef.current;
 
-    // Also merge with localStorage recentlyPlayed for ordering
-    const recentPodcastIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
-
     // Build items from episodeProgressMap (partially played episodes)
     const items = [];
     if (progressMap && progressMap.size > 0) {
-      // We need episode details, but the map only has IDs + progress.
-      // Scan podcast episodes to find matches.
       for (const p of podcasts) {
         const eps = Array.isArray(p.episodes) ? p.episodes : [];
         for (const ep of eps) {
@@ -112,53 +125,42 @@ export default function Podcasts() {
       }
     }
 
-    // Also fetch from resume API for episodes not in local podcasts data
-    let cancelled = false;
-    (async () => {
-      const apiItems = [];
-      for (const pid of recentPodcastIds.slice(0, 8)) {
-        const p = podcastMap.get(pid);
-        if (!p) continue;
-        // Check if we already have a progress item for this podcast
-        if (items.some(item => item.podcast.id === pid)) continue;
-        try {
-          const resume = await UserLibrary.resumeForPodcast(p.id);
-          if (resume?.episode_detail) {
-            const ep = resume.episode_detail;
-            const progressSec = Math.max(0, Number(resume?.progress || 0));
-            const dur = Math.max(0, Number(ep?.duration || resume?.duration || 0));
-            let pct = 0;
-            if (dur > 0) pct = Math.min(100, (progressSec / dur) * 100);
-            if (pct > 0 && pct < 95) {
-              apiItems.push({
-                podcast: ep.podcast && typeof ep.podcast === 'object' ? { ...p, ...ep.podcast } : p,
-                episode: ep,
-                progress: pct,
-                resumeData: resume,
-              });
-            }
-          }
-        } catch { /* not authenticated or not available */ }
-      }
-
-      if (!cancelled) {
-        const all = [...items, ...apiItems];
-        // Deduplicate by episode id
-        const seen = new Set();
-        const unique = all.filter(item => {
-          if (!item.episode?.id) return false;
-          if (seen.has(item.episode.id)) return false;
-          seen.add(item.episode.id);
-          return true;
+    // Merge with parallel resume API results
+    const apiItems = [];
+    for (let i = 0; i < stableResumeData.length; i++) {
+      const pid = recentPodcastIds[i];
+      const p = podcastMap.get(pid);
+      if (!p) continue;
+      if (items.some(item => item.podcast.id === pid)) continue;
+      const resume = stableResumeData[i];
+      if (!resume?.episode_detail) continue;
+      const ep = resume.episode_detail;
+      const progressSec = Math.max(0, Number(resume?.progress || 0));
+      const dur = Math.max(0, Number(ep?.duration || resume?.duration || 0));
+      let pct = 0;
+      if (dur > 0) pct = Math.min(100, (progressSec / dur) * 100);
+      if (pct > 0 && pct < 95) {
+        apiItems.push({
+          podcast: ep.podcast && typeof ep.podcast === 'object' ? { ...p, ...ep.podcast } : p,
+          episode: ep,
+          progress: pct,
+          resumeData: resume,
         });
-        // Sort: most recently played first (higher progress = more recent activity)
-        unique.sort((a, b) => (b.progress || 0) - (a.progress || 0));
-        setKeepListeningItems(unique.slice(0, 15));
       }
-    })();
-    return () => { cancelled = true; };
+    }
+
+    const all = [...items, ...apiItems];
+    const seen = new Set();
+    const unique = all.filter(item => {
+      if (!item.episode?.id) return false;
+      if (seen.has(item.episode.id)) return false;
+      seen.add(item.episode.id);
+      return true;
+    });
+    unique.sort((a, b) => (b.progress || 0) - (a.progress || 0));
+    setKeepListeningItems(unique.slice(0, 15));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [podcasts]);
+  }, [podcasts, stableResumeData]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;

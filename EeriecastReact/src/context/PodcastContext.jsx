@@ -1,110 +1,82 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
+import React, { useCallback, useMemo, useState, useContext } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PropTypes from 'prop-types';
 import { Podcast as PodcastApi, Creator } from '@/api/entities';
 
 const PodcastContext = React.createContext(null);
 
-export function PodcastProvider({ children }) {
-  const [podcasts, setPodcasts] = useState([]);
-  const [byId, setById] = useState({});
-  const [featuredCreators, setFeaturedCreators] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const fetchedListRef = useRef(false);
-  const lastFetchedAtRef = useRef(0);
+async function fetchPodcastsAndCreators() {
+  const [resPodcasts, resCreators] = await Promise.all([
+    PodcastApi.list('-created_date'),
+    Creator.featured(),
+  ]);
+  const podcasts = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
+  const creators = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
+  return { podcasts, creators };
+}
 
-  // Build byId when podcasts change
-  useEffect(() => {
+export function PodcastProvider({ children }) {
+  const queryClient = useQueryClient();
+
+  // TanStack Query owns the fetch lifecycle — automatic caching, staleness, dedup, refetch-on-focus
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['podcastsAndCreators'],
+    queryFn: fetchPodcastsAndCreators,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  const podcasts = data?.podcasts ?? [];
+  const featuredCreators = data?.creators ?? [];
+
+  // Local state for merged detail data (e.g. after ensureDetail enriches a podcast)
+  const [detailOverrides, setDetailOverrides] = useState({});
+
+  const mergedPodcasts = useMemo(() => {
+    if (Object.keys(detailOverrides).length === 0) return podcasts;
+    return podcasts.map((p) => detailOverrides[p.id] ? { ...p, ...detailOverrides[p.id] } : p);
+  }, [podcasts, detailOverrides]);
+
+  const byId = useMemo(() => {
     const map = Object.create(null);
-    for (const p of podcasts || []) {
+    for (const p of mergedPodcasts) {
       if (p && (p.id || p.slug)) {
         map[p.id ?? p.slug] = p;
       }
     }
-    setById(map);
-  }, [podcasts]);
-
-  const loadAllOnce = useCallback(async () => {
-    if (fetchedListRef.current) return; // already loaded
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [resPodcasts, resCreators] = await Promise.all([
-        PodcastApi.list('-created_date'),
-        Creator.featured(),
-      ]);
-
-      const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
-      const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
-
-      console.log('PodcastProvider loaded', arr);
-      setPodcasts(arr);
-      setFeaturedCreators(creatorsArr);
-      fetchedListRef.current = true;
-      lastFetchedAtRef.current = Date.now();
-    } catch (e) {
-      setError(e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Initial load on mount
-  useEffect(() => {
-    loadAllOnce();
-  }, [loadAllOnce]);
-
-  const refreshAll = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [resPodcasts, resCreators] = await Promise.all([
-        PodcastApi.list('-created_date'),
-        Creator.featured(),
-      ]);
-      const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
-      const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
-      setPodcasts(arr);
-      setFeaturedCreators(creatorsArr);
-      fetchedListRef.current = true;
-      lastFetchedAtRef.current = Date.now();
-      return arr;
-    } catch (e) {
-      setError(e);
-      return [];
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    return map;
+  }, [mergedPodcasts]);
 
   const getById = useCallback((id) => byId[id], [byId]);
 
   const ensureDetail = useCallback(async (id) => {
-    // If we already have full detail (episodes + description), return cached
     const current = byId[id];
     if (current && Array.isArray(current.episodes) && current.episodes.length > 0 && current.description != null) {
       return current;
     }
-    // Fetch detail and merge into state
     const detail = await PodcastApi.get(id);
-    setPodcasts(prev => {
-      const map = new Map(prev.map(p => [p.id, p]));
-      map.set(detail.id, { ...(map.get(detail.id) || {}), ...detail });
-      return Array.from(map.values());
-    });
+    setDetailOverrides((prev) => ({ ...prev, [detail.id]: detail }));
     return detail;
   }, [byId]);
 
+  const refreshAll = useCallback(async () => {
+    setDetailOverrides({});
+    const result = await queryClient.fetchQuery({
+      queryKey: ['podcastsAndCreators'],
+      queryFn: fetchPodcastsAndCreators,
+    });
+    return result?.podcasts ?? [];
+  }, [queryClient]);
+
   const value = useMemo(() => ({
-    podcasts,
+    podcasts: mergedPodcasts,
     isLoading,
     error,
-    lastFetchedAt: lastFetchedAtRef.current,
     getById,
     ensureDetail,
     refreshAll,
     featuredCreators,
-  }), [podcasts, isLoading, error, getById, ensureDetail, refreshAll, featuredCreators]);
+  }), [mergedPodcasts, isLoading, error, getById, ensureDetail, refreshAll, featuredCreators]);
 
   return (
     <PodcastContext.Provider value={value}>

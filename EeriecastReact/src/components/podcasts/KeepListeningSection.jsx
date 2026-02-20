@@ -75,6 +75,9 @@ export default function KeepListeningSection({
                       <img
                         src={cover}
                         alt={episode.title}
+                        loading="lazy"
+                        width={144}
+                        height={144}
                         className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />

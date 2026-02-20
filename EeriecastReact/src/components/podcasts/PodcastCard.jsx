@@ -19,6 +19,9 @@ export default function PodcastCard({ podcast, onPlay }) {
           <img
             src={podcast.cover_image}
             alt={podcast.title}
+            loading="lazy"
+            width={176}
+            height={176}
             className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
             onError={(e) => { e.target.style.display = 'none'; }}
           />

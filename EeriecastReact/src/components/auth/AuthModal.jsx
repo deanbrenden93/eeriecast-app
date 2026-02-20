@@ -66,8 +66,8 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setSubmitting(false);
     if (afterLoginAction?.fn) return; // GlobalAuthModal handles close + callback seamlessly
     setSuccessState('login');
-    toast({ title: 'Welcome back!', description: 'You\'re now signed in.' });
-    successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); }, 1500);
+    toast({ title: 'Welcome back!', description: 'You\'re now signed in.', variant: 'success' });
+    successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); window.location.reload(); }, 1500);
   };
 
   const handleRegister = async (e) => {
@@ -84,8 +84,8 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setSubmitting(false);
     if (afterLoginAction?.fn) return; // GlobalAuthModal handles close + callback seamlessly
     setSuccessState('register');
-    toast({ title: 'Account created!', description: 'Welcome to EERIECAST.' });
-    successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); }, 1800);
+    toast({ title: 'Account created!', description: 'Welcome to EERIECAST.', variant: 'success' });
+    successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); window.location.reload(); }, 1800);
   };
 
   return (

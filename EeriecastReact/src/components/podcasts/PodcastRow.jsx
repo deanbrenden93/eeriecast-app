@@ -66,6 +66,9 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
                   <img
                     src={podcast.cover_image}
                     alt={podcast.title}
+                    loading="lazy"
+                    width={176}
+                    height={176}
                     className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                   />
                 ) : (

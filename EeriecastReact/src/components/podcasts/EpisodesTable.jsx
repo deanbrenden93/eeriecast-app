@@ -143,6 +143,9 @@ export default function EpisodesTable({
                   <img
                     src={getArtwork(ep)}
                     alt={ep.title}
+                    loading="lazy"
+                    width={64}
+                    height={64}
                     className={`relative w-full h-full object-cover ${isChapterLocked ? 'grayscale' : ''}`}
                     onError={(e) => { e.target.style.display = 'none'; }}
                   />

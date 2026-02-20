@@ -13,6 +13,7 @@ export default function UserMenu({ isOpen, onClose }) {
   const handleLogout = async () => {
     await logout();
     onClose();
+    window.location.reload();
   };
 
   const displayName = user?.full_name || user?.name || user?.username || 'Guest User';
