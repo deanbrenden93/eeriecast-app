@@ -5,6 +5,7 @@ import { useUser } from '@/context/UserContext.jsx';
  *
  * Each key is a flag name, and its value is a config object:
  *   - staffOnly (boolean): if true, only staff/admin users can see this feature.
+ *   - authOnly  (boolean): if true, any logged-in user can see this feature.
  *
  * To add a new secret feature:
  *   1. Add an entry here:  'my-feature': { staffOnly: true }
@@ -16,8 +17,8 @@ export const FEATURE_FLAGS = {
   // Remove this once you've confirmed the system works end-to-end.
   'staff-indicator': { staffOnly: true },
 
-  // Comic / manga reader — staff-only prototype on the Audiobooks page.
-  'comic-reader': { staffOnly: true },
+  // Comic / manga reader — available to all logged-in users for testing.
+  'comic-reader': { authOnly: true },
 };
 
 /**
@@ -30,10 +31,11 @@ export const FEATURE_FLAGS = {
  * @returns {boolean}
  */
 export function useFeatureFlag(flagName) {
-  const { isStaff } = useUser();
+  const { isStaff, isAuthenticated } = useUser();
   const config = FEATURE_FLAGS[flagName];
   if (!config) return false;
   if (config.staffOnly) return !!isStaff;
+  if (config.authOnly) return !!isAuthenticated;
   return true;
 }
 

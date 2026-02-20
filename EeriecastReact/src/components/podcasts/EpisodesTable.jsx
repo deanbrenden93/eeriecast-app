@@ -59,7 +59,7 @@ export default function EpisodesTable({
     return reordered;
   }, [episodes, freeSampleEpisodeId, isPremium]);
 
-  const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
+  const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.image || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
   const getShowName = (ep) => ep?.podcast?.title || ep?.podcast?.name || show?.title || show?.name || '';
   const getShowId = (ep) => ep?.podcast?.id || ep?.podcast_id || show?.id;
 

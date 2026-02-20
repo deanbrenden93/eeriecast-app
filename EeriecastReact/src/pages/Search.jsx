@@ -1,41 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search as SearchApi, Episode as EpisodeApi, UserLibrary } from "@/api/entities";
-import { Button } from "@/components/ui/button";
-import { Search as SearchIcon, Heart, Play, BookOpen, Headphones, Crown, ChevronRight } from "lucide-react";
-import { isAudiobook, getPodcastCategoriesLower, formatDate } from "@/lib/utils";
+import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
+import { Search as SearchIcon, Play, BookOpen, Headphones, ChevronRight } from "lucide-react";
+import { isAudiobook, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
+import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
-import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
-import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
-
-/** Format duration — handles seconds (number), "HH:MM:SS" string, or "MM:SS" string */
-function formatDuration(raw) {
-  if (!raw && raw !== 0) return null;
-  let totalSeconds;
-  if (typeof raw === 'number') {
-    totalSeconds = Math.floor(raw);
-  } else if (typeof raw === 'string') {
-    const parts = raw.split(':').map(Number);
-    if (parts.some(isNaN)) return raw;
-    if (parts.length === 3) totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    else if (parts.length === 2) totalSeconds = parts[0] * 60 + parts[1];
-    else totalSeconds = parts[0];
-  } else {
-    return String(raw);
-  }
-  if (totalSeconds < 0) return '0:00';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
 
 /** Strip HTML tags and convert block-level boundaries to newlines */
 function stripHtml(html) {
@@ -109,138 +84,6 @@ function ShowCard({ podcast, onClick, isBook }) {
   );
 }
 
-/* ── Episode card ────────────────────────────────────────────────── */
-function EpisodeCard({ episode, onPlay, onAddToPlaylist, onShowLink, isAuthenticated, isPremium, favoriteEpisodeIds, refreshFavorites, openAuth }) {
-  const formattedDur = formatDuration(episode.duration);
-  const isFav = favoriteEpisodeIds.has(episode.id);
-
-  const handleFavorite = async () => {
-    if (!isAuthenticated) {
-      openAuth('login');
-      return;
-    }
-    const alreadyFav = favoriteEpisodeIds.has(episode.id);
-    // Free-tier limit check (only when adding)
-    if (!alreadyFav && !isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
-      window.location.assign('/Premium');
-      return;
-    }
-    try {
-      if (alreadyFav) {
-        await UserLibrary.removeFavorite('episode', episode.id);
-      } else {
-        await UserLibrary.addFavorite('episode', episode.id);
-      }
-      await refreshFavorites();
-    } catch (err) {
-      if (typeof console !== 'undefined') console.debug('search favorite toggle failed', err);
-    }
-  };
-
-  return (
-    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 md:p-4 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all duration-300 group">
-      <div className="flex items-start gap-3 md:gap-4">
-        {/* Cover */}
-        <div
-          className="relative w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg overflow-hidden bg-white/[0.04] flex-shrink-0 cursor-pointer group/thumb ring-1 ring-white/[0.06]"
-          onClick={onPlay}
-        >
-          {episode.cover_image ? (
-            <img src={episode.cover_image} alt={episode.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/[0.06] to-white/[0.02]">
-              <Headphones className="w-5 h-5 text-zinc-600" />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
-            <Play className="w-5 h-5 text-white fill-white" />
-          </div>
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <h3
-                className="text-white/90 font-semibold text-sm md:text-base truncate hover:text-white cursor-pointer transition-colors"
-                onClick={onPlay}
-              >
-                {episode.title}
-              </h3>
-              {episode.podcast_id ? (
-                <button
-                  type="button"
-                  className="text-red-400/80 hover:text-red-300 text-[11px] md:text-xs font-semibold uppercase tracking-wide mb-1 transition-colors text-left"
-                  onClick={(e) => { e.stopPropagation(); onShowLink(); }}
-                >
-                  {episode.podcast_title || episode.podcast_author || ''}
-                </button>
-              ) : (
-                <p className="text-red-400/80 text-[11px] md:text-xs font-semibold uppercase tracking-wide mb-1">
-                  {episode.podcast_title || episode.podcast_author || ''}
-                </p>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-0.5 flex-shrink-0">
-              <EpisodeMenu
-                episode={episode}
-                podcast={{ id: episode.podcast_id || episode.podcast, title: episode.podcast_title }}
-                onAddToPlaylist={onAddToPlaylist}
-              />
-              <button
-                className={`p-1.5 transition-colors rounded-lg hover:bg-white/[0.04] ${isFav ? 'text-red-500' : 'text-zinc-600 hover:text-white'}`}
-                title={isFav ? 'Remove from favorites' : 'Favorite'}
-                onClick={handleFavorite}
-              >
-                <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
-              </button>
-              <button
-                className="p-1.5 text-zinc-600 hover:text-red-400 transition-colors rounded-lg hover:bg-white/[0.04]"
-                title="Play"
-                onClick={onPlay}
-              >
-                <Play className="w-4 h-4 fill-current" />
-              </button>
-            </div>
-          </div>
-
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-x-2 md:gap-x-3 gap-y-1 text-[11px] md:text-xs text-zinc-500">
-            {episode.published_at && (
-              <span>{formatDate(episode.published_at)}</span>
-            )}
-            {formattedDur && (
-              <>
-                <span className="text-zinc-700">·</span>
-                <span>{formattedDur}</span>
-              </>
-            )}
-            {episode.episode_number && (
-              <>
-                <span className="text-zinc-700 hidden md:inline">·</span>
-                <span className="hidden md:inline">Ep. {episode.episode_number}</span>
-              </>
-            )}
-            {episode.is_premium && (
-              <>
-                <span className="text-zinc-700">·</span>
-                <span className="inline-flex items-center gap-1 text-amber-400/80 text-[10px] font-semibold">
-                  <Crown className="w-2.5 h-2.5" /> PREMIUM
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Description */}
-          <ExpandableDescription text={episode.description} maxLength={160} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════════════
    SEARCH PAGE
    ═══════════════════════════════════════════════════════════════════ */
@@ -258,7 +101,7 @@ export default function Search() {
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const { isAuthenticated, isPremium, favoriteEpisodeIds, refreshFavorites } = useUser();
+  const { isAuthenticated, isPremium } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -299,7 +142,7 @@ export default function Search() {
 
     // --- Episode search (multi-source: dedicated API + client-side fallback) ---
     if (activeTab !== "Podcasts" && activeTab !== "Audiobooks") {
-      const seenIds = new Set();
+      const seenKeys = new Map();
       let allEpisodes = [];
 
       const enrichEpisode = (ep) => {
@@ -311,16 +154,27 @@ export default function Search() {
           podcast_title: ep.podcast_title || podcastData?.title || '',
           podcast_author: ep.podcast_author || podcastData?.author || '',
           podcast_cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
-          cover_image: ep.cover_image || podcastData?.cover_image || '',
+          cover_image: ep.cover_image || ep.image_url || ep.artwork || ep.image || '',
+          podcast: podcastData || {
+            id: podId,
+            title: ep.podcast_title || '',
+            cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
+          },
         };
       };
 
       const addUnique = (episodes) => {
         for (const ep of episodes) {
           const key = ep.id || ep.slug || `${ep.title}-${ep.podcast_id || ep.podcast}`;
-          if (!seenIds.has(key)) {
-            seenIds.add(key);
-            allEpisodes.push(enrichEpisode(ep));
+          const enriched = enrichEpisode(ep);
+          if (!seenKeys.has(key)) {
+            seenKeys.set(key, allEpisodes.length);
+            allEpisodes.push(enriched);
+          } else {
+            const existing = allEpisodes[seenKeys.get(key)];
+            if (!existing.cover_image && enriched.cover_image) {
+              allEpisodes[seenKeys.get(key)] = { ...existing, ...enriched };
+            }
           }
         }
       };
@@ -505,22 +359,11 @@ export default function Search() {
             </button>
           )}
         </div>
-        <div className="space-y-2.5">
-          {capped.map((episode) => (
-            <EpisodeCard
-              key={episode.id}
-              episode={episode}
-              onPlay={() => handleEpisodePlay(episode)}
-              onAddToPlaylist={openAddToPlaylist}
-              onShowLink={() => navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(episode.podcast_id)}`)}
-              isAuthenticated={isAuthenticated}
-              isPremium={isPremium}
-              favoriteEpisodeIds={favoriteEpisodeIds}
-              refreshFavorites={refreshFavorites}
-              openAuth={openAuth}
-            />
-          ))}
-        </div>
+        <EpisodesTable
+          episodes={capped}
+          onPlay={handleEpisodePlay}
+          onAddToPlaylist={openAddToPlaylist}
+        />
       </section>
     );
   };
