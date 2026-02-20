@@ -1,0 +1,45 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="JSHint" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="asgiref" />
+          <option value="certifi" />
+          <option value="cffi" />
+          <option value="charset-normalizer" />
+          <option value="cryptography" />
+          <option value="dataclasses" />
+          <option value="Django" />
+          <option value="django-oauth-toolkit" />
+          <option value="drf-nested-routers" />
+          <option value="djangorestframework" />
+          <option value="djangorestframework_simplejwt" />
+          <option value="gunicorn" />
+          <option value="idna" />
+          <option value="jwcrypto" />
+          <option value="oauthlib" />
+          <option value="psycopg2-binary" />
+          <option value="pycparser" />
+          <option value="PyJWT" />
+          <option value="requests" />
+          <option value="sqlparse" />
+          <option value="typing_extensions" />
+          <option value="urllib3" />
+          <option value="django-cors-headers" />
+          <option value="python-decouple" />
+          <option value="django-unfold" />
+          <option value="pytz" />
+          <option value="whitenoise" />
+          <option value="openpyxl" />
+          <option value="pandas" />
+          <option value="numpy" />
+          <option value="celery" />
+          <option value="redis" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
