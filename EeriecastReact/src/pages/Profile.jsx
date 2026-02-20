@@ -12,6 +12,7 @@ import {
   BookOpen,
   Clock,
   Settings,
+  CreditCard,
   HelpCircle,
   ChevronRight,
   Play,
@@ -373,6 +374,11 @@ export default function Profile() {
               to={createPageUrl("Library")}
               icon={BookOpen}
               label="Your Library"
+            />
+            <QuickLink
+              to={createPageUrl("Billing")}
+              icon={CreditCard}
+              label="Billing & Subscription"
             />
             {/* Change Password (button row, not a link) */}
             <button

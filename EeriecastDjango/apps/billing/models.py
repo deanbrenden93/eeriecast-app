@@ -31,6 +31,12 @@ class Subscription(models.Model):
     current_period_end = models.DateTimeField(blank=True, null=True)
     canceled_at = models.DateTimeField(blank=True, null=True)
 
+    # Payment Method Details
+    card_brand = models.CharField(max_length=50, blank=True, null=True)
+    card_last4 = models.CharField(max_length=4, blank=True, null=True)
+    card_exp_month = models.IntegerField(blank=True, null=True)
+    card_exp_year = models.IntegerField(blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

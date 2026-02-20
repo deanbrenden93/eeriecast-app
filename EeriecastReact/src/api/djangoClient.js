@@ -92,60 +92,6 @@ class DjangoAPIClient {
           errorData = { message: response.statusText };
         }
 
-        // Check for invalid token errors
-        const errorMessage = errorData.message || errorData.detail || '';
-        const isTokenError =
-          errorMessage.includes('token not valid') ||
-          errorMessage.includes('Token is invalid') ||
-          errorMessage.includes('Token is expired') ||
-          (response.status === 401 && this.getToken());
-
-        // If we have an invalid token, remove it and retry without authentication
-        if (isTokenError && this.getToken()) {
-          console.warn('Invalid token detected, removing and retrying without authentication');
-          this.removeToken();
-
-          // Retry the request without the token
-          const retryConfig = {
-            ...config,
-            headers: this.getHeaders(options.headers) // This will now exclude the removed token
-          };
-          // Ensure no Authorization header sneaks in from custom headers
-          if (retryConfig.headers) {
-            for (const key of Object.keys(retryConfig.headers)) {
-              if (key && key.toLowerCase() === 'authorization') {
-                delete retryConfig.headers[key];
-              }
-            }
-            // Optional signal for debugging
-            retryConfig.headers['X-Retry-Without-Auth'] = '1';
-          }
-
-          const retryResponse = await fetch(url, retryConfig);
-
-          if (!retryResponse.ok) {
-            let retryErrorData;
-            try {
-              retryErrorData = await retryResponse.json();
-            } catch {
-              retryErrorData = { message: retryResponse.statusText };
-            }
-
-            throw new DjangoAPIError(
-              retryErrorData.message || retryErrorData.detail || `HTTP ${retryResponse.status}`,
-              retryResponse.status,
-              retryErrorData
-            );
-          }
-
-          // Handle 204 No Content on retry
-          if (retryResponse.status === 204) {
-            return null;
-          }
-
-          return await retryResponse.json();
-        }
-
         throw new DjangoAPIError(
           errorData.message || errorData.detail || `HTTP ${response.status}`,
           response.status,
@@ -160,11 +106,7 @@ class DjangoAPIClient {
 
       return await response.json();
     } catch (error) {
-      // Minimal blanket hook: on any final 401 error, remove saved token
       if (error instanceof DjangoAPIError) {
-        if (error.status === 401 && this.getToken()) {
-          try { this.removeToken(); } catch { /* no-op */ }
-        }
         throw error;
       }
       throw new DjangoAPIError(error.message, 0, null);

@@ -5,7 +5,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
-import { Check, ArrowLeft, Mail } from 'lucide-react';
+import { Check, ArrowLeft, Mail, Loader2 } from 'lucide-react';
+import { User } from '@/api/entities';
 
 export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { login, register, error, isAuthenticated, loading } = useUser();
@@ -48,10 +49,22 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     e.preventDefault();
     setSubmitting(true);
     setLocalError(null);
-    const success = await login(loginForm);
-    if (!success) setLocalError('Invalid credentials');
+    const result = await login(loginForm);
+    if (result.success) {
+      onClose();
+    } else {
+      if (result.code === 'imported_user') {
+        setLocalError(result.error);
+        // Switch to register tab and pre-fill email
+        setTimeout(() => {
+          setTab('register');
+          setRegisterForm(prev => ({ ...prev, email: loginForm.email }));
+        }, 2000);
+      } else {
+        setLocalError(result.error || 'Invalid credentials');
+      }
+    }
     setSubmitting(false);
-    if (success) onClose();
   };
 
   const handleRegister = async (e) => {
@@ -63,10 +76,13 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
       setSubmitting(false);
       return;
     }
-    const success = await register(registerForm);
-    if (!success) setLocalError('Registration failed');
+    const result = await register(registerForm);
+    if (result.success) {
+      onClose();
+    } else {
+      setLocalError(result.error || 'Registration failed');
+    }
     setSubmitting(false);
-    if (success) onClose();
   };
 
   return (
@@ -143,12 +159,27 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                         </div>
                         <Button
                           className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base"
-                          onClick={() => {
-                            if (forgotEmail.trim()) setForgotSubmitted(true);
-                            // TODO: call User.requestPasswordReset(forgotEmail) once backend email service is configured
+                          disabled={submitting || !forgotEmail.trim()}
+                          onClick={async () => {
+                            if (!forgotEmail.trim()) return;
+                            setSubmitting(true);
+                            setLocalError(null);
+                            try {
+                              await User.requestPasswordReset(forgotEmail.trim());
+                              setForgotSubmitted(true);
+                            } catch (err) {
+                              setLocalError(err.message || 'Failed to request password reset. Please try again.');
+                            } finally {
+                              setSubmitting(false);
+                            }
                           }}
                         >
-                          Send Reset Link
+                          {submitting ? (
+                            <span className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Sending...
+                            </span>
+                          ) : 'Send Reset Link'}
                         </Button>
                         <p className="text-xs text-center">
                           <button

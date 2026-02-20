@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -129,6 +130,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'rest_framework_simplejwt',
     'corsheaders',
     'apps.authentication',
@@ -140,7 +142,37 @@ INSTALLED_APPS = [
     'apps.search',
     'apps.common',
     'apps.billing',
+    'apps.emails',
 ]
+
+# Email configuration (driven by env; safe defaults for local/dev)
+EMAIL_APP_NAME = config('EMAIL_APP_NAME', default='Eeriecast')
+EMAIL_SUPPORT = config('EMAIL_SUPPORT', default='support@eeriecast.com')
+
+# Optional safety valve for testing: redirect all outbound email to a single address.
+# Example: EMAIL_REDIRECT_ALL_TO=jacob.durante@bitbenders.com
+EMAIL_REDIRECT_ALL_TO = config('EMAIL_REDIRECT_ALL_TO', default='').strip()
+
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=f"{EMAIL_APP_NAME} <no-reply@eeriecast.com>")
+
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.smtp.EmailBackend',
+)
+
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_PORT = config('EMAIL_PORT', cast=int, default=587)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='brenden@eeriecast.com')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='djkhisqktjmxxzbm')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool, default=True)
+
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'smtp.gmail.com'
+# EMAIL_PORT = 465  # Changed to integer
+# EMAIL_HOST_USER = 'info@pocketchef.io'
+# EMAIL_HOST_PASSWORD = 'notzfccwltxziseu'
+# EMAIL_USE_SSL = True  # Changed from TLS to SSL
+# EMAIL_USE_TLS = False  # Explicitly disable TLS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -191,6 +223,21 @@ DATABASES = {
         'PORT': config('DB_PORT')
     }
 }
+
+# Make local/unit test runs self-contained when Postgres isn't available.
+if 'test' in sys.argv:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'test.sqlite3',
+        }
+    }
+
+    # Ensure tests don't require a running broker/backend.
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+    CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'cache+memory://'
 
 
 # Password validation
@@ -257,8 +304,8 @@ CORS_ALLOWED_ORIGINS = [
 # JWT Settings
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=3650),  # ~10 years (effectively never expires)
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=3650),
     'ROTATE_REFRESH_TOKENS': True,
 }
 
@@ -284,14 +331,24 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
 # Celery beat schedule - run daily at 03:00 UTC
-from celery.schedules import crontab
-CELERY_BEAT_SCHEDULE = {
-    'sync-all-feeds-daily': {
-        'task': 'podcasts.sync_all_feeds',
-        'schedule': crontab(hour=3, minute=0),
-        'options': {'time_limit': 60 * 60},  # 1 hour time limit safety
-    },
-}
+try:
+    from celery.schedules import crontab
+
+    CELERY_BEAT_SCHEDULE = {
+        'sync-all-feeds-daily': {
+            'task': 'podcasts.sync_all_feeds',
+            'schedule': crontab(hour=3, minute=0),
+            'options': {'time_limit': 60 * 60},  # 1 hour time limit safety
+        },
+        'send-renewal-reminders-daily': {
+            'task': 'apps.emails.tasks.send_renewal_reminder_7_days',
+            'schedule': crontab(hour=3, minute=15),
+            'options': {'time_limit': 10 * 60},  # 10 minute safety
+        },
+    }
+except ModuleNotFoundError:  # pragma: no cover
+    # Allow running in environments without Celery installed.
+    CELERY_BEAT_SCHEDULE = {}
 
 # Logging configuration to surface info in Docker logs
 LOGGING = {

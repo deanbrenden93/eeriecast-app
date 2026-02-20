@@ -8,6 +8,7 @@ import Library from "./Library";
 import Search from "./Search";
 import Profile from "./Profile";
 import Settings from "./Settings";
+import Billing from "./Billing";
 import Premium from "./Premium";
 import CreatorEpisodes from "./CreatorEpisodes";
 import Category from "./Category";
@@ -15,6 +16,8 @@ import Episodes from "./Episodes";
 import Playlist from "./Playlist";
 import Help from "./Help";
 import Shop from "./Shop";
+import VerifyEmail from "./VerifyEmail";
+import ResetPassword from "./ResetPassword";
 
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect, useLayoutEffect } from 'react';
@@ -36,6 +39,7 @@ const PAGES = {
     Search: Search,
     Profile: Profile,
     Settings: Settings,
+    Billing: Billing,
     Premium: Premium,
     CreatorEpisodes: CreatorEpisodes,
     Category: Category,
@@ -130,6 +134,9 @@ function PagesContent() {
             <AnimatePresence mode="wait" onExitComplete={scrollToTop}>
                 <Routes location={location} key={location.pathname}>
                     <Route path="/" element={<AnimatedPage><Home /></AnimatedPage>} />
+
+                    <Route path="/verify-email" element={<AnimatedPage><VerifyEmail /></AnimatedPage>} />
+                    <Route path="/reset-password" element={<AnimatedPage><ResetPassword /></AnimatedPage>} />
                     
                     <Route path="/Home" element={<AnimatedPage><Home /></AnimatedPage>} />
                     <Route path="/home" element={<AnimatedPage><Home /></AnimatedPage>} />
@@ -154,6 +161,9 @@ function PagesContent() {
                     
                     <Route path="/Settings" element={<AnimatedPage><Settings /></AnimatedPage>} />
                     <Route path="/settings" element={<AnimatedPage><Settings /></AnimatedPage>} />
+                    
+                    <Route path="/Billing" element={<AnimatedPage><Billing /></AnimatedPage>} />
+                    <Route path="/billing" element={<AnimatedPage><Billing /></AnimatedPage>} />
                     
                     <Route path="/Premium" element={<AnimatedPage><Premium /></AnimatedPage>} />
                     <Route path="/premium" element={<AnimatedPage><Premium /></AnimatedPage>} />

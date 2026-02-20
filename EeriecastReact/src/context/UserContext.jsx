@@ -268,10 +268,17 @@ const UserProvider = ({ children }) => {
         await UserAPI.login(credentials);
         await fetchUser();
         // favorites/followings/notifications will be fetched by the effects below (once per user id)
-        return true;
+        return { success: true };
       } catch (err) {
-        setError(err?.data?.message || err.message || "Login failed");
-        return false;
+        const errorData = err?.data || {};
+        const msg = errorData.message || err.message || "Login failed";
+        setError(msg);
+        return { 
+          success: false, 
+          error: msg, 
+          code: errorData.error,
+          data: errorData 
+        };
       }
     },
     [fetchUser]
@@ -283,13 +290,18 @@ const UserProvider = ({ children }) => {
       try {
         await UserAPI.register(payload);
         // Auto login after registration (if backend returns token) else attempt login
-        if (!(await fetchUser())) {
-          await login({ email: payload.email, password: payload.password });
-        }
-        return true;
+        const loginResult = await login({ email: payload.email, password: payload.password });
+        return loginResult;
       } catch (err) {
-        setError(err?.data?.message || err.message || "Registration failed");
-        return false;
+        const errorData = err?.data || {};
+        const msg = errorData.message || err.message || "Registration failed";
+        setError(msg);
+        return { 
+          success: false, 
+          error: msg, 
+          code: errorData.error,
+          data: errorData 
+        };
       }
     },
     [fetchUser, login]

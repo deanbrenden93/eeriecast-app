@@ -181,7 +181,7 @@ function CardBrandBadge({ number }) {
 
 /* ─── Payment form modal ──────────────────────────────────────────── */
 
-function PaymentFormModal({ open, onClose, onSuccess }) {
+export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial' }) {
   const { user, fetchUser } = useUser();
   const [form, setForm] = useState({
     cardholderName: '',
@@ -303,12 +303,20 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
       console.log('[Stripe] Token created:', token.id);
 
       const { djangoClient } = await import('@/api/djangoClient');
-      console.log('[Backend] Calling start-trial endpoint...');
-      const response = await djangoClient.post('/billing/start-trial/', {
-        stripeToken: token.id,
-        email: form.email,
-      });
-      console.log('[Backend] Signup response:', response);
+      
+      if (mode === 'trial') {
+        console.log('[Backend] Calling start-trial endpoint...');
+        const response = await djangoClient.post('/billing/start-trial/', {
+          stripeToken: token.id,
+          email: form.email,
+        });
+        console.log('[Backend] Signup response:', response);
+      } else {
+        console.log('[Backend] Calling update-payment-method endpoint...');
+        await djangoClient.post('/billing/update-payment-method/', {
+          stripeToken: token.id,
+        });
+      }
       
       // Refresh user state to reflect premium status
       if (fetchUser) {
@@ -323,7 +331,11 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
       // Close after success animation
       setTimeout(() => {
         onClose?.();
-        toast({ title: 'Welcome to Eeriecast Premium', description: 'Your free trial has started', duration: 4000 });
+        if (mode === 'trial') {
+          toast({ title: 'Welcome to Eeriecast Premium', description: 'Your free trial has started', duration: 4000 });
+        } else {
+          toast({ title: 'Success', description: 'Your payment method has been updated', duration: 4000 });
+        }
       }, 1800);
     } catch (err) {
       console.error('[Checkout] Error:', err);
@@ -392,8 +404,12 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
                   <CreditCard className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-white">Payment Details</h2>
-                  <p className="text-xs text-zinc-500">7 days free, then $7.99/month</p>
+                  <h2 className="text-lg font-bold text-white">
+                    {mode === 'trial' ? 'Payment Details' : 'Update Card'}
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    {mode === 'trial' ? '7 days free, then $7.99/month' : 'This card will be used for future payments'}
+                  </p>
                 </div>
               </div>
 
@@ -479,7 +495,7 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
                 className="w-full mt-6 py-3.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold text-base shadow-lg shadow-red-600/20 transition-all hover:scale-[1.01] active:scale-[0.99] border border-red-500/20 disabled:opacity-60"
               >
                 <Lock className="w-4 h-4 mr-2" />
-                Start Free Trial
+                {mode === 'trial' ? 'Start Free Trial' : 'Update Payment Method'}
               </Button>
 
               {/* Security note */}
@@ -508,7 +524,9 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
                   <CreditCard className="w-5 h-5 text-white/40" />
                 </div>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-1">Processing Payment</h3>
+              <h3 className="text-lg font-semibold text-white mb-1">
+                {mode === 'trial' ? 'Processing Payment' : 'Updating Card'}
+              </h3>
               <p className="text-sm text-zinc-500">Securely verifying your card...</p>
             </motion.div>
           )}
@@ -536,7 +554,7 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
                 transition={{ delay: 0.25 }}
                 className="text-xl font-bold text-white mb-1"
               >
-                Welcome to Premium
+                {mode === 'trial' ? 'Welcome to Premium' : 'Card Updated'}
               </motion.h3>
               <motion.p
                 initial={{ opacity: 0 }}
@@ -544,7 +562,7 @@ function PaymentFormModal({ open, onClose, onSuccess }) {
                 transition={{ delay: 0.4 }}
                 className="text-sm text-zinc-500"
               >
-                Your 7-day free trial has started
+                {mode === 'trial' ? 'Your 7-day free trial has started' : 'Your changes have been saved'}
               </motion.p>
             </motion.div>
           )}

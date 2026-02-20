@@ -6,9 +6,20 @@ class User(AbstractUser):
     avatar = models.URLField(blank=True, null=True)
     bio = models.TextField(blank=True)
     is_premium = models.BooleanField(default=False)
+    is_imported_from_memberful = models.BooleanField(default=False)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     minutes_listened = models.IntegerField(default=0)
     subscription_expires = models.DateTimeField(blank=True, null=True)
+
+    # Email verification (not enforced yet)
+    email_verified = models.BooleanField(default=False)
+    email_verified_at = models.DateTimeField(blank=True, null=True)
+
+    # Soft delete
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+    email_at_deletion = models.EmailField(blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -199,7 +199,11 @@ export const User = {
 
   // Login user
   async login(credentials) {
-    const response = await djangoClient.post('/auth/login/', credentials);
+    const normalized = { ...credentials };
+    if (typeof normalized.email === 'string') {
+      normalized.email = normalized.email.toLowerCase().trim();
+    }
+    const response = await djangoClient.post('/auth/login/', normalized);
     if (response.access_token || response.token) {
       const token = response.access_token || response.token;
       djangoClient.setToken(token);
@@ -209,7 +213,11 @@ export const User = {
 
   // Register new user
   async register(userData) {
-    return djangoClient.post('/auth/register/', userData);
+    const normalized = { ...userData };
+    if (typeof normalized.email === 'string') {
+      normalized.email = normalized.email.toLowerCase().trim();
+    }
+    return djangoClient.post('/auth/register/', normalized);
   },
 
   // Check if user is authenticated
@@ -229,14 +237,16 @@ export const User = {
 
   // Request password reset
   async requestPasswordReset(email) {
-    return djangoClient.post('/auth/password-reset/', { email });
+    const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : email;
+    return djangoClient.post('/auth/password-reset/request/', { email: normalizedEmail });
   },
 
   // Confirm password reset
-  async confirmPasswordReset(token, newPassword) {
+  async confirmPasswordReset(uid, token, newPassword) {
     return djangoClient.post('/auth/password-reset/confirm/', {
+      uid,
       token,
-      new_password: newPassword
+      password: newPassword
     });
   },
 

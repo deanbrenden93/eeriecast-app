@@ -12,6 +12,11 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('me/', views.UserProfileView.as_view(), name='user-profile'),
 
+    # Email verification + password reset
+    path('verify-email/confirm/', views.verify_email_confirm, name='verify-email-confirm'),
+    path('password-reset/request/', views.password_reset_request, name='password-reset-request'),
+    path('password-reset/confirm/', views.password_reset_confirm, name='password-reset-confirm'),
+
     # Router endpoints for UserViewSet
     path('', include(router.urls)),
 ]
