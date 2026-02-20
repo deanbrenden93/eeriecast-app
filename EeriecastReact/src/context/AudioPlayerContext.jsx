@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
+import { useMediaSession } from '@/hooks/use-media-session';
 import { getEpisodeAudioUrl, isAudiobook } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
@@ -65,7 +66,8 @@ export const AudioPlayerProvider = ({ children }) => {
   const STORAGE_KEY = 'eeriecast_player_state';
   const lastSavedRef = useRef(0);
 
-  // Save periodically (interval-based, every 5 seconds while an episode is loaded)
+  // Save periodically (interval-based, every 5 seconds while an episode is loaded).
+  // Timer pauses when the tab is hidden to avoid a callback stampede on return.
   useEffect(() => {
     if (!episode?.id || !podcast?.id) return;
     const save = () => {
@@ -85,8 +87,15 @@ export const AudioPlayerProvider = ({ children }) => {
     };
     // Save immediately when episode changes
     save();
-    const id = setInterval(save, 5000);
-    return () => clearInterval(id);
+
+    let id = null;
+    const start = () => { if (!id) id = setInterval(save, 5000); };
+    const stop = () => { if (id) { clearInterval(id); id = null; } };
+    const onVis = () => { document.hidden ? stop() : start(); };
+
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode?.id, podcast?.id, queue.length, queueIndex]);
 
@@ -321,6 +330,8 @@ export const AudioPlayerProvider = ({ children }) => {
   // ─── Real-time Episode Progress Tracking ──────────────────────────
   // Update the global episodeProgressMap in UserContext every 3 seconds
   // so progress bars appear on episode cards/tables in real-time.
+  // The timer pauses when the tab is hidden to prevent a stampede of
+  // queued callbacks from freezing the UI when the user returns.
   useEffect(() => {
     if (!episode?.id || !updateEpisodeProgress) return;
     // Update immediately when the episode changes
@@ -329,14 +340,35 @@ export const AudioPlayerProvider = ({ children }) => {
     const dur = audio ? (audio.duration || duration) : duration;
     if (dur > 0) updateEpisodeProgress(episode.id, ct, dur);
 
-    // Then every 3 seconds
-    const id = setInterval(() => {
-      const a = audioRef?.current;
-      if (!a || a.paused) return;
-      const d = a.duration || duration;
-      if (d > 0) updateEpisodeProgress(episode.id, a.currentTime, d);
-    }, 3000);
-    return () => clearInterval(id);
+    let intervalId = null;
+    const startInterval = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        const a = audioRef?.current;
+        if (!a || a.paused) return;
+        const d = a.duration || duration;
+        if (d > 0) updateEpisodeProgress(episode.id, a.currentTime, d);
+      }, 3000);
+    };
+    const stopInterval = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stopInterval();
+      } else {
+        // Small delay before restarting so the browser settles first
+        setTimeout(startInterval, 300);
+      }
+    };
+
+    startInterval();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stopInterval();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode?.id, updateEpisodeProgress]);
 
@@ -480,6 +512,24 @@ export const AudioPlayerProvider = ({ children }) => {
       await playQueueIndex(prevIndex);
     }
   }, [playQueueIndex, audioRef, seek]);
+
+  // ─── Lock Screen / Media Session ─────────────────────────────────
+  // Syncs metadata, playback state, and transport controls to the OS
+  // lock screen, notification shade, and hardware media keys.
+  useMediaSession({
+    episode,
+    podcast,
+    isPlaying,
+    currentTime,
+    duration,
+    playbackRate,
+    onPlay: play,
+    onPause: pause,
+    onNext: playNext,
+    onPrev: playPrev,
+    onSeek: seek,
+    onSkip: skip,
+  });
 
   // ─── Add to Queue / Play Next ────────────────────────────────────
   const addToQueue = useCallback((pod, ep) => {

@@ -11,7 +11,7 @@ class SearchPodcastSerializer(serializers.ModelSerializer):
 class SearchEpisodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Episode
-        fields = ['id', 'title', 'slug', 'description', 'podcast', 'duration', 'published_at']
+        fields = ['id', 'title', 'slug', 'description', 'podcast', 'cover_image', 'duration', 'published_at']
 
 class SearchCreatorSerializer(serializers.ModelSerializer):
     class Meta:

@@ -4,6 +4,7 @@ import { useCart } from '@/context/CartContext';
 import { useUser } from '@/context/UserContext.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { AnimatePresence, motion } from 'framer-motion';
+import { shopifyImageUrl } from '@/api/shopify';
 
 function formatPrice(amount, currency = 'USD') {
   const n = Number(amount);
@@ -54,9 +55,12 @@ export default function ProductModal({ product, isOpen, onClose }) {
 
   const hasGallery = uniqueImages.length > 1;
   const safeImageIdx = imageIdx < uniqueImages.length ? imageIdx : 0;
-  const currentImage = uniqueImages[safeImageIdx]?.url || variant?.image?.url;
+  const currentImageRaw = uniqueImages[safeImageIdx]?.url || variant?.image?.url;
+  const currentImage = shopifyImageUrl(currentImageRaw, 800); // 2x retina for ~400px modal image
 
   const price = Number(variant?.price?.amount || 0);
+  const compareAt = Number(variant?.compareAtPrice?.amount || 0);
+  const hasCompareAt = compareAt > price;
   const currency = variant?.price?.currencyCode || 'USD';
   const memberPrice = price * 0.8;
   const hasMultipleVariants = variants.length > 1;
@@ -144,6 +148,7 @@ export default function ProductModal({ product, isOpen, onClose }) {
                       <img
                         src={currentImage}
                         alt={displayProduct.title}
+                        decoding="async"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -224,6 +229,11 @@ export default function ProductModal({ product, isOpen, onClose }) {
                         <span className="text-white font-bold text-xl">{formatPrice(memberPrice, currency)}</span>
                         <span className="text-zinc-600 text-sm line-through">{formatPrice(price, currency)}</span>
                         <span className="text-amber-400 text-xs font-semibold">Member Price</span>
+                      </>
+                    ) : hasCompareAt ? (
+                      <>
+                        <span className="text-white font-bold text-xl">{formatPrice(price, currency)}</span>
+                        <span className="text-zinc-600 text-sm line-through">{formatPrice(compareAt, currency)}</span>
                       </>
                     ) : (
                       <span className="text-white font-bold text-xl">{formatPrice(price, currency)}</span>

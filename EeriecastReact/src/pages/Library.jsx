@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Podcast, UserLibrary, Episode } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Play, Edit, Plus, Download, Trash2, Headphones, Smartphone } from "lucide-react";
+import { useEpisodeBatch, useListeningHistory } from "@/hooks/useQueries";
+import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { Capacitor } from '@capacitor/core';
 import FavoritesTab from "../components/library/FavoritesTab";
 import FollowingTab from "../components/library/FollowingTab";
@@ -22,6 +24,57 @@ import { createPageUrl } from "@/utils";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 
 
+// ── Playlist card cover: 2x2 mosaic from first 4 episode images ──
+// Uses TanStack Query's useEpisodeBatch for parallel, deduplicated fetches.
+function PlaylistCardCover({ episodeIds = [] }) {
+  const ids = useMemo(() => episodeIds.slice(0, 4), [episodeIds]);
+  const results = useEpisodeBatch(ids);
+
+  // Stabilize: useQueries returns a new array ref every render
+  const dataKey = results.map(r => r.dataUpdatedAt ?? 0).join(',');
+  const images = useMemo(() => {
+    const imgs = [];
+    for (const r of results) {
+      if (!r.data) continue;
+      const ep = r.data;
+      const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
+      if (art) imgs.push(art);
+      if (imgs.length >= 4) break;
+    }
+    return imgs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataKey]);
+
+  if (images.length === 0) {
+    return (
+      <div className="w-full aspect-square rounded-xl bg-gradient-to-br from-violet-900/30 via-zinc-900 to-red-900/20 flex items-center justify-center">
+        <Headphones className="w-10 h-10 text-white/10" />
+      </div>
+    );
+  }
+
+  if (images.length === 1) {
+    return (
+      <div className="w-full aspect-square rounded-xl overflow-hidden">
+        <img src={images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+      </div>
+    );
+  }
+
+  const slots = [images[0], images[1], images[2] || null, images[3] || null];
+  return (
+    <div className="w-full aspect-square rounded-xl overflow-hidden grid grid-cols-2 grid-rows-2 gap-[2px] bg-black/40">
+      {slots.map((src, i) =>
+        src ? (
+          <img key={i} src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div key={i} className="w-full h-full bg-gradient-to-br from-zinc-800/80 to-zinc-900" />
+        )
+      )}
+    </div>
+  );
+}
+
 export default function Library() {
   const location = useLocation();
   const isNative = Capacitor.isNativePlatform();
@@ -38,8 +91,6 @@ export default function Library() {
     } catch { return null; }
   })();
   const [activeTab, setActiveTab] = useState(queryTab || "Following");
-  const [podcasts, setPodcasts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -48,10 +99,11 @@ export default function Library() {
   const [playlistToDelete, setPlaylistToDelete] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const [historyEpisodes, setHistoryEpisodes] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   const { isAuthenticated, isPremium, favoritePodcasts, favoriteEpisodes, favoritesLoading, favoriteEpisodeIds } = useUser();
+  const { podcasts: ctxPodcasts, isLoading: ctxPodcastsLoading } = usePodcasts();
+  const podcasts = ctxPodcasts;
+  const isLoading = ctxPodcastsLoading;
   const { playlists, isLoadingPlaylists, addPlaylist, updatePlaylist, removePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const navigate = useNavigate();
@@ -70,62 +122,34 @@ export default function Library() {
     setPlaybackQueue,
   } = useAudioPlayerContext();
 
-  useEffect(() => {
-    const loadPodcasts = async () => {
-      setIsLoading(true);
-      try {
-        const resp = await Podcast.list("-created_date");
-        const allPodcasts = Array.isArray(resp) ? resp : (resp?.results || []);
-        setPodcasts(allPodcasts);
-      } catch (e) {
-        if (typeof console !== 'undefined') console.debug('Failed to load podcasts for library', e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadPodcasts();
-  }, []);
+  // History via TanStack Query — cached and deduplicated
+  const { data: rawHistoryData, isLoading: isLoadingHistory } = useListeningHistory(isAuthenticated);
 
-  const loadHistory = useCallback(async () => {
-    setIsLoadingHistory(true);
-    try {
-      const resp = await UserLibrary.getHistory(100);
-      const raw = Array.isArray(resp) ? resp : (resp?.results || []);
-      // Each history entry has `episode_detail` with nested podcast data,
-      // plus `last_played`, `progress`, `duration`, `completed` etc at the top level.
-      const list = raw
-        .map((item) => {
-          if (!item?.episode_detail) return null;
-          // Attach history metadata onto the episode object so the UI can use it
-          return {
-            ...item.episode_detail,
-            _history_last_played: item.last_played,
-            _history_progress: item.progress,
-            _history_duration: item.duration,
-            _history_completed: item.completed,
-            _history_percent: item.percent_complete,
-          };
-        })
-        .filter(Boolean);
-      const seen = new Set();
-      const unique = [];
-      for (const ep of list) {
-        const id = ep?.id || ep?.slug;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        unique.push(ep);
-      }
-      setHistoryEpisodes(unique);
-    } catch (e) {
-      if (typeof console !== 'undefined') console.debug('Failed to load history', e);
-      setHistoryEpisodes([]);
-    } finally {
-      setIsLoadingHistory(false);
+  const historyEpisodes = useMemo(() => {
+    const raw = Array.isArray(rawHistoryData) ? rawHistoryData : (rawHistoryData?.results || []);
+    const list = raw
+      .map((item) => {
+        if (!item?.episode_detail) return null;
+        return {
+          ...item.episode_detail,
+          _history_last_played: item.last_played,
+          _history_progress: item.progress,
+          _history_duration: item.duration,
+          _history_completed: item.completed,
+          _history_percent: item.percent_complete,
+        };
+      })
+      .filter(Boolean);
+    const seen = new Set();
+    const unique = [];
+    for (const ep of list) {
+      const id = ep?.id || ep?.slug;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(ep);
     }
-  }, []);
-
-  // Load history on mount
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+    return unique;
+  }, [rawHistoryData]);
 
   async function handlePlayPlaylist(pl) {
     try {
@@ -284,62 +308,6 @@ export default function Library() {
       </>
     );
   };
-
-  // ── Playlist card cover: 2×2 mosaic from first 4 episode images ──
-  function PlaylistCardCover({ episodeIds = [] }) {
-    const [images, setImages] = useState([]);
-    useEffect(() => {
-      let mounted = true;
-      const ids = episodeIds.slice(0, 4);
-      if (!ids.length) return;
-      (async () => {
-        const imgs = [];
-        for (const id of ids) {
-          try {
-            const ep = await Episode.get(id);
-            const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
-            if (art) imgs.push(art);
-          } catch { /* skip */ }
-          if (imgs.length >= 4) break;
-        }
-        if (mounted) setImages(imgs);
-      })();
-      return () => { mounted = false; };
-    }, [episodeIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Empty: gradient placeholder
-    if (images.length === 0) {
-      return (
-        <div className="w-full aspect-square rounded-xl bg-gradient-to-br from-violet-900/30 via-zinc-900 to-red-900/20 flex items-center justify-center">
-          <Headphones className="w-10 h-10 text-white/10" />
-        </div>
-      );
-    }
-
-    // Single image: full cover
-    if (images.length === 1) {
-      return (
-        <div className="w-full aspect-square rounded-xl overflow-hidden">
-          <img src={images[0]} alt="" className="w-full h-full object-cover" />
-        </div>
-      );
-    }
-
-    // 2–3 images: 2×2 grid with gradient fill for empty slots
-    // 4 images: full 2×2 grid
-    const slots = [images[0], images[1], images[2] || null, images[3] || null];
-    return (
-      <div className="w-full aspect-square rounded-xl overflow-hidden grid grid-cols-2 grid-rows-2 gap-[2px] bg-black/40">
-        {slots.map((src, i) =>
-          src ? (
-            <img key={i} src={src} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <div key={i} className="w-full h-full bg-gradient-to-br from-zinc-800/80 to-zinc-900" />
-          )
-        )}
-      </div>
-    );
-  }
 
   const renderPlaylistsTab = () => {
     if (isLoadingPlaylists) {

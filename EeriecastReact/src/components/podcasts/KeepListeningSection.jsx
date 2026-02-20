@@ -68,14 +68,19 @@ export default function KeepListeningSection({
                 {/* Cover image with play overlay */}
                 <div className="relative bg-eeriecast-surface-light">
                   <div className="aspect-square overflow-hidden rounded-t-lg">
-                    {cover ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-eeriecast-surface-light">
+                      <span className="text-2xl opacity-30">🎧</span>
+                    </div>
+                    {cover && (
                       <img
                         src={cover}
                         alt={episode.title}
-                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+                        loading="lazy"
+                        width={144}
+                        height={144}
+                        className="relative w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
+                        onError={(e) => { e.target.style.display = 'none'; }}
                       />
-                    ) : (
-                      <div className="w-full h-full cover-shimmer" />
                     )}
                     {/* Play overlay */}
                     <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
@@ -110,13 +115,23 @@ export default function KeepListeningSection({
                 </div>
 
                 {/* Episode info */}
-                <div className="p-2.5 space-y-0.5 mt-auto min-h-[3rem] flex flex-col justify-end">
+                <div className="p-2.5 space-y-0.5 min-h-[3rem] flex flex-col justify-start">
                   <h3 className="text-white/90 font-semibold text-xs line-clamp-2 leading-tight group-hover:text-red-400 transition-colors duration-300">
                     {episode.title}
                   </h3>
-                  <p className="text-zinc-500 text-[10px] leading-tight line-clamp-1">
-                    {podcast?.title || podcast?.author || ''}
-                  </p>
+                  {podcast?.title ? (
+                    <Link
+                      to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id || podcast.slug)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-zinc-500 text-[10px] leading-tight line-clamp-1 hover:text-red-400 transition-colors duration-200"
+                    >
+                      {podcast.title}
+                    </Link>
+                  ) : (
+                    <p className="text-zinc-500 text-[10px] leading-tight line-clamp-1">
+                      {podcast?.author || ''}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

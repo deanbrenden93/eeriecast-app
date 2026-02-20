@@ -415,6 +415,19 @@ export const UserLibrary = {
   }
 };
 
+// Billing / Subscription service
+export const Billing = {
+  // Get current user's subscription status
+  async status() {
+    return djangoClient.get('/billing/me/');
+  },
+
+  // Create a Stripe Customer Portal session (returns { url })
+  async createPortalSession() {
+    return djangoClient.post('/billing/create-portal-session/');
+  },
+};
+
 // Playlists service
 export const Playlist = {
   // List your playlists

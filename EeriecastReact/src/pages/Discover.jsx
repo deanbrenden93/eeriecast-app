@@ -518,11 +518,12 @@ export default function Discover() {
       resume: { progress: 0 },
     });
     if (played === false) {
+      const isPremiumContent = episode.is_premium || p?.is_exclusive;
       toast({
         title: "Unable to play",
-        description: isAuthenticated
-          ? "This episode doesn't have audio available yet."
-          : "Please sign in to play episodes.",
+        description: !isAuthenticated && isPremiumContent
+          ? "Sign in to play premium episodes."
+          : "This episode's audio isn't available yet. Please try again later.",
         variant: "destructive",
       });
     }

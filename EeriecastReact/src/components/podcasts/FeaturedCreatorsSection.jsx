@@ -55,6 +55,9 @@ export default function FeaturedCreatorsSection() {
                   <img
                     src={creator.avatar || creator.cover_image}
                     alt={creator.display_name || 'Creator'}
+                    loading="lazy"
+                    width={96}
+                    height={96}
                     className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                   />
                 ) : (
