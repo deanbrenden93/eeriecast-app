@@ -370,17 +370,6 @@ body::-webkit-scrollbar,
   animation: shimmer-slide 2.4s ease-in-out infinite;
 }
 
-/* Shimmering gold border for premium yearly selection */
-@keyframes gold-shimmer {
-  0%, 100% { border-color: rgba(202, 138, 4, 0.5); box-shadow: 0 0 12px rgba(202, 138, 4, 0.2); }
-  25%      { border-color: rgba(234, 179, 8, 0.7); box-shadow: 0 0 16px rgba(234, 179, 8, 0.35); }
-  50%      { border-color: rgba(250, 204, 21, 0.85); box-shadow: 0 0 20px rgba(250, 204, 21, 0.4); }
-  75%      { border-color: rgba(234, 179, 8, 0.7); box-shadow: 0 0 16px rgba(234, 179, 8, 0.35); }
-}
-.premium-yearly-gold-shimmer {
-  animation: gold-shimmer 2.5s ease-in-out infinite;
-}
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -929,60 +918,6 @@ html.ereader-active .layout-bottom-nav {
   margin-top: 0.05em;
   color: rgba(255, 255, 255, 0.7);
   font-weight: 700;
-}
-
-/* ═══════════════════════════════════════════════════════
-   COMIC READER — image fit modes
-   ═══════════════════════════════════════════════════════ */
-
-.comic-page-img {
-  display: block;
-  user-select: none;
-  -webkit-user-drag: none;
-  border-radius: 4px;
-}
-
-/* Fit to container width — full bleed horizontally */
-.comic-fit-width {
-  width: 100%;
-  height: auto;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-/* Fit to container height — no vertical scrolling */
-.comic-fit-height {
-  height: 100%;
-  width: auto;
-  max-width: 100%;
-  object-fit: contain;
-}
-
-/* Contain — fit entirely within the viewport (default) */
-.comic-fit-contain {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-/* Loading skeleton — 2:3 aspect ratio placeholder */
-.comic-page-skeleton {
-  width: min(50vh * 0.667, 80vw);
-  max-width: 400px;
-  background: linear-gradient(
-    110deg,
-    rgba(255, 255, 255, 0.02) 30%,
-    rgba(255, 255, 255, 0.05) 50%,
-    rgba(255, 255, 255, 0.02) 70%
-  );
-  background-size: 200% 100%;
-  animation: comic-skeleton-shimmer 1.8s ease-in-out infinite;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-@keyframes comic-skeleton-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }
 
 /* ═══════════════════════════════════════════════════════

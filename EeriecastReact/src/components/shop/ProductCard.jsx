@@ -3,7 +3,6 @@ import { ShoppingBag, Check, Crown } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useUser } from '@/context/UserContext.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { shopifyImageUrl } from '@/api/shopify';
 
 function formatPrice(amount, currency = 'USD') {
   const n = Number(amount);
@@ -26,13 +25,10 @@ export default function ProductCard({ product, onOpenDetail }) {
   if (!variant) return null;
 
   const price = Number(variant.price?.amount || 0);
-  const compareAt = Number(variant.compareAtPrice?.amount || 0);
-  const hasCompareAt = compareAt > price;
   const currency = variant.price?.currencyCode || 'USD';
   const memberPrice = price * 0.8;
   const hasMultipleVariants = variants.length > 1;
-  const mainImageRaw = variant.image?.url || product.images?.[0]?.url;
-  const mainImage = shopifyImageUrl(mainImageRaw, 400); // 2x for retina on ~160px card
+  const mainImage = variant.image?.url || product.images?.[0]?.url;
 
   // Group options by name (e.g. Size, Color)
   const optionGroups = {};
@@ -80,7 +76,6 @@ export default function ProductCard({ product, onOpenDetail }) {
           <img
             src={mainImage}
             alt={product.title}
-            decoding="async"
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
           />
         ) : (
@@ -156,11 +151,6 @@ export default function ProductCard({ product, onOpenDetail }) {
               <>
                 <span className="text-white font-bold text-sm sm:text-base">{formatPrice(memberPrice, currency)}</span>
                 <span className="text-zinc-600 text-xs line-through">{formatPrice(price, currency)}</span>
-              </>
-            ) : hasCompareAt ? (
-              <>
-                <span className="text-white font-bold text-sm sm:text-base">{formatPrice(price, currency)}</span>
-                <span className="text-zinc-600 text-xs line-through">{formatPrice(compareAt, currency)}</span>
               </>
             ) : (
               <span className="text-white font-bold text-sm sm:text-base">{formatPrice(price, currency)}</span>

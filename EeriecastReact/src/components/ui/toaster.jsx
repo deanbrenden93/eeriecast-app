@@ -13,20 +13,15 @@ export function Toaster() {
 
   return (
     <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, open, onOpenChange, variant, ...props }) {
-        const isSuccess = variant === 'success';
+      {toasts.map(function ({ id, title, description, action, open, onOpenChange, ...props }) {
         return (
-          <Toast key={id} open={open} onOpenChange={onOpenChange} variant={variant} {...props}
-            className={`transition-all duration-300 !py-2.5 !px-4 !pr-8 !rounded-xl !backdrop-blur-xl !shadow-2xl !shadow-black/40 ${
-              isSuccess
-                ? '!bg-green-950/95 !border-green-500/30'
-                : '!border-white/[0.08] !bg-zinc-900/95'
-            } ${open === false ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'}`}>
+          <Toast key={id} open={open} onOpenChange={onOpenChange} {...props}
+            className={`transition-all duration-300 !py-2.5 !px-4 !pr-8 !rounded-xl !border-white/[0.08] !bg-zinc-900/95 !backdrop-blur-xl !shadow-2xl !shadow-black/40 ${open === false ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'}`}>
             <div className="flex items-center gap-2">
-              {title && <ToastTitle className={`!text-xs !font-medium ${isSuccess ? '!text-green-300' : '!text-white/90'}`}>{title}</ToastTitle>}
-              {title && description && <span className={`text-xs ${isSuccess ? 'text-green-500/40' : 'text-white/20'}`}>·</span>}
+              {title && <ToastTitle className="!text-xs !font-medium !text-white/90">{title}</ToastTitle>}
+              {title && description && <span className="text-white/20 text-xs">·</span>}
               {description && (
-                <ToastDescription className={`!text-xs truncate max-w-[200px] ${isSuccess ? '!text-green-400/70' : '!text-white/50'}`}>{description}</ToastDescription>
+                <ToastDescription className="!text-xs !text-white/50 truncate max-w-[200px]">{description}</ToastDescription>
               )}
             </div>
             {action}

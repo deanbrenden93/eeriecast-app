@@ -87,10 +87,6 @@ export function getEpisodeAudioUrl(ep) {
     ep.ad_free_audio_url ||
     ep.ad_supported_audio_url ||
     ep.audio_url ||
-    ep.audio_file ||
-    ep.stream_url ||
-    ep.media_url ||
-    ep.enclosure_url ||
     ""
   );
 }

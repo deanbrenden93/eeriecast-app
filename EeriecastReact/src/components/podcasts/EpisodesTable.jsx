@@ -59,7 +59,7 @@ export default function EpisodesTable({
     return reordered;
   }, [episodes, freeSampleEpisodeId, isPremium]);
 
-  const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.image || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
+  const getArtwork = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || show?.cover_image;
   const getShowName = (ep) => ep?.podcast?.title || ep?.podcast?.name || show?.title || show?.name || '';
   const getShowId = (ep) => ep?.podcast?.id || ep?.podcast_id || show?.id;
 
@@ -136,19 +136,12 @@ export default function EpisodesTable({
             <div className="flex items-start sm:items-center gap-4 flex-1 min-w-0">
               {/* Artwork with progress/lock overlay */}
               <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-2xl">🎧</span>
-                </div>
-                {getArtwork(ep) && (
-                  <img
-                    src={getArtwork(ep)}
-                    alt={ep.title}
-                    loading="lazy"
-                    width={64}
-                    height={64}
-                    className={`relative w-full h-full object-cover ${isChapterLocked ? 'grayscale' : ''}`}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
+                {getArtwork(ep) ? (
+                  <img src={getArtwork(ep)} alt={ep.title} className={`w-full h-full object-cover ${isChapterLocked ? 'grayscale' : ''}`} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="text-2xl">🎧</span>
+                  </div>
                 )}
                 {isChapterLocked && (
                   <div className="absolute inset-0 bg-black/60 flex items-center justify-center">

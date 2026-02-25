@@ -32,16 +32,34 @@ class AuthenticationEmailFlowTests(TestCase):
         resp2 = self.client.post('/api/auth/password-reset/request/', {'email': 'exists@example.com'}, format='json')
         self.assertEqual(resp2.status_code, 200)
 
-    def test_soft_delete_endpoint_marks_user_deleted_and_anonymizes_email(self):
+    def test_delete_endpoint_removes_user(self):
         user = User.objects.create_user(email='del@example.com', username='u4', password='pass1234')
         self.client.force_authenticate(user=user)
 
         resp = self.client.post('/api/auth/users/me/delete/', {}, format='json')
         self.assertEqual(resp.status_code, 204)
 
+        self.assertFalse(User.objects.filter(id=user.id).exists())
+
+    def test_email_change_request_and_confirm(self):
+        user = User.objects.create_user(email='old@example.com', username='u5', password='pass1234')
+        self.client.force_authenticate(user=user)
+
+        resp = self.client.post('/api/auth/email-change/request/', {
+            'email': 'new@example.com',
+            'current_password': 'pass1234',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+
         user.refresh_from_db()
-        self.assertTrue(user.is_deleted)
-        self.assertFalse(user.is_active)
-        self.assertEqual(user.email_at_deletion, 'del@example.com')
-        self.assertNotEqual(user.email, 'del@example.com')
-        self.assertTrue(user.email.startswith('deleted+'))
+        self.assertEqual(user.pending_email, 'new@example.com')
+
+        signer = TimestampSigner(salt=email_events.EMAIL_CHANGE_SALT)
+        token = signer.sign(f"{user.id}:new@example.com")
+
+        confirm = self.client.post('/api/auth/email-change/confirm/', {'token': token}, format='json')
+        self.assertEqual(confirm.status_code, 200)
+
+        user.refresh_from_db()
+        self.assertEqual(user.email, 'new@example.com')
+        self.assertIsNone(user.pending_email)

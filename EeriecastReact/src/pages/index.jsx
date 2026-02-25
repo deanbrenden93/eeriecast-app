@@ -18,6 +18,7 @@ import Help from "./Help";
 import Shop from "./Shop";
 import VerifyEmail from "./VerifyEmail";
 import ResetPassword from "./ResetPassword";
+import ConfirmEmailChange from "./ConfirmEmailChange";
 
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect, useLayoutEffect } from 'react';
@@ -136,6 +137,7 @@ function PagesContent() {
                     <Route path="/" element={<AnimatedPage><Home /></AnimatedPage>} />
 
                     <Route path="/verify-email" element={<AnimatedPage><VerifyEmail /></AnimatedPage>} />
+                    <Route path="/confirm-email-change" element={<AnimatedPage><ConfirmEmailChange /></AnimatedPage>} />
                     <Route path="/reset-password" element={<AnimatedPage><ResetPassword /></AnimatedPage>} />
                     
                     <Route path="/Home" element={<AnimatedPage><Home /></AnimatedPage>} />

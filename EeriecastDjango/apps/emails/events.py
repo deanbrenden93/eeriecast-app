@@ -8,6 +8,7 @@ from .service import enqueue_event_email, make_app_url
 
 
 VERIFY_EMAIL_SALT = "email-verify"
+EMAIL_CHANGE_SALT = "email-change"
 
 
 class EmailEventTypes:
@@ -17,6 +18,8 @@ class EmailEventTypes:
     EMAIL_CHANGED_OLD = "EMAIL_CHANGED_OLD"
     EMAIL_CHANGED_NEW = "EMAIL_CHANGED_NEW"
     ACCOUNT_DELETED_CONFIRMATION = "ACCOUNT_DELETED_CONFIRMATION"
+    EMAIL_CHANGE_VERIFY = "EMAIL_CHANGE_VERIFY"
+    EMAIL_CHANGE_REQUESTED_OLD = "EMAIL_CHANGE_REQUESTED_OLD"
 
     SUBSCRIPTION_CREATED = "SUBSCRIPTION_CREATED"
     PAYMENT_SUCCEEDED = "PAYMENT_SUCCEEDED"
@@ -102,7 +105,7 @@ def send_email_changed_notifications(*, user_id: int, old_email: str, new_email:
     )
 
 
-def send_account_deleted_confirmation(*, user_id: int, to_email: str, deleted_at_iso: str):
+def send_account_deleted_confirmation(*, user_id: int, to_email: str, deleted_at_iso: str, deleted_at_display: str):
     enqueue_event_email(
         event_type=EmailEventTypes.ACCOUNT_DELETED_CONFIRMATION,
         to_email=to_email,
@@ -111,6 +114,36 @@ def send_account_deleted_confirmation(*, user_id: int, to_email: str, deleted_at
         template_name="emails/account_deleted.html",
         context={
             "deleted_at": deleted_at_iso,
+            "deleted_at_display": deleted_at_display,
+        },
+        user_id=user_id,
+    )
+
+
+def send_email_change_verification(*, user_id: int, to_email: str, new_email: str, verify_url: str):
+    enqueue_event_email(
+        event_type=EmailEventTypes.EMAIL_CHANGE_VERIFY,
+        to_email=to_email,
+        external_id=f"user:{user_id}:email_change_verify:{uuid.uuid4()}",
+        subject="Confirm your new Eeriecast email",
+        template_name="emails/email_change_verify.html",
+        context={
+            "new_email": new_email,
+            "verify_url": verify_url,
+        },
+        user_id=user_id,
+    )
+
+
+def send_email_change_requested_old(*, user_id: int, to_email: str, new_email: str):
+    enqueue_event_email(
+        event_type=EmailEventTypes.EMAIL_CHANGE_REQUESTED_OLD,
+        to_email=to_email,
+        external_id=f"user:{user_id}:email_change_requested:{uuid.uuid4()}",
+        subject="Email change requested",
+        template_name="emails/email_change_requested_old.html",
+        context={
+            "new_email": new_email,
         },
         user_id=user_id,
     )

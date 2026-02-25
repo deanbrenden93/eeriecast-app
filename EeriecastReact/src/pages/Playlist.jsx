@@ -1,8 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Playlist as PlaylistApi, Episode } from '@/api/entities';
-import { useQuery } from '@tanstack/react-query';
-import { useEpisodeBatch } from '@/hooks/useQueries';
 import { Button } from '@/components/ui/button';
 import { Play, Clock, ListMusic, Headphones } from 'lucide-react';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
@@ -13,7 +11,7 @@ import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 
-function useUrlQuery() {
+function useQuery() {
   const { search } = useLocation();
   return useMemo(() => new URLSearchParams(search), [search]);
 }
@@ -65,10 +63,13 @@ function PlaylistMosaic({ images = [], size = 'lg', className = '' }) {
 export { PlaylistMosaic };
 
 export default function Playlist() {
-  const query = useUrlQuery();
+  const query = useQuery();
   const idParam = query.get('id');
   const navigate = useNavigate();
 
+  const [playlist, setPlaylist] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [removingEpisodeId, setRemovingEpisodeId] = useState(null);
   const [sortOrder, setSortOrder] = useState('Custom');
 
@@ -89,42 +90,46 @@ export default function Playlist() {
     setShowAddModal(true);
   };
 
-  // ── Fetch playlist (TanStack Query — cached) ───────────────────
-  const { data: playlist, isLoading: playlistLoading } = useQuery({
-    queryKey: ['playlist', idParam],
-    queryFn: () => PlaylistApi.get(idParam),
-    enabled: !!idParam,
-    staleTime: 5 * 60 * 1000,
-  });
+  // ── Fetch playlist + episodes ───────────────────────────────────
+  useEffect(() => {
+    let canceled = false;
+    async function load() {
+      if (!idParam) { setIsLoading(false); return; }
+      setIsLoading(true);
+      try {
+        const pl = await PlaylistApi.get(idParam);
+        if (canceled) return;
+        setPlaylist(pl);
 
-  // Mutable local copy for optimistic removes
-  const [removedIds, setRemovedIds] = useState(new Set());
+        const ids = Array.isArray(pl?.episodes) ? pl.episodes : [];
+        if (ids.length === 0) { setEpisodes([]); return; }
 
-  const episodeIds = useMemo(() => {
-    const ids = Array.isArray(playlist?.episodes) ? playlist.episodes : [];
-    return ids.filter((id) => !removedIds.has(id));
-  }, [playlist, removedIds]);
-
-  // Parallel episode fetches via TanStack Query (deduplicated across playlist cards)
-  const episodeResults = useEpisodeBatch(episodeIds);
-
-  // Stabilize: useQueries returns a new array ref every render
-  const epDataKey = episodeResults.map(r => r.dataUpdatedAt ?? 0).join(',');
-  const episodes = useMemo(() => {
-    return episodeResults
-      .filter((r) => r.data)
-      .map((r) => {
-        const ep = { ...r.data };
-        if (ep.podcast && typeof ep.podcast !== 'object') {
-          const podcastObj = getPodcastById(ep.podcast);
-          if (podcastObj) ep.podcast = podcastObj;
+        // Fetch episodes and enrich with podcast cover art
+        const eps = [];
+        for (const id of ids) {
+          try {
+            const ep = await Episode.get(id);
+            if (!ep) continue;
+            // Enrich: if ep.podcast is just an ID, attach the full podcast object for cover_image fallback
+            if (ep.podcast && typeof ep.podcast !== 'object') {
+              const podcastObj = getPodcastById(ep.podcast);
+              if (podcastObj) {
+                ep.podcast = podcastObj;
+              }
+            }
+            eps.push(ep);
+          } catch {
+            // skip failures
+          }
         }
-        return ep;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [epDataKey, getPodcastById]);
-
-  const isLoading = playlistLoading;
+        if (!canceled) setEpisodes(eps);
+      } finally {
+        if (!canceled) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { canceled = true; };
+  }, [idParam, getPodcastById]);
 
   // ── Sorting ─────────────────────────────────────────────────────
   const sortedEpisodes = useMemo(() => {
@@ -199,9 +204,13 @@ export default function Playlist() {
     setRemovingEpisodeId(ep.id);
     const ok = await removeEpisodeFromPlaylist(playlist.id, ep.id);
     if (ok) {
-      setRemovedIds((prev) => new Set([...prev, ep.id]));
-      const updated = { ...playlist, episodes: (Array.isArray(playlist?.episodes) ? playlist.episodes.filter(id => id !== ep.id) : []) };
-      updatePlaylist(updated);
+      setEpisodes(prev => prev.filter(e => e.id !== ep.id));
+      setPlaylist(p => {
+        const updated = { ...p, episodes: (Array.isArray(p?.episodes) ? p.episodes.filter(id => id !== ep.id) : []) };
+        // Sync the global playlist context so Library cards update immediately
+        updatePlaylist(updated);
+        return updated;
+      });
     }
     setRemovingEpisodeId(null);
   };

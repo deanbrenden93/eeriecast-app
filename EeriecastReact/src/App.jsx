@@ -19,14 +19,11 @@ function GlobalAuthModal() {
   useEffect(() => {
     if (isAuthenticated && afterLoginAction?.fn) {
       const callback = afterLoginAction.fn;
-      // Clear action and close auth modal FIRST to avoid loops,
-      // then immediately fire the callback (e.g. open payment modal).
-      // This ensures a single seamless transition with no flicker.
+      // Clear action FIRST to avoid any potential loops if callback re-opens modal
       setAfterLoginAction(null);
-      closeAuth();
       callback();
     }
-  }, [isAuthenticated, afterLoginAction, setAfterLoginAction, closeAuth]);
+  }, [isAuthenticated, afterLoginAction, setAfterLoginAction]);
 
   return (
     <AuthModal isOpen={open} onClose={closeAuth} defaultTab={defaultTab} />

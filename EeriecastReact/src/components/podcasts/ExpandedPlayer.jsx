@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import { Heart, X, Plus, Settings2, UserPlus, UserCheck } from "lucide-react";
+import { Heart, X, Plus, Settings2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/context/UserContext.jsx";
@@ -336,7 +336,7 @@ function MarqueeText({ text, className = '' }) {
 MarqueeText.propTypes = { text: PropTypes.string, className: PropTypes.string };
 
 /** Scrolling marquee for episode titles that overflow a single line. */
-function MarqueeTitle({ text, suffix }) {
+function MarqueeTitle({ text }) {
   const containerRef = useRef(null);
   const textRef = useRef(null);
   const [needsScroll, setNeedsScroll] = useState(false);
@@ -353,7 +353,7 @@ function MarqueeTitle({ text, suffix }) {
     checkOverflow();
     const tid = setTimeout(checkOverflow, 500);
     return () => clearTimeout(tid);
-  }, [text, suffix]);
+  }, [text]);
 
   return (
     <div ref={containerRef} className="relative w-full overflow-hidden">
@@ -363,12 +363,11 @@ function MarqueeTitle({ text, suffix }) {
         style={needsScroll ? { '--marquee-container': `${containerWidth}px` } : undefined}
       >
         {text}
-        {suffix && <span className="text-[11px] font-normal text-white/30 tracking-wide ml-3 align-middle">{suffix}</span>}
       </h1>
     </div>
   );
 }
-MarqueeTitle.propTypes = { text: PropTypes.string, suffix: PropTypes.string };
+MarqueeTitle.propTypes = { text: PropTypes.string };
 
 export default function ExpandedPlayer({ 
   podcast, 
@@ -393,7 +392,7 @@ export default function ExpandedPlayer({
 }) {
   const navigate = useNavigate();
   const [isLiked, setIsLiked] = useState(false);
-  const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium, followedPodcastIds, refreshFollowings } = useUser();
+  const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
 
@@ -403,32 +402,6 @@ export default function ExpandedPlayer({
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
-
-  // Follow state
-  const isFollowing = followedPodcastIds?.has(Number(podcast?.id));
-  const [isFollowingLoading, setIsFollowingLoading] = useState(false);
-  const [followAnim, setFollowAnim] = useState(null); // 'followed' | 'unfollowed' | null
-
-  const handleFollowToggle = async () => {
-    if (!podcast?.id) return;
-    if (!isAuthenticated) { openAuth('login'); return; }
-    const wasFollowing = isFollowing;
-    setIsFollowingLoading(true);
-    try {
-      if (wasFollowing) {
-        await UserLibrary.unfollowPodcast(podcast.id);
-      } else {
-        await UserLibrary.followPodcast(podcast.id);
-      }
-      await refreshFollowings();
-      setFollowAnim(wasFollowing ? 'unfollowed' : 'followed');
-      setTimeout(() => setFollowAnim(null), 900);
-    } catch (e) {
-      console.error('Failed to toggle follow', e);
-    } finally {
-      setIsFollowingLoading(false);
-    }
-  };
 
   // New: Queue sheet state
   const [showQueue, setShowQueue] = useState(false);
@@ -531,13 +504,11 @@ export default function ExpandedPlayer({
   };
 
   useEffect(() => {
-    // Prevent background page from scrolling when expanded player is open.
-    // Always restore to '' (auto) on unmount rather than capturing the
-    // previous value in a closure, which can get stale if another component
-    // (e.g. EReader, Radix modal) also sets overflow:hidden concurrently.
+    // Prevent background page from scrolling when expanded player is open
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = prevOverflow;
     };
   }, []);
 
@@ -735,69 +706,47 @@ export default function ExpandedPlayer({
 
   return (
     <div className="fixed inset-0 z-[3000] flex flex-col overflow-y-auto overscroll-contain touch-pan-y" style={{ background: '#0a0a0f' }}>
-      {/* ── Atmospheric background layers ── */}
+      {/* Animated atmospheric background */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-
-        {/* Layer 0: Cover-art ambient wash — gives each episode a unique colour mood */}
-        {cover && (
-          <div className="absolute inset-0" style={{ opacity: 0.22 }}>
-            <img
-              src={cover}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 w-full h-full object-cover scale-[1.3] blur-[60px] sm:blur-[80px] saturate-[1.4]"
-            />
-            {/* Dark vignette over the blurred art */}
-            <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0f]/50 via-transparent to-[#0a0a0f]/70" />
-          </div>
-        )}
-
-        {/* Layer 1: Slow-drifting gradient orbs — viewport-relative sizing */}
-        <div className="absolute rounded-full blur-[80px] sm:blur-[140px] opacity-[0.10] sm:opacity-[0.07]"
+        {/* Slow-drifting gradient orbs */}
+        <div className="absolute w-[40rem] h-[40rem] rounded-full blur-[160px] opacity-[0.07]"
           style={{
-            width: '80vw', height: '80vw',
-            maxWidth: '40rem', maxHeight: '40rem',
             background: 'radial-gradient(circle, #dc2626, transparent 70%)',
-            top: '-5%', left: '-10%',
+            top: '-10%', left: '-15%',
             animation: 'ep-drift-1 25s ease-in-out infinite alternate',
           }}
         />
-        <div className="absolute rounded-full blur-[70px] sm:blur-[120px] opacity-[0.08] sm:opacity-[0.05]"
+        <div className="absolute w-[35rem] h-[35rem] rounded-full blur-[140px] opacity-[0.05]"
           style={{
-            width: '70vw', height: '70vw',
-            maxWidth: '35rem', maxHeight: '35rem',
             background: 'radial-gradient(circle, #7c3aed, transparent 70%)',
-            bottom: '0%', right: '-5%',
+            bottom: '-10%', right: '-10%',
             animation: 'ep-drift-2 30s ease-in-out infinite alternate',
           }}
         />
-        <div className="absolute rounded-full blur-[60px] sm:blur-[100px] opacity-[0.06] sm:opacity-[0.04]"
+        <div className="absolute w-[25rem] h-[25rem] rounded-full blur-[120px] opacity-[0.04]"
           style={{
-            width: '55vw', height: '55vw',
-            maxWidth: '25rem', maxHeight: '25rem',
             background: 'radial-gradient(circle, #0ea5e9, transparent 70%)',
-            top: '35%', left: '30%',
+            top: '40%', left: '50%',
             animation: 'ep-drift-3 20s ease-in-out infinite alternate',
           }}
         />
-
-        {/* Layer 2: Subtle noise texture */}
-        <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
+        {/* Subtle noise texture overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
       </div>
 
-      {/* Keyframes for background animations */}
+      {/* Keyframes for background animation */}
       <style>{`
         @keyframes ep-drift-1 {
           0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(30px, 25px) scale(1.12); }
+          100% { transform: translate(60px, 40px) scale(1.15); }
         }
         @keyframes ep-drift-2 {
           0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(-25px, -20px) scale(1.08); }
+          100% { transform: translate(-50px, -30px) scale(1.1); }
         }
         @keyframes ep-drift-3 {
-          0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(20px, -15px) scale(1.15); }
+          0% { transform: translate(-50%, -50%) scale(1); }
+          100% { transform: translate(calc(-50% + 40px), calc(-50% - 30px)) scale(1.2); }
         }
       `}</style>
 
@@ -830,7 +779,7 @@ export default function ExpandedPlayer({
       {/* Content */}
       <div className="relative z-[1] flex-1 flex flex-col justify-start items-center px-6 pt-2 pb-4">
         {/* Album Art */}
-        <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] mx-auto mb-3 rounded-2xl overflow-hidden shadow-[0_8px_60px_-12px_rgba(0,0,0,0.8)] ring-1 ring-white/[0.06]">
+        <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] mx-auto mb-3 rounded-lg overflow-hidden shadow-2xl">
           {cover ? (
             <img
               src={cover}
@@ -842,8 +791,6 @@ export default function ExpandedPlayer({
               <span className="text-8xl">🎧</span>
             </div>
           )}
-          {/* Glass reflection highlight on album art */}
-          <div className="absolute inset-0 bg-gradient-to-br from-white/[0.06] via-transparent to-transparent pointer-events-none" />
         </div>
 
         {/* Track Info */}
@@ -865,28 +812,8 @@ export default function ExpandedPlayer({
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide text-amber-400/80 border border-amber-400/25 bg-amber-400/[0.08] leading-none select-none">
               PG-13
             </span>
-            {/* Follow button */}
-            <button
-              type="button"
-              onClick={handleFollowToggle}
-              disabled={isFollowingLoading}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border transition-all duration-300 select-none ${
-                isFollowing
-                  ? 'text-red-400/90 border-red-500/30 bg-red-500/10 hover:bg-red-500/20 hover:border-red-500/40'
-                  : 'text-white/60 border-white/15 bg-white/[0.05] hover:bg-white/[0.1] hover:text-white/90 hover:border-white/25'
-              } ${isFollowingLoading ? 'opacity-60 cursor-not-allowed' : ''} ${followAnim === 'followed' ? 'animate-pulse' : ''}`}
-            >
-              {isFollowing
-                ? <UserCheck className="w-3 h-3" />
-                : <UserPlus className="w-3 h-3" />
-              }
-              <span>{isFollowing ? 'Following' : 'Follow'}</span>
-            </button>
           </div>
-          <MarqueeTitle
-            text={episode?.title || ''}
-            suffix={formatDate(episode?.published_at || episode?.created_date || episode?.release_date)}
-          />
+          <MarqueeTitle text={episode?.title || ''} />
         </div>
 
         {/* Action buttons */}

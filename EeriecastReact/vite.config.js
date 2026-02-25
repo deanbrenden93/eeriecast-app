@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     allowedHosts: true,
     host: true,
-    port: 5178,
+    port: 5179,
     strictPort: true,
   },
   resolve: {

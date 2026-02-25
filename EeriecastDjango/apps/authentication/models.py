@@ -14,6 +14,8 @@ class User(AbstractUser):
     # Email verification (not enforced yet)
     email_verified = models.BooleanField(default=False)
     email_verified_at = models.DateTimeField(blank=True, null=True)
+    pending_email = models.EmailField(blank=True, null=True)
+    pending_email_requested_at = models.DateTimeField(blank=True, null=True)
 
     # Soft delete
     is_deleted = models.BooleanField(default=False)

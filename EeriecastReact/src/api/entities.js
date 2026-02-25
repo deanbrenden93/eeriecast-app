@@ -257,6 +257,25 @@ export const User = {
       password: newPassword,
     });
   },
+
+  // Delete the currently authenticated user's account
+  async deleteAccount() {
+    return djangoClient.post('/auth/users/me/delete/', {});
+  },
+
+  // Request an email change (requires current password)
+  async requestEmailChange(newEmail, currentPassword) {
+    const normalizedEmail = typeof newEmail === 'string' ? newEmail.toLowerCase().trim() : newEmail;
+    return djangoClient.post('/auth/email-change/request/', {
+      email: normalizedEmail,
+      current_password: currentPassword,
+    });
+  },
+
+  // Confirm an email change via token
+  async confirmEmailChange(token) {
+    return djangoClient.post('/auth/email-change/confirm/', { token });
+  },
 };
 
 // Search service
@@ -413,19 +432,6 @@ export const UserLibrary = {
   async logEvent(eventBody) {
     return djangoClient.post('/library/history/events/', eventBody);
   }
-};
-
-// Billing / Subscription service
-export const Billing = {
-  // Get current user's subscription status
-  async status() {
-    return djangoClient.get('/billing/me/');
-  },
-
-  // Create a Stripe Customer Portal session (returns { url })
-  async createPortalSession() {
-    return djangoClient.post('/billing/create-portal-session/');
-  },
 };
 
 // Playlists service

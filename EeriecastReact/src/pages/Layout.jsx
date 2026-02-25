@@ -10,7 +10,6 @@ import UserMenu from "../components/layout/UserMenu";
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 import { cn } from "@/lib/utils";
-import { FeatureGate } from '@/lib/featureFlags';
 import logo from '@/assets/logo.png';
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -40,7 +39,7 @@ function BottomNav({ currentPageName }) {
       aria-label="Bottom Navigation"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <ul className="flex w-full max-w-[1440px] mx-auto justify-around items-stretch px-1 py-1.5">
+      <ul className="flex w-full max-w-full justify-around items-stretch px-1 py-1.5">
         {menuItems.map(({ id, Icon, label, page }) => {
           const routeName = PAGE_ROUTE_MAP[page] || 'Home';
           const to = createPageUrl(routeName);
@@ -118,7 +117,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   // Full-screen pages without standard header
   if (currentPageName === "Home" || currentPageName === "Premium") {
     return (
-      <div className="m-0 p-0 w-full h-full bg-eeriecast-surface">
+      <div className="m-0 p-0 w-full h-full">
         <style>{`
           html, body {
             margin: 0 !important;
@@ -127,7 +126,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
             height: 100%;
           }
         `}</style>
-        <main className="pb-0 max-w-[1440px] mx-auto">{children}</main>
+        <main className="pb-0">{children}</main>
       </div>
     );
   }
@@ -141,6 +140,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
     { name: 'Podcasts', route: 'Discover' },
     { name: 'Audiobooks', route: 'Audiobooks' },
     { name: 'Library', route: 'Library' },
+    { name: 'Settings', route: 'Settings' },
   ];
 
   const NavLinks = ({ onClick }) => (
@@ -181,7 +181,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
 
       {/* ─── Top bar ─── */}
       <header className="layout-header fixed top-0 left-0 right-0 z-50 isolate bg-[#08080e]/70 backdrop-blur-xl border-b border-white/[0.04]">
-        <div className="w-full max-w-[1440px] mx-auto px-4 md:px-6 py-3">
+        <div className="w-full px-4 md:px-6 py-3">
           <div className="flex items-center justify-between">
             {/* Left: Mobile menu + Logo */}
             <div className="flex items-center gap-2.5">
@@ -375,31 +375,11 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   </Link>
                 </motion.div>
 
-                {/* Profile link */}
-                <motion.div
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.04 + (navLinks.length + 1) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                >
-                  <Link
-                    to={createPageUrl('Profile')}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium transition-all duration-300 ${
-                      currentPageName === 'Profile'
-                        ? 'text-white bg-white/[0.06]'
-                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.03]'
-                    }`}
-                  >
-                    <User className="w-4 h-4" />
-                    Profile
-                  </Link>
-                </motion.div>
-
                 {/* Settings link */}
                 <motion.div
                   initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                  transition={{ delay: 0.04 + (navLinks.length + 1) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                 >
                   <Link
                     to={createPageUrl('Settings')}
@@ -415,20 +395,6 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   </Link>
                 </motion.div>
 
-                {/* Staff indicator — only visible to admin/staff accounts */}
-                <FeatureGate flag="staff-indicator">
-                  <motion.div
-                    initial={{ opacity: 0, x: -16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.04 + (navLinks.length + 3) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                  >
-                    <div className="flex items-center gap-2 px-3 py-2 mt-1 rounded-lg bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-[11px] font-semibold text-emerald-400/90 tracking-wide uppercase">Staff Mode</span>
-                    </div>
-                  </motion.div>
-                </FeatureGate>
-
                 {/* Premium CTA for free users */}
                 {!isPremium && (
                   <>
@@ -436,7 +402,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     <motion.div
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.04 + (navLinks.length + 3) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                      transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                     >
                       <Link
                         to={createPageUrl('Premium')}
@@ -456,7 +422,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
       </AnimatePresence>
 
       <main className={cn(
-        "relative w-full max-w-[1440px] mx-auto pt-16 pb-16 max-[1000px]:pb-20",
+        "relative w-full pt-16 pb-16 max-[1000px]:pb-20",
         hasPlayer && "pb-32 max-[1000px]:pb-48"
       )}>
         {children}
