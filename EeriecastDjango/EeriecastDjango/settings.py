@@ -163,16 +163,8 @@ EMAIL_BACKEND = config(
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', cast=int, default=587)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='brenden@eeriecast.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='djkhisqktjmxxzbm')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool, default=True)
-
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 465  # Changed to integer
-# EMAIL_HOST_USER = 'info@pocketchef.io'
-# EMAIL_HOST_PASSWORD = 'notzfccwltxziseu'
-# EMAIL_USE_SSL = True  # Changed from TLS to SSL
-# EMAIL_USE_TLS = False  # Explicitly disable TLS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
