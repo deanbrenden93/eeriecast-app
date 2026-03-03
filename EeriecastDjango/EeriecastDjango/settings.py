@@ -273,6 +273,9 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
+# Shopify Settings
+SHOPIFY_DISCOUNT_CODE = config('SHOPIFY_DISCOUNT_CODE', default='VNHGVJ57B867')
+
 STATIC_URL = 'static/'
 # Ensure collectstatic has a target in Docker builds
 STATIC_ROOT = BASE_DIR / 'staticfiles'

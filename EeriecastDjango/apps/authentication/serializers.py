@@ -1,14 +1,25 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+from django.conf import settings
 from .models import User
 
 class UserSerializer(serializers.ModelSerializer):
+    shop_discount_code = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
                  'avatar', 'bio', 'is_premium', 'stripe_customer_id', 'minutes_listened',
-                 'subscription_expires', 'created_at']
+                 'subscription_expires', 'created_at', 'shop_discount_code']
         read_only_fields = ['id', 'created_at']
+
+    def get_shop_discount_code(self, obj):
+        request = self.context.get('request')
+        # Only provide the code to the user themselves if they are a premium member
+        if request and request.user.is_authenticated and request.user.id == obj.id:
+            if obj.is_premium_member():
+                return getattr(settings, 'SHOPIFY_DISCOUNT_CODE', None)
+        return None
 
 # Added lightweight list serializer used by UserViewSet list endpoint
 class SimpleUserSerializer(serializers.ModelSerializer):

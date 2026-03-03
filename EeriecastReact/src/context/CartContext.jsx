@@ -5,7 +5,6 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
 const CART_ID_KEY = 'eeriecast_cart_id';
-const MEMBER_DISCOUNT_CODE = 'VNHGVJ57B867';
 
 const CartContext = createContext(null);
 
@@ -13,7 +12,7 @@ export function CartProvider({ children }) {
   const [cart, setCart] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { isPremium } = useUser();
+  const { isPremium, user } = useUser();
 
   // Restore cart from localStorage on mount
   useEffect(() => {
@@ -104,13 +103,15 @@ export function CartProvider({ children }) {
     setIsLoading(true);
     try {
       let finalCart = cart;
-      // Auto-apply member discount for premium users
-      if (isPremium) {
+      const discountCode = user?.shop_discount_code;
+
+      // Auto-apply member discount for premium users if a code is available
+      if (isPremium && discountCode) {
         const alreadyApplied = cart.discountCodes?.some(
-          d => d.code === MEMBER_DISCOUNT_CODE && d.applicable
+          d => d.code === discountCode && d.applicable
         );
         if (!alreadyApplied) {
-          finalCart = await Shopify.applyDiscount(cart.id, MEMBER_DISCOUNT_CODE);
+          finalCart = await Shopify.applyDiscount(cart.id, discountCode);
           setCart(finalCart);
         }
       }
@@ -128,7 +129,7 @@ export function CartProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [cart, isPremium]);
+  }, [cart, isPremium, user?.shop_discount_code]);
 
   const openCart = useCallback(() => setIsCartOpen(true), []);
   const closeCart = useCallback(() => setIsCartOpen(false), []);
