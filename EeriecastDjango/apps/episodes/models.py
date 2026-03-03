@@ -28,6 +28,25 @@ class Episode(models.Model):
     def __str__(self):
         return f"{self.podcast.title} - {self.title}"
 
+    def get_computed_audio_url(self, user=None) -> str:
+        is_premium = False
+        if user is not None and getattr(user, 'is_authenticated', False):
+            # Prefer the live method if present, else fall back to boolean flag
+            is_premium = bool(getattr(user, 'is_premium_member', lambda: getattr(user, 'is_premium', False))())
+        # Prefer ad-free if premium and available
+        if is_premium and getattr(self, 'ad_free_audio_url', None):
+            return self.ad_free_audio_url
+        # Otherwise prefer ad-supported if available
+        if getattr(self, 'ad_supported_audio_url', None):
+            return self.ad_supported_audio_url
+        # Fall back to raw audio_url
+        raw = getattr(self, 'audio_url', None)
+        if raw:
+            return raw
+        # Last resort: use ad-free URL even for non-premium users so free
+        # sample episodes from ad-free-only feeds are still playable.
+        return getattr(self, 'ad_free_audio_url', None) or ''
+
 
 # Notification signal: when a new Episode is created, notify users who favorited the podcast
 try:

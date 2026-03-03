@@ -64,8 +64,11 @@ def login_view(request):
                 'message': 'Your account was imported from Memberful. Please set a password to continue.'
             }, status=status.HTTP_403_FORBIDDEN)
 
-        return Response({'error': 'Invalid credentials'}, status=400)
-    return Response(serializer.errors, status=400)
+        return Response({
+            'error': 'invalid_credentials',
+            'message': 'Invalid email or password. Please try again.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
@@ -448,7 +451,10 @@ class UserViewSet(viewsets.ModelViewSet):
                     'error': 'imported_user',
                     'message': 'Your account was imported from Memberful. Please set a password to continue.'
                 }, status=status.HTTP_403_FORBIDDEN)
-            return Response({'error': 'Invalid credentials'}, status=400)
+            return Response({
+                'error': 'invalid_credentials',
+                'message': 'Invalid email or password. Please try again.'
+            }, status=status.HTTP_400_BAD_REQUEST)
         token, _ = Token.objects.get_or_create(user=user)
         response_data = {**UserSerializer(user, context={'request': request}).data, 'token': token.key}
         return Response({'user': response_data}, status=200)

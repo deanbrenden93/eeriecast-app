@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import Favorite, Following, ListeningHistory, PlaybackEvent, Playlist, Notification
 from apps.episodes.models import Episode
-from EeriecastDjango.serializers import EpisodeSerializer, EpisodeWithPodcastSerializer  # use the full episode serializer + nested podcast
+from apps.episodes.serializers import EpisodeSerializer
+from EeriecastDjango.serializers import EpisodeWithPodcastSerializer  # use the full episode serializer + nested podcast
 
 class FavoriteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -55,22 +56,7 @@ class EpisodeBriefSerializer(serializers.ModelSerializer):
     def get_audio_url(self, obj: Episode) -> str:
         request = self.context.get('request')
         user = getattr(request, 'user', None)
-        is_premium = False
-        if user is not None and getattr(user, 'is_authenticated', False):
-            is_premium = bool(getattr(user, 'is_premium_member', lambda: getattr(user, 'is_premium', False))())
-        # Prefer ad-free if premium and available
-        if is_premium and getattr(obj, 'ad_free_audio_url', None):
-            return obj.ad_free_audio_url
-        # Otherwise prefer ad-supported if available
-        if getattr(obj, 'ad_supported_audio_url', None):
-            return obj.ad_supported_audio_url
-        # Fall back to raw audio_url
-        raw = getattr(obj, 'audio_url', None)
-        if raw:
-            return raw
-        # Last resort: use ad-free URL even for non-premium users so free
-        # sample episodes from ad-free-only feeds are still playable.
-        return getattr(obj, 'ad_free_audio_url', None) or ''
+        return obj.get_computed_audio_url(user)
 
 class ListeningHistorySerializer(serializers.ModelSerializer):
     # Remove redundant source kwarg; computed by model property of the same name

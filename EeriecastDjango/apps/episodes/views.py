@@ -132,10 +132,12 @@ def _score_candidate_episode(title, description, show_name, term_weights, phrase
 
 
 class EpisodeListCreateView(generics.ListCreateAPIView):
-    queryset = Episode.objects.select_related('podcast', 'podcast__creator')
     serializer_class = EpisodeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering = ['-published_at']
+
+    def get_queryset(self):
+        return _base_non_audiobook_queryset()
 
     def get_permissions(self):
         """Allow anyone to view episodes, but require authentication to create"""

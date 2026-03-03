@@ -51,7 +51,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             # Allow registration if it's an imported user without a password
             if user.is_imported_from_memberful and not user.has_usable_password():
                 return email
-            raise serializers.ValidationError("A user with this email already exists.")
+            raise serializers.ValidationError("This email is already in use. Please log in or use a different email.")
         return email
 
     def create(self, validated_data):
