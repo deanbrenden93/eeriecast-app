@@ -10,7 +10,7 @@ from apps.episodes.models import Episode
 from django.db.models import Count
 from apps.podcasts.models import Podcast
 from apps.podcasts.serializers import PodcastListSerializer, PodcastSerializer  # include full podcast serializer
-from EeriecastDjango.serializers import EpisodeSerializer  # full episode detail
+from apps.episodes.serializers import EpisodeSerializer  # full episode detail
 
 class FavoriteListCreateView(generics.ListCreateAPIView):
     serializer_class = FavoriteSerializer

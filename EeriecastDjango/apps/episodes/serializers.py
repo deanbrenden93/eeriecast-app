@@ -23,20 +23,4 @@ class EpisodeSerializer(serializers.ModelSerializer):
     def get_audio_url(self, obj: Episode) -> str:
         request = self.context.get('request')
         user = getattr(request, 'user', None)
-        is_premium = False
-        if user is not None and getattr(user, 'is_authenticated', False):
-            # Prefer the live method if present, else fall back to boolean flag
-            is_premium = bool(getattr(user, 'is_premium_member', lambda: getattr(user, 'is_premium', False))())
-        # Prefer ad-free if premium and available
-        if is_premium and getattr(obj, 'ad_free_audio_url', None):
-            return obj.ad_free_audio_url
-        # Otherwise prefer ad-supported if available
-        if getattr(obj, 'ad_supported_audio_url', None):
-            return obj.ad_supported_audio_url
-        # Fall back to raw audio_url
-        raw = getattr(obj, 'audio_url', None)
-        if raw:
-            return raw
-        # Last resort: use ad-free URL even for non-premium users so free
-        # sample episodes from ad-free-only feeds are still playable.
-        return getattr(obj, 'ad_free_audio_url', None) or ''
+        return obj.get_computed_audio_url(user)

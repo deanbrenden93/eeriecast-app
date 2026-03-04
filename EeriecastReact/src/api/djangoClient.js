@@ -92,8 +92,24 @@ class DjangoAPIClient {
           errorData = { message: response.statusText };
         }
 
+        // Try to extract a meaningful error message
+        let errorMessage = errorData.message || errorData.detail || errorData.error;
+        
+        if (!errorMessage && typeof errorData === 'object' && !Array.isArray(errorData)) {
+          // Look for field-level errors (DRF style: { "field": ["error"] })
+          const fields = Object.keys(errorData);
+          if (fields.length > 0) {
+            const fieldName = fields[0];
+            const errorValue = errorData[fieldName];
+            const messageStr = Array.isArray(errorValue) ? errorValue[0] : errorValue;
+            if (typeof messageStr === 'string') {
+              errorMessage = `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}: ${messageStr}`;
+            }
+          }
+        }
+
         throw new DjangoAPIError(
-          errorData.message || errorData.detail || `HTTP ${response.status}`,
+          errorMessage || `HTTP ${response.status}`,
           response.status,
           errorData
         );
@@ -149,8 +165,8 @@ class DjangoAPIClient {
 }
 
 // Create and configure the Django API client
-const API_BASE_URL = 'http://localhost:8012/api';
-//const API_BASE_URL = 'https://backend.eeriecasts.bitbenders.com/api';
+//const API_BASE_URL = 'http://localhost:8012/api';
+const API_BASE_URL = 'https://backend.eeriecasts.bitbenders.com/api';
 
 
 export const djangoClient = new DjangoAPIClient(API_BASE_URL);

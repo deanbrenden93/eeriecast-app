@@ -70,6 +70,19 @@ export const Episode = {
     return djangoClient.get('/episodes/', params);
   },
 
+  async trending(limit = null, windowHours = null) {
+    const params = {};
+    if (limit) params.page_size = limit;
+    if (windowHours) params.window_hours = windowHours;
+    return djangoClient.get('/episodes/trending/', params);
+  },
+
+  async recommended(limit = null) {
+    const params = {};
+    if (limit) params.page_size = limit;
+    return djangoClient.get('/episodes/recommended/', params);
+  },
+
   async filter(query, sort = null, limit = null, skip = null, fields = null) {
     const params = { ...query };
 

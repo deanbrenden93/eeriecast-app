@@ -293,12 +293,12 @@ export default function Podcasts() {
       )}
 
       {/* For You — episodes from podcasts the user has listened to */}
-      {!isLoading && keepListeningItems.length > 0 && (
+      {!isLoading && (
         <div className="w-full px-2.5 lg:px-10 py-3">
           <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">For You</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Recommended`}
-            categoryFilter={null}
+            feedType="recommended"
             onAddToPlaylist={openAddToPlaylist}
           />
         </div>
@@ -314,7 +314,7 @@ export default function Podcasts() {
           <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
-            ordering="-play_count"
+            feedType="trending"
             onAddToPlaylist={openAddToPlaylist}
           />
         </div>

@@ -344,10 +344,12 @@ class Command(BaseCommand):
                     ep.audio_url = audio_url
                     changed = True
 
+            if created or changed:
+                ep.save()
+
             if created:
                 created_count += 1
             elif changed:
-                ep.save()
                 updated_count += 1
 
         agg = podcast.episodes.aggregate(

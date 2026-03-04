@@ -47,7 +47,7 @@ services:
         condition: service_healthy
     environment:
       DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
-      DEBUG: "False"
+      DEBUG: "True"
       SECRET_KEY: "change-me-in-prod"
       ALLOWED_HOSTS: "*"
       DB_NAME: eeriecast
@@ -55,7 +55,7 @@ services:
       DB_PASSWORD: webtest123
       DB_HOST: db
       DB_PORT: 5432
-      REACT_URL: https://www.example.com
+      REACT_URL: https://eeriecast-app-test.vercel.app/
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
 

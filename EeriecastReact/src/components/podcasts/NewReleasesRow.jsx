@@ -33,7 +33,16 @@ function formatDuration(raw) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function NewReleasesRow({ title, viewAllTo, categoryFilter, ordering = "-published_at", maxItems = 20, onAddToPlaylist }) {
+export default function NewReleasesRow({
+  title,
+  viewAllTo,
+  categoryFilter,
+  ordering = "-published_at",
+  feedType = "latest",
+  trendWindowHours = 48,
+  maxItems = 20,
+  onAddToPlaylist,
+}) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
   const { podcasts, getById } = usePodcasts();
@@ -48,7 +57,15 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
     (async () => {
       setLoading(true);
       try {
-        const resp = await EpisodeApi.list(ordering, 40);
+        const fetchLimit = Math.max(40, maxItems * 2);
+        let resp;
+        if (feedType === "trending") {
+          resp = await EpisodeApi.trending(fetchLimit, trendWindowHours);
+        } else if (feedType === "recommended") {
+          resp = await EpisodeApi.recommended(fetchLimit);
+        } else {
+          resp = await EpisodeApi.list(ordering, fetchLimit);
+        }
         const allEps = Array.isArray(resp) ? resp : (resp?.results || []);
 
         // Filter out audiobook episodes and enrich with podcast data
@@ -89,14 +106,14 @@ export default function NewReleasesRow({ title, viewAllTo, categoryFilter, order
           setEpisodes(enriched.slice(0, maxItems));
         }
       } catch (err) {
-        console.error("Failed to load new releases:", err);
+        console.error("Failed to load episode feed:", err);
         if (!cancelled) setEpisodes([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [podcasts, getById, categoryFilter, ordering, maxItems]);
+  }, [podcasts, getById, categoryFilter, ordering, feedType, trendWindowHours, maxItems]);
 
   const scroll = (direction) => {
     const { current } = scrollRef;
@@ -275,6 +292,8 @@ NewReleasesRow.propTypes = {
   viewAllTo: PropTypes.string,
   categoryFilter: PropTypes.string,
   ordering: PropTypes.string,
+  feedType: PropTypes.oneOf(["latest", "trending", "recommended"]),
+  trendWindowHours: PropTypes.number,
   maxItems: PropTypes.number,
   onAddToPlaylist: PropTypes.func,
 };
