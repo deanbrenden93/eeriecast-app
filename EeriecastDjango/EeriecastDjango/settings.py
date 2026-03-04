@@ -147,6 +147,10 @@ INSTALLED_APPS = [
 # Email configuration (driven by env; safe defaults for local/dev)
 EMAIL_APP_NAME = config('EMAIL_APP_NAME', default='Eeriecast')
 EMAIL_SUPPORT = config('EMAIL_SUPPORT', default='support@eeriecast.com')
+EMAIL_LOGO_URL = config(
+    'EMAIL_LOGO_URL',
+    default='https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e37bc9c15_logo.png',
+)
 
 # Optional safety valve for testing: redirect all outbound email to a single address.
 # Example: EMAIL_REDIRECT_ALL_TO=jacob.durante@bitbenders.com

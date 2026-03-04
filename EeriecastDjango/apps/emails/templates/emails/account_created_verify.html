@@ -5,29 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>__SUBJECT__</title>
   </head>
-  <body style="margin:0; padding:0; background-color:__BACKGROUND__;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:__BACKGROUND__; padding:24px 0;">
+  <body style="margin:0; padding:0; background-color:__BACKGROUND__; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:__BACKGROUND__; padding:40px 16px;">
       <tr>
         <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px; max-width:600px; background-color:__CARD_BACKGROUND__; border:1px solid __BORDER__; border-radius:10px; overflow:hidden;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px; max-width:560px; background-color:__CARD_BACKGROUND__; border:1px solid __BORDER__; border-radius:12px; overflow:hidden;">
+            <!-- Logo header -->
             <tr>
-              <td style="padding:20px 24px; border-bottom:1px solid __BORDER__;">
-                <div style="font-family:Arial, Helvetica, sans-serif; font-size:18px; font-weight:700; color:__TEXT__;">__APP_NAME__</div>
+              <td align="center" style="padding:32px 32px 20px 32px;">
+                <img src="__LOGO_URL__" alt="__APP_NAME__" width="160" style="display:block; width:160px; height:auto; filter:invert(1); -webkit-filter:invert(1);" />
+              </td>
+            </tr>
+            <!-- Red accent bar -->
+            <tr>
+              <td style="padding:0 32px;">
+                <div style="height:2px; background:linear-gradient(90deg, transparent, #dc2626, transparent); border-radius:1px;"></div>
+              </td>
+            </tr>
+            <!-- Body -->
+            <tr>
+              <td style="padding:32px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; color:__TEXT__; font-size:16px; line-height:26px;">
+                <h1 style="margin:0 0 16px 0; font-size:22px; font-weight:700; color:#ffffff; line-height:30px;">Welcome to Eeriecast</h1>
+                <p style="margin:0 0 16px 0;">You're one step away from unlocking over 1,300 episodes of the stories that keep you up at night.</p>
+                <p style="margin:0 0 28px 0;">Verify your email address to complete your account setup:</p>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" style="border-radius:10px; background-color:__PRIMARY__;">
+                      <a href="__VERIFY_URL__" style="display:inline-block; padding:14px 32px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; font-size:15px; font-weight:700; color:__BUTTON_TEXT__; text-decoration:none; border-radius:10px;">Verify Email</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 0 0; color:__SUBTLE_TEXT__; font-size:13px; line-height:20px;">If you didn't create this account, you can safely ignore this email.</p>
+              </td>
+            </tr>
+            <!-- Footer -->
+            <tr>
+              <td style="padding:0 32px;">
+                <div style="height:1px; background-color:__BORDER__;"></div>
               </td>
             </tr>
             <tr>
-              <td style="padding:24px; font-family:Arial, Helvetica, sans-serif; color:__TEXT__; font-size:16px; line-height:24px;">
-                <p style="margin:0 0 12px 0;">Welcome to __APP_NAME__.</p>
-                <p style="margin:0 0 16px 0;">Please verify your email address to complete setup:</p>
-                <p style="margin:0 0 20px 0;">
-                  <a href="__VERIFY_URL__" style="display:inline-block; background-color:__PRIMARY__; color:__BUTTON_TEXT__; text-decoration:none; padding:12px 16px; border-radius:8px; font-weight:700;">Verify email</a>
-                </p>
-                <p style="margin:0; color:__SUBTLE_TEXT__; font-size:13px; line-height:20px;">If you didn’t create this account, you can ignore this email.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:16px 24px; border-top:1px solid __BORDER__; font-family:Arial, Helvetica, sans-serif; font-size:12px; color:__SUBTLE_TEXT__;">
-                <div>If you need help, contact <a href="mailto:__SUPPORT_EMAIL__" style="color:__SUBTLE_TEXT__;">__SUPPORT_EMAIL__</a>.</div>
+              <td style="padding:20px 32px 24px 32px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; font-size:12px; color:__SUBTLE_TEXT__; line-height:18px;">
+                Need help? Reach us at <a href="mailto:__SUPPORT_EMAIL__" style="color:__SUBTLE_TEXT__; text-decoration:underline;">__SUPPORT_EMAIL__</a>
               </td>
             </tr>
           </table>

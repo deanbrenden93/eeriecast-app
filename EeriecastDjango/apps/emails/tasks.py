@@ -132,6 +132,7 @@ def send_event_email_task(
         "border": theme.border,
         "primary": theme.primary,
         "button_text": theme.button_text,
+        "logo_url": theme.logo_url,
     }
 
     task_log = CeleryTaskLog.objects.create(
