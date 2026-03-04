@@ -311,7 +311,7 @@ export default function Search() {
           podcast_title: ep.podcast_title || podcastData?.title || '',
           podcast_author: ep.podcast_author || podcastData?.author || '',
           podcast_cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
-          cover_image: ep.cover_image || podcastData?.cover_image || '',
+          cover_image: ep.cover_image || ep.image_url || ep.artwork || ep.image || podcastData?.cover_image || '',
         };
       };
 

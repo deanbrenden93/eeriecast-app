@@ -43,7 +43,13 @@ export function useAudioPlayer({ onEnd } = {}) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setCurrentTime(audio.currentTime || 0);
+    let lastTimeUpdate = 0;
+    const onTime = () => {
+      const now = Date.now();
+      if (now - lastTimeUpdate < 250) return;
+      lastTimeUpdate = now;
+      setCurrentTime(audio.currentTime || 0);
+    };
     const onMeta = () => setDuration(audio.duration || 0);
     const onPlay = async () => {
       setIsPlaying(true);
@@ -117,30 +123,53 @@ export function useAudioPlayer({ onEnd } = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode?.id]);
 
+  const visHandlerRef = useRef(null);
+
   const startHeartbeat = () => {
     stopHeartbeat();
-    heartbeatRef.current = setInterval(async () => {
-      const audio = audioRef.current;
-      if (!audio || !episode?.id || audio.paused) return;
-      try {
-        await UserLibrary.updateProgress(episode.id, {
-          progress: Math.floor(audio.currentTime || 0),
-          duration: Math.floor(audio.duration || 0) || episode.duration || 0,
-          event: 'heartbeat',
-          playback_rate: audio.playbackRate || 1.0,
-          source: 'web',
-          device_id: deviceId.current,
-        });
-      } catch (e) {
-        if (typeof console !== 'undefined') console.debug('progress heartbeat failed', e);
+    const runInterval = () => {
+      heartbeatRef.current = setInterval(async () => {
+        const audio = audioRef.current;
+        if (!audio || !episode?.id || audio.paused) return;
+        try {
+          await UserLibrary.updateProgress(episode.id, {
+            progress: Math.floor(audio.currentTime || 0),
+            duration: Math.floor(audio.duration || 0) || episode.duration || 0,
+            event: 'heartbeat',
+            playback_rate: audio.playbackRate || 1.0,
+            source: 'web',
+            device_id: deviceId.current,
+          });
+        } catch (e) {
+          if (typeof console !== 'undefined') console.debug('progress heartbeat failed', e);
+        }
+      }, 30000);
+    };
+
+    if (visHandlerRef.current) {
+      document.removeEventListener('visibilitychange', visHandlerRef.current);
+    }
+    const onVis = () => {
+      if (document.hidden) {
+        if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+      } else {
+        if (!heartbeatRef.current) runInterval();
       }
-    }, 30000); // 30s heartbeat
+    };
+    visHandlerRef.current = onVis;
+    document.addEventListener('visibilitychange', onVis);
+
+    runInterval();
   };
 
   const stopHeartbeat = () => {
     if (heartbeatRef.current) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
+    }
+    if (visHandlerRef.current) {
+      document.removeEventListener('visibilitychange', visHandlerRef.current);
+      visHandlerRef.current = null;
     }
   };
 
