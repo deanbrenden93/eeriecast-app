@@ -10,6 +10,7 @@ import UserMenu from "../components/layout/UserMenu";
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 import { cn } from "@/lib/utils";
+import { FeatureGate } from '@/lib/featureFlags';
 import logo from '@/assets/logo.png';
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -205,6 +206,23 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
             {/* Center: Navigation (desktop) */}
             <nav className="hidden md:flex items-center gap-7">
               <NavLinks />
+              <Link
+                to={createPageUrl('Shop')}
+                className={`relative flex items-center gap-1.5 text-[13px] font-medium tracking-wide transition-all duration-300 py-1 ${
+                  currentPageName === 'Shop' ? 'text-white' : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                Shop
+                {cartCount > 0 && (
+                  <span className="absolute -top-1.5 -right-3 min-w-[15px] h-[15px] px-[3px] rounded-full bg-white text-black text-[9px] font-bold leading-none flex items-center justify-center">
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </span>
+                )}
+                {currentPageName === 'Shop' && (
+                  <span className="absolute -bottom-[13px] left-1/2 -translate-x-1/2 w-4 h-[2px] rounded-full bg-white" />
+                )}
+              </Link>
               {!isPremium && (
                 <Link
                   to={createPageUrl('Premium')}
@@ -375,11 +393,31 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   </Link>
                 </motion.div>
 
-                {/* Settings link */}
+                {/* Profile link */}
                 <motion.div
                   initial={{ opacity: 0, x: -16 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.04 + (navLinks.length + 1) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                >
+                  <Link
+                    to={createPageUrl('Profile')}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+                      currentPageName === 'Profile'
+                        ? 'text-white bg-white/[0.06]'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    <User className="w-4 h-4" />
+                    Profile
+                  </Link>
+                </motion.div>
+
+                {/* Settings link */}
+                <motion.div
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                 >
                   <Link
                     to={createPageUrl('Settings')}
@@ -395,6 +433,20 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                   </Link>
                 </motion.div>
 
+                {/* Staff indicator — only visible to admin/staff accounts */}
+                <FeatureGate flag="staff-indicator">
+                  <motion.div
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.04 + (navLinks.length + 3) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                  >
+                    <div className="flex items-center gap-2 px-3 py-2 mt-1 rounded-lg bg-emerald-500/[0.08] border border-emerald-500/[0.15]">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-[11px] font-semibold text-emerald-400/90 tracking-wide uppercase">Staff Mode</span>
+                    </div>
+                  </motion.div>
+                </FeatureGate>
+
                 {/* Premium CTA for free users */}
                 {!isPremium && (
                   <>
@@ -402,7 +454,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                     <motion.div
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.04 + (navLinks.length + 2) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                      transition={{ delay: 0.04 + (navLinks.length + 4) * 0.05, duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
                     >
                       <Link
                         to={createPageUrl('Premium')}
