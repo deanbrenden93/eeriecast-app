@@ -47,7 +47,7 @@ services:
         condition: service_healthy
     environment:
       DJANGO_SETTINGS_MODULE: EeriecastDjango.settings
-      DEBUG: "True"
+      DEBUG: "False"
       SECRET_KEY: "change-me-in-prod"
       ALLOWED_HOSTS: "*"
       DB_NAME: eeriecast
@@ -115,6 +115,7 @@ services:
       - media_volume:/app/media:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
+    command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
 
   # This is the new service required for renewal
   certbot:
@@ -122,6 +123,7 @@ services:
     volumes:
       - /var/www/certbot:/var/www/certbot:rw
       - /etc/letsencrypt:/etc/letsencrypt:rw
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:
