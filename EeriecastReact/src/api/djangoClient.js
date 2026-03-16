@@ -8,6 +8,8 @@ class DjangoAPIError extends Error {
   }
 }
 
+import { API_BASE_URL } from '../constants';
+
 class DjangoAPIClient {
   constructor(baseURL, options = {}) {
     this.baseURL = baseURL.replace(/\/$/, ''); // Remove trailing slash
@@ -166,7 +168,6 @@ class DjangoAPIClient {
 
 // Create and configure the Django API client
 //const API_BASE_URL = 'http://localhost:8012/api';
-const API_BASE_URL = 'https://backend.eerie.fm/api';
 
 
 export const djangoClient = new DjangoAPIClient(API_BASE_URL);

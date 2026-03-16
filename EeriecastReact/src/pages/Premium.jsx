@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useUser } from '@/context/UserContext.jsx';
+import { STRIPE_PUBLIC_KEY } from '@/constants';
 
 const MONTHLY_PRICE = 7.99;
 const YEARLY_PRICE = 69.96;
@@ -301,7 +302,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
       const stripeRes = await fetch('https://api.stripe.com/v1/tokens', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_STRIPE_PUBLIC_KEY}`,
+          'Authorization': `Bearer ${STRIPE_PUBLIC_KEY}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: params.toString(),
