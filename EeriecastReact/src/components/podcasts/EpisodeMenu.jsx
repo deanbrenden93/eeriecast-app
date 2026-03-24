@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { useRef } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play } from 'lucide-react';
 import {
   DropdownMenu,
@@ -37,23 +37,67 @@ export default function EpisodeMenu({
 }) {
   const { addNext, addToQueue } = useAudioPlayerContext();
 
-  // ── Prevent accidental menu opens while scrolling on mobile ──
+  // ── Controlled open state for scroll-aware behavior ──
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const touchStartRef = useRef(null);
+  const isScrollingRef = useRef(false);
+  const isTouchRef = useRef(false);
+
+  const handlePointerDown = (e) => {
+    if (e.pointerType === 'touch') {
+      e.preventDefault();
+      isTouchRef.current = true;
+    } else {
+      isTouchRef.current = false;
+    }
+  };
+
   const handleTouchStart = (e) => {
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
+    isScrollingRef.current = false;
   };
+
+  const handleTouchMove = (e) => {
+    if (!touchStartRef.current || isScrollingRef.current) return;
+    const t = e.touches[0];
+    const dx = Math.abs(t.clientX - touchStartRef.current.x);
+    const dy = Math.abs(t.clientY - touchStartRef.current.y);
+    if (dx > 10 || dy > 10) {
+      isScrollingRef.current = true;
+    }
+  };
+
   const handleTouchEnd = (e) => {
-    if (!touchStartRef.current) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStartRef.current.x;
-    const dy = t.clientY - touchStartRef.current.y;
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-      // Finger moved — user was scrolling, suppress the synthetic click
+    if (isScrollingRef.current) {
       e.preventDefault();
+      e.stopPropagation();
+    } else if (isTouchRef.current && touchStartRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuOpen(true);
     }
     touchStartRef.current = null;
+    isTouchRef.current = false;
+    setTimeout(() => { isScrollingRef.current = false; }, 50);
   };
+
+  const handleOpenChange = useCallback((nextOpen) => {
+    if (nextOpen && isScrollingRef.current) return;
+    setMenuOpen(nextOpen);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const dismiss = () => setMenuOpen(false);
+    window.addEventListener('scroll', dismiss, { capture: true, passive: true });
+    window.addEventListener('touchmove', dismiss, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', dismiss, { capture: true });
+      window.removeEventListener('touchmove', dismiss);
+    };
+  }, [menuOpen]);
 
   if (!episode) return null;
 
@@ -72,13 +116,15 @@ export default function EpisodeMenu({
   };
 
   return (
-    <DropdownMenu modal={inline ? false : undefined}>
+    <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange} modal={inline ? false : undefined}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label="More options"
           className={`inline-flex items-center justify-center rounded-full p-1.5 text-white/40 hover:text-white hover:bg-white/10 transition-colors focus:outline-none ${className}`}
+          onPointerDown={handlePointerDown}
           onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
           <MoreVertical className="w-4 h-4" />

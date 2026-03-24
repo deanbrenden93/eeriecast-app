@@ -17,13 +17,7 @@ import {
   Home,
   RefreshCw,
   Crown,
-  Lock,
-  UserX,
-  Mail,
 } from 'lucide-react';
-import ChangePasswordModal from '@/components/auth/ChangePasswordModal';
-import DeleteAccountModal from '@/components/auth/DeleteAccountModal';
-import ChangeEmailModal from '@/components/auth/ChangeEmailModal';
 import {
   Select,
   SelectContent,
@@ -113,13 +107,8 @@ const PlaybackSpeedControl = ({ speed, setSpeed }) => {
 export default function Settings() {
   const { settings, updateSetting } = useSettings();
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
-  const { user, setUser, isAuthenticated, isPremium, logout } = useUser();
+  const { user, setUser, isAuthenticated, isPremium } = useUser();
   const [togglingPremium, setTogglingPremium] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
-  const [showChangeEmail, setShowChangeEmail] = useState(false);
-
-  const userEmail = user?.email || user?.user?.email || '';
 
   return (
     <div className="min-h-screen bg-eeriecast-surface text-white">
@@ -236,32 +225,12 @@ export default function Settings() {
           />
         </SettingsCard>
 
-        {/* Account & Privacy */}
+        {/* Privacy */}
         <SettingsCard
           icon={Shield}
-          title="Account & Privacy"
+          title="Privacy"
         >
-          <div className="flex flex-wrap items-center gap-3">
-            {isAuthenticated && (
-              <Button
-                variant="outline"
-                className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
-                onClick={() => setShowChangePassword(true)}
-              >
-                <Lock className="w-4 h-4 mr-2" />
-                Change Password
-              </Button>
-            )}
-            {isAuthenticated && (
-              <Button
-                variant="outline"
-                className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
-                onClick={() => setShowChangeEmail(true)}
-              >
-                <Mail className="w-4 h-4 mr-2" />
-                Change Email
-              </Button>
-            )}
+          <div className="flex items-center gap-4">
             <Button
               variant="outline"
               className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all"
@@ -269,16 +238,6 @@ export default function Settings() {
               <Trash2 className="w-4 h-4 mr-2" />
               Clear Listening History
             </Button>
-            {isAuthenticated && (
-              <Button
-                variant="outline"
-                className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all"
-                onClick={() => setShowDeleteAccount(true)}
-              >
-                <UserX className="w-4 h-4 mr-2" />
-                Delete Account
-              </Button>
-            )}
           </div>
         </SettingsCard>
 
@@ -383,27 +342,6 @@ export default function Settings() {
         </SettingsCard>
       </div>
 
-      {/* Change Password Modal */}
-      <ChangePasswordModal
-        isOpen={showChangePassword}
-        onClose={() => setShowChangePassword(false)}
-      />
-
-      <ChangeEmailModal
-        isOpen={showChangeEmail}
-        onClose={() => setShowChangeEmail(false)}
-        currentEmail={userEmail}
-      />
-
-      <DeleteAccountModal
-        isOpen={showDeleteAccount}
-        onClose={() => setShowDeleteAccount(false)}
-        userEmail={userEmail}
-        onDeleted={async () => {
-          await logout();
-          window.location.href = createPageUrl('Home');
-        }}
-      />
     </div>
   );
 }
