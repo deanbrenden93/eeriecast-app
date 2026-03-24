@@ -309,25 +309,16 @@ const UserProvider = ({ children }) => {
 
   const logout = useCallback(async () => {
     try {
-      // Remove token so future calls and refreshes are unauthenticated
+      await UserAPI.logout();
+    } catch { /* best-effort: server may not have this endpoint yet */ }
+
+    try {
       if (djangoClient && typeof djangoClient.removeToken === 'function') {
         djangoClient.removeToken();
       }
     } catch { /* no-op */ }
 
-    setUser(null);
-    setFavoriteEpisodeIds(new Set());
-    setFavoritePodcastIds(new Set());
-    setFavoritePodcasts([]);
-    setFavoriteEpisodes([]);
-    setFollowedPodcastIds(new Set());
-    setNotifications([]);
-    setUnreadNotificationCount(0);
-    setEpisodeProgressMap(new Map());
-    lastFavoritesForUserRef.current = null;
-    lastFollowingsForUserRef.current = null;
-    lastNotificationsForUserRef.current = null;
-    lastHistoryForUserRef.current = null;
+    window.location.replace('/');
   }, []);
 
   // On initial mount, check current user once

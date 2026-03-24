@@ -289,6 +289,10 @@ export const User = {
   async confirmEmailChange(token) {
     return djangoClient.post('/auth/email-change/confirm/', { token });
   },
+
+  async logout() {
+    return djangoClient.post('/auth/logout/');
+  },
 };
 
 // Search service

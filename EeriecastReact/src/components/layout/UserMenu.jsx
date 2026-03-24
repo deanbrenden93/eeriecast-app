@@ -10,9 +10,8 @@ export default function UserMenu({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const handleLogout = async () => {
-    await logout();
-    onClose();
+  const handleLogout = () => {
+    logout();
   };
 
   const displayName = user?.full_name || user?.name || user?.username || 'Guest User';
