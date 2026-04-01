@@ -343,10 +343,13 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
       setStep('success');
       setSubmitting(false);
 
-      // Close after success animation
       setTimeout(() => {
         onClose?.();
-        if (mode === 'trial') {
+        const justRegistered = sessionStorage.getItem('eeriecast_just_registered') === '1';
+        if (mode === 'trial' && justRegistered) {
+          sessionStorage.removeItem('eeriecast_just_registered');
+          window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'premium' } }));
+        } else if (mode === 'trial') {
           toast({ title: 'Welcome to Eeriecast Premium', description: 'Your free trial has started', duration: 4000 });
         } else {
           toast({ title: 'Success', description: 'Your payment method has been updated', duration: 4000 });

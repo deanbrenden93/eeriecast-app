@@ -139,7 +139,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   const navLinks = [
     { name: 'Home', route: 'Podcasts' },
     { name: 'Podcasts', route: 'Discover' },
-    { name: 'Audiobooks', route: 'Audiobooks' },
+    { name: 'Books', route: 'Audiobooks' },
     { name: 'Library', route: 'Library' },
   ];
 

@@ -95,10 +95,10 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     const success = await register(registerForm);
     if (!success) { setLocalError('Registration failed'); setSubmitting(false); return; }
     setSubmitting(false);
+    sessionStorage.setItem('eeriecast_just_registered', '1');
     if (afterLoginAction?.fn) return;
-    setSuccessState('register');
-    toast({ title: 'Account created!', description: 'Welcome to EERIECAST.', variant: 'success' });
-    successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); window.location.reload(); }, 1800);
+    onClose();
+    window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'free' } }));
   };
 
   return (

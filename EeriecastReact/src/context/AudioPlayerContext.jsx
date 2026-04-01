@@ -12,6 +12,7 @@ import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
 import MatureContentModal from '@/components/MatureContentModal';
+import PremiumRequiredModal from '@/components/PremiumRequiredModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const AudioPlayerContext = createContext();
@@ -33,6 +34,7 @@ export const AudioPlayerProvider = ({ children }) => {
   const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
   const [matureModalOpen, setMatureModalOpen] = useState(false);
   const matureBlockedArgsRef = useRef(null);
+  const [premiumModalOpen, setPremiumModalOpen] = useState(false);
 
   // Ref-based onEnd so the audio hook always calls the latest auto-advance logic
   const onEndedRef = useRef(null);
@@ -149,13 +151,21 @@ export const AudioPlayerProvider = ({ children }) => {
   const loadAndPlaySmart = useCallback(async (args) => {
     const { episode: ep, resume, ...rest } = args;
 
-    // Mature-content gate: block playback if podcast is "mature" and the
-    // user hasn't opted in via Settings → Mature Content toggle.
+    // Mature-content gate
     const pod = rest.podcast;
     if (pod && hasCategory(pod, 'mature') && !getSetting('matureContent')) {
       matureBlockedArgsRef.current = args;
       setMatureModalOpen(true);
       return 'blocked';
+    }
+
+    // Premium/exclusive gate: members-only episodes (except the free sample)
+    // and individually premium-flagged episodes require a subscription.
+    if (pod && !premiumRef.current) {
+      if (ep?.is_premium || (pod.is_exclusive && !canAccessExclusiveEpisode(ep, pod, false))) {
+        setPremiumModalOpen(true);
+        return 'blocked';
+      }
     }
 
     const eid = Number(ep?.id);
@@ -201,13 +211,13 @@ export const AudioPlayerProvider = ({ children }) => {
     if (item.podcast && !premiumRef.current) {
       if (isAudiobook(item.podcast)) {
         if (!canAccessChapter(index, false, FREE_LISTEN_CHAPTER_LIMIT)) {
-          navigateRef.current(createPageUrl('Premium'));
-          return; // do NOT play
+          setPremiumModalOpen(true);
+          return;
         }
       } else if (item.podcast.is_exclusive) {
         if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
-          navigateRef.current(createPageUrl('Premium'));
-          return; // do NOT play
+          setPremiumModalOpen(true);
+          return;
         }
       }
     }
@@ -227,12 +237,12 @@ export const AudioPlayerProvider = ({ children }) => {
         if (item.podcast && !premiumRef.current) {
           if (isAudiobook(item.podcast)) {
             if (!canAccessChapter(idx, false, FREE_LISTEN_CHAPTER_LIMIT)) {
-              navigateRef.current(createPageUrl('Premium'));
+              setPremiumModalOpen(true);
               return;
             }
           } else if (item.podcast.is_exclusive) {
             if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
-              navigateRef.current(createPageUrl('Premium'));
+              setPremiumModalOpen(true);
               return;
             }
           }
@@ -300,13 +310,13 @@ export const AudioPlayerProvider = ({ children }) => {
         if (item.podcast && !premiumRef.current) {
           if (isAudiobook(item.podcast)) {
             if (!canAccessChapter(nextIndex, false, FREE_LISTEN_CHAPTER_LIMIT)) {
-              navigateRef.current?.(createPageUrl('Premium'));
-              return; // do NOT play the next item
+              setPremiumModalOpen(true);
+              return;
             }
           } else if (item.podcast.is_exclusive) {
             if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
-              navigateRef.current?.(createPageUrl('Premium'));
-              return; // do NOT play the next item
+              setPremiumModalOpen(true);
+              return;
             }
           }
         }
@@ -676,6 +686,12 @@ export const AudioPlayerProvider = ({ children }) => {
           setMatureModalOpen(false);
           if (args) loadAndPlaySmart(args);
         }}
+      />
+
+      {/* Premium Required Modal */}
+      <PremiumRequiredModal
+        isOpen={premiumModalOpen}
+        onClose={() => setPremiumModalOpen(false)}
       />
 
       {/* Expanded Player - shows when user expands (slide-up enter/exit) */}

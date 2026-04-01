@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Play, Crown } from "lucide-react";
@@ -7,7 +7,12 @@ import AnimatedBackground from "../components/home/AnimatedBackground";
 import { useUser } from "@/context/UserContext";
 
 export default function Home() {
-  const { isPremium } = useUser();
+  const { isPremium, isAuthenticated } = useUser();
+
+  if (isAuthenticated) {
+    return <Navigate to={createPageUrl("Podcasts")} replace />;
+  }
+
   return (
     <div className="relative h-screen bg-eeriecast-surface overflow-hidden">
       <AnimatedBackground />

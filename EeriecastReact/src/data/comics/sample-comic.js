@@ -27,7 +27,17 @@ const sampleComic = {
     {
       number: 1,
       title: "The First Reaping",
-      pages: [],
+      pages: Array(12).fill("https://i.ibb.co/pjbFB1tr/Chat-GPT-Image-Apr-1-2026-05-03-23-PM-upscayl-2x-high-fidelity-4x.webp"),
+    },
+    {
+      number: 2,
+      title: "Beneath the Soil",
+      pages: Array(24).fill("https://i.ibb.co/pjbFB1tr/Chat-GPT-Image-Apr-1-2026-05-03-23-PM-upscayl-2x-high-fidelity-4x.webp"),
+    },
+    {
+      number: 3,
+      title: "The Whispering Rows",
+      pages: Array(8).fill("https://i.ibb.co/pjbFB1tr/Chat-GPT-Image-Apr-1-2026-05-03-23-PM-upscayl-2x-high-fidelity-4x.webp"),
     },
   ],
 };

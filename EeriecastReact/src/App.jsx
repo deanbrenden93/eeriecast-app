@@ -1,5 +1,5 @@
 import './App.css'
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Pages from "@/pages/index.jsx"
@@ -11,6 +11,8 @@ import { CartProvider } from '@/context/CartContext.jsx';
 import CartDrawer from '@/components/shop/CartDrawer.jsx';
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
+import OnboardingFlow, { isOnboardingDone } from '@/components/OnboardingFlow.jsx';
+import { djangoClient } from '@/api/djangoClient.js';
 
 function GlobalAuthModal() {
   const { open, closeAuth, defaultTab, afterLoginAction, setAfterLoginAction } = useAuthModal();
@@ -33,7 +35,8 @@ function GlobalAuthModal() {
 function App() {
   // Show splash only once per session unless explicitly reset (e.g. Settings → Landing Screen)
   const alreadyShown = sessionStorage.getItem('eeriecast_splash_shown') === '1';
-  const [splashDone, setSplashDone] = useState(alreadyShown);
+  const hasToken = !!djangoClient.getToken();
+  const [splashDone, setSplashDone] = useState(alreadyShown || hasToken);
 
   const handleSplashComplete = () => {
     sessionStorage.setItem('eeriecast_splash_shown', '1');
@@ -50,6 +53,24 @@ function App() {
     return () => clearTimeout(t);
   }, [splashDone]);
 
+  // Onboarding flow — triggered via custom event after registration or premium purchase
+  const [onboardingVariant, setOnboardingVariant] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      const variant = e?.detail?.variant;
+      if ((variant === 'free' || variant === 'premium') && !isOnboardingDone()) {
+        setOnboardingVariant(variant);
+      }
+    };
+    window.addEventListener('eeriecast-start-onboarding', handler);
+    return () => window.removeEventListener('eeriecast-start-onboarding', handler);
+  }, []);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setOnboardingVariant(null);
+  }, []);
+
   return (
     <AuthModalProvider>
       <Router>
@@ -65,6 +86,16 @@ function App() {
               <SplashScreen
                 key="splash"
                 onComplete={handleSplashComplete}
+              />
+            )}
+          </AnimatePresence>
+          {/* Post-signup onboarding */}
+          <AnimatePresence>
+            {onboardingVariant && (
+              <OnboardingFlow
+                key="onboarding"
+                variant={onboardingVariant}
+                onComplete={handleOnboardingComplete}
               />
             )}
           </AnimatePresence>
