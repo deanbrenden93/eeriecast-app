@@ -15,7 +15,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { afterLoginAction, subtitle } = useAuthModal();
   const [tab, setTab] = useState(defaultTab);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '' });
+  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '', date_of_birth: '' });
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState(null);
   const [showLoginPw, setShowLoginPw] = useState(false);
@@ -82,6 +82,11 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     e.preventDefault();
     setSubmitting(true);
     setLocalError(null);
+    if (!registerForm.date_of_birth) {
+      setLocalError('Date of birth is required');
+      setSubmitting(false);
+      return;
+    }
     if (registerForm.password !== registerForm.confirm_password) {
       setLocalError('Passwords do not match');
       setSubmitting(false);
@@ -256,6 +261,10 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                     <div className="md:col-span-2">
                       <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
                       <Input type="email" required autoComplete="email" value={registerForm.email} onChange={e=>setRegisterForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Date of Birth</label>
+                      <Input type="date" required autoComplete="bday" value={registerForm.date_of_birth} onChange={e=>setRegisterForm(f=>({...f,date_of_birth:e.target.value}))} max={new Date().toISOString().split('T')[0]} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base [color-scheme:dark]" />
                     </div>
                     <div>
                       <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>

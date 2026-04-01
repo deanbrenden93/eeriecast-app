@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
@@ -32,7 +32,7 @@ import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 
 export default function Podcasts() {
-  const { podcasts: rawPodcasts, isLoading } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading, maturePodcastIds } = usePodcasts();
   const podcasts = useMemo(() => applyExclusiveOverrides(rawPodcasts), [rawPodcasts]);
   const [keepListeningItems, setKeepListeningItems] = useState([]); // { podcast, episode, progress (0-100) }
   const [selectedPodcast, setSelectedPodcast] = useState(null);
@@ -57,7 +57,7 @@ export default function Podcasts() {
     setPlaybackQueue,
   } = useAudioPlayerContext();
 
-  const { isPremium, isAuthenticated, episodeProgressMap } = useUser();
+  const { isPremium, isAuthenticated, canViewMature } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
 
@@ -72,93 +72,40 @@ export default function Podcasts() {
     setShowAddModal(true);
   };
 
-  // Build "Keep Listening" items from the real-time episodeProgressMap.
-  // This picks up both server-side history and current-session plays.
-  // IMPORTANT: episodeProgressMap is kept in a ref (not a dependency) to
-  // prevent this heavy effect (iterates all episodes + makes up to 8 API
-  // calls) from re-running every 3 seconds when progress updates.
-  const progressMapRef = useRef(episodeProgressMap);
-  useEffect(() => { progressMapRef.current = episodeProgressMap; }, [episodeProgressMap]);
-
+  // Keep Listening: fetch the 20 most recent history entries — same data
+  // source as the Library → History tab, just capped and styled for the home screen.
   useEffect(() => {
-    if (!podcasts.length) { setKeepListeningItems([]); return; }
-    const podcastMap = new Map(podcasts.map(p => [p.id, p]));
-    const progressMap = progressMapRef.current;
-
-    // Also merge with localStorage recentlyPlayed for ordering
-    const recentPodcastIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
-
-    // Build items from episodeProgressMap (partially played episodes)
-    const items = [];
-    if (progressMap && progressMap.size > 0) {
-      // We need episode details, but the map only has IDs + progress.
-      // Scan podcast episodes to find matches.
-      for (const p of podcasts) {
-        const eps = Array.isArray(p.episodes) ? p.episodes : [];
-        for (const ep of eps) {
-          const prog = progressMap.get(Number(ep.id));
-          if (prog && prog.progress > 0 && !prog.completed) {
-            const pct = prog.duration > 0 ? Math.min(100, (prog.progress / prog.duration) * 100) : 0;
-            if (pct > 0 && pct < 95) {
-              items.push({
-                podcast: p,
-                episode: ep,
-                progress: pct,
-                resumeData: { progress: prog.progress },
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // Also fetch from resume API for episodes not in local podcasts data
     let cancelled = false;
     (async () => {
-      const apiItems = [];
-      for (const pid of recentPodcastIds.slice(0, 8)) {
-        const p = podcastMap.get(pid);
-        if (!p) continue;
-        // Check if we already have a progress item for this podcast
-        if (items.some(item => item.podcast.id === pid)) continue;
-        try {
-          const resume = await UserLibrary.resumeForPodcast(p.id);
-          if (resume?.episode_detail) {
-            const ep = resume.episode_detail;
-            const progressSec = Math.max(0, Number(resume?.progress || 0));
-            const dur = Math.max(0, Number(ep?.duration || resume?.duration || 0));
-            let pct = 0;
-            if (dur > 0) pct = Math.min(100, (progressSec / dur) * 100);
-            if (pct > 0 && pct < 95) {
-              apiItems.push({
-                podcast: ep.podcast && typeof ep.podcast === 'object' ? { ...p, ...ep.podcast } : p,
-                episode: ep,
-                progress: pct,
-                resumeData: resume,
-              });
-            }
-          }
-        } catch { /* not authenticated or not available */ }
-      }
-
-      if (!cancelled) {
-        const all = [...items, ...apiItems];
-        // Deduplicate by episode id
+      try {
+        const resp = await UserLibrary.getHistory(20);
+        if (cancelled) return;
+        const raw = Array.isArray(resp) ? resp : (resp?.results || []);
         const seen = new Set();
-        const unique = all.filter(item => {
-          if (!item.episode?.id) return false;
-          if (seen.has(item.episode.id)) return false;
-          seen.add(item.episode.id);
-          return true;
-        });
-        // Sort: most recently played first (higher progress = more recent activity)
-        unique.sort((a, b) => (b.progress || 0) - (a.progress || 0));
-        setKeepListeningItems(unique.slice(0, 15));
+        const items = [];
+        for (const entry of raw) {
+          const ep = entry?.episode_detail;
+          if (!ep?.id || seen.has(ep.id)) continue;
+          seen.add(ep.id);
+          const podcastData = ep.podcast && typeof ep.podcast === 'object' ? ep.podcast : null;
+          const progressSec = Math.max(0, Number(entry.progress || 0));
+          const dur = Math.max(0, Number(entry.duration || ep.duration || 0));
+          const pct = entry.percent_complete ?? (dur > 0 ? Math.min(100, (progressSec / dur) * 100) : 0);
+          items.push({
+            podcast: podcastData || { id: ep.podcast_id || ep.podcast, title: ep.podcast_title || '' },
+            episode: ep,
+            progress: pct,
+            resumeData: { progress: progressSec },
+          });
+        }
+        const visible = canViewMature || !maturePodcastIds.size ? items : items.filter(it => !maturePodcastIds.has(it.podcast?.id));
+        if (!cancelled) setKeepListeningItems(visible);
+      } catch {
+        if (!cancelled) setKeepListeningItems([]);
       }
     })();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [podcasts]);
+  }, [canViewMature, maturePodcastIds]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;

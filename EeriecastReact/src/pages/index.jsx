@@ -87,8 +87,9 @@ const pageVariants = {
     },
 };
 
-// Scroll every possible target to the top.
+// Scroll every possible target to the top (skip when a hash anchor is present).
 function scrollToTop() {
+    if (window.location.hash) return;
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;

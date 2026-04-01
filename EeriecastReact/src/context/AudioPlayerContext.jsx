@@ -4,13 +4,14 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { useMediaSession } from '@/hooks/use-media-session';
-import { getEpisodeAudioUrl, isAudiobook } from '@/lib/utils';
+import { getEpisodeAudioUrl, isAudiobook, hasCategory } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
 import { canAccessChapter, canAccessExclusiveEpisode, FREE_LISTEN_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
+import MatureContentModal from '@/components/MatureContentModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const AudioPlayerContext = createContext();
@@ -30,6 +31,8 @@ export const AudioPlayerProvider = ({ children }) => {
   // New: playback modes
   const [isShuffling, setIsShuffling] = useState(false);
   const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
+  const [matureModalOpen, setMatureModalOpen] = useState(false);
+  const matureBlockedArgsRef = useRef(null);
 
   // Ref-based onEnd so the audio hook always calls the latest auto-advance logic
   const onEndedRef = useRef(null);
@@ -145,6 +148,16 @@ export const AudioPlayerProvider = ({ children }) => {
 
   const loadAndPlaySmart = useCallback(async (args) => {
     const { episode: ep, resume, ...rest } = args;
+
+    // Mature-content gate: block playback if podcast is "mature" and the
+    // user hasn't opted in via Settings → Mature Content toggle.
+    const pod = rest.podcast;
+    if (pod && hasCategory(pod, 'mature') && !getSetting('matureContent')) {
+      matureBlockedArgsRef.current = args;
+      setMatureModalOpen(true);
+      return 'blocked';
+    }
+
     const eid = Number(ep?.id);
     const map = episodeProgressMapRef.current;
     const shouldRemember = getSetting('rememberPosition');
@@ -153,7 +166,6 @@ export const AudioPlayerProvider = ({ children }) => {
     // autoplay have something to work with. If setPlaybackQueue already
     // populated the queue in this same batch, the functional updater
     // will see the populated array and leave it alone.
-    const pod = rest.podcast;
     setQueue(prev => {
       if (prev.length > 0) return prev;          // queue already set
       return [{ podcast: pod, episode: ep, resume }]; // minimal fallback
@@ -392,6 +404,21 @@ export const AudioPlayerProvider = ({ children }) => {
     // Clear persisted state when user explicitly closes the player
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
   };
+
+  // Auto-close the player when matureContent is toggled OFF and the
+  // currently playing podcast is mature.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e?.detail?.key === 'matureContent' && e?.detail?.value === false) {
+        const currentPod = audioPlayer.podcast;
+        if (currentPod && hasCategory(currentPod, 'mature')) {
+          handleClosePlayer();
+        }
+      }
+    };
+    window.addEventListener('eeriecast-settings-change', handler);
+    return () => window.removeEventListener('eeriecast-settings-change', handler);
+  });
 
   const handleExpandPlayer = () => {
     setShowExpandedPlayer(true);
@@ -632,9 +659,24 @@ export const AudioPlayerProvider = ({ children }) => {
         cancelSleepTimer,
         // audio element ref (for Web Audio API waveform)
         audioRef,
+        // mature content gate
+        matureModalOpen,
+        setMatureModalOpen,
       }}
     >
       {children}
+
+      {/* Mature Content Warning Modal */}
+      <MatureContentModal
+        isOpen={matureModalOpen}
+        onClose={() => { setMatureModalOpen(false); matureBlockedArgsRef.current = null; }}
+        onContinue={() => {
+          const args = matureBlockedArgsRef.current;
+          matureBlockedArgsRef.current = null;
+          setMatureModalOpen(false);
+          if (args) loadAndPlaySmart(args);
+        }}
+      />
 
       {/* Expanded Player - shows when user expands (slide-up enter/exit) */}
       <AnimatePresence onExitComplete={handleExpandedExitComplete}>

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Podcast } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
-import { hasCategory, isAudiobook } from "@/lib/utils";
+import { hasCategory, isAudiobook, filterMaturePodcasts } from "@/lib/utils";
+import { useUser } from "@/context/UserContext.jsx";
 
 export default function CategoryPage() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const categoryParam = (params.get("category") || "").toLowerCase();
+  const { canViewMature } = useUser();
 
   const [allPodcasts, setAllPodcasts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -17,11 +19,11 @@ export default function CategoryPage() {
       setIsLoading(true);
       const resp = await Podcast.list("-created_date");
       const list = Array.isArray(resp) ? resp : (resp?.results || []);
-      setAllPodcasts(list);
+      setAllPodcasts(filterMaturePodcasts(list, canViewMature));
       setIsLoading(false);
     };
     load();
-  }, []);
+  }, [canViewMature]);
 
   const filtered = useMemo(() => {
     const sel = categoryParam;

@@ -461,6 +461,26 @@ const UserProvider = ({ children }) => {
     return flag && notExpired;
   }, [user]);
 
+  // Derived: user's age in whole years (null if DOB unavailable)
+  const userAge = useMemo(() => {
+    const dob = user?.date_of_birth;
+    if (!dob) return null;
+    const birth = new Date(dob);
+    if (isNaN(birth.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const monthDiff = now.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age--;
+    return age;
+  }, [user]);
+
+  // Only authenticated users whose DOB confirms 18+ can view mature content.
+  // Everyone else (not logged in, no DOB, under 18) sees mature shows hidden.
+  const canViewMature = useMemo(() => {
+    if (!user) return false;
+    return userAge !== null && userAge >= 18;
+  }, [user, userAge]);
+
   // --- Favorite management helpers (episodes & podcasts) ---
   // Track inflight operations to avoid duplicate calls per (type,id)
   const inflightFavoriteOpsRef = useRef(new Set());
@@ -622,6 +642,8 @@ const UserProvider = ({ children }) => {
         logout,
         isAuthenticated: !!user || !!djangoClient.getToken(),
         isPremium,
+        userAge,
+        canViewMature,
         // favorites
         favoriteEpisodeIds,
         favoritePodcastIds,

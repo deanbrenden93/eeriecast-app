@@ -5,6 +5,16 @@ import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 
+function formatTimeLeft(seconds) {
+  if (!seconds || seconds <= 0) return null;
+  if (seconds < 60) return `${Math.round(seconds)}s left`;
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m left`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m left` : `${hrs}h left`;
+}
+
 export default function KeepListeningSection({
   items,
   onEpisodePlay,
@@ -49,8 +59,8 @@ export default function KeepListeningSection({
 
       <div 
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto pb-4 scroll-smooth"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        className="grid grid-flow-col auto-cols-[240px] gap-3 overflow-x-auto pb-4 scroll-smooth"
+        style={{ gridTemplateRows: 'repeat(2, 1fr)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {items.map((item) => {
           const { podcast, episode, progress = 0 } = item;
@@ -58,75 +68,68 @@ export default function KeepListeningSection({
           const pct = isCurrentlyPlaying && livePct !== null ? livePct : progress;
           const cover = episode.cover_image || podcast?.cover_image;
 
+          const totalSec = isCurrentlyPlaying ? currentDuration : Number(episode.duration || 0);
+          const playedSec = isCurrentlyPlaying ? currentTime : Number(item.resumeData?.progress || 0);
+          const timeLeft = totalSec > 0 ? formatTimeLeft(Math.max(0, totalSec - playedSec)) : null;
+
           return (
             <div
               key={episode.id}
-              className="flex-shrink-0 cursor-pointer group w-36"
+              className="cursor-pointer group"
               onClick={() => onEpisodePlay(item)}
             >
-              <div className="eeriecast-card h-full flex flex-col overflow-hidden">
-                {/* Cover image with play overlay */}
-                <div className="relative bg-eeriecast-surface-light">
-                  <div className="aspect-square overflow-hidden rounded-t-lg">
-                    {cover ? (
-                      <img
-                        src={cover}
-                        alt={episode.title}
-                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
-                      />
-                    ) : (
-                      <div className="w-full h-full cover-shimmer" />
-                    )}
-                    {/* Play overlay */}
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                      <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                        <Play className="w-5 h-5 text-black fill-black ml-0.5" />
-                      </div>
-                    </div>
-
-                    {/* Three-dot menu */}
-                    <div className="absolute bottom-1.5 right-1.5 z-[5]" onClick={(e) => e.stopPropagation()}>
-                      <EpisodeMenu episode={episode} podcast={podcast} onAddToPlaylist={onAddToPlaylist} className="bg-black/60 backdrop-blur-sm" side="right" />
-                    </div>
-
-                    {/* Members-only badge */}
-                    {(podcast?.is_exclusive || episode.is_premium) && (
-                      <div className="absolute top-1.5 right-1.5">
-                        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm border border-yellow-500/30 rounded-full text-[9px] font-semibold text-yellow-400 shadow-lg">
-                          <Lock className="w-2.5 h-2.5" />
-                          <span>Members</span>
-                        </div>
-                      </div>
-                    )}
+              <div className="flex gap-3 bg-white/[0.02] border border-white/[0.04] rounded-xl p-3.5 h-full transition-all duration-300 hover:border-white/[0.08] hover:bg-white/[0.03]">
+                {/* Thumbnail */}
+                <div className="relative flex-shrink-0 w-[58px] h-[58px] rounded-lg overflow-hidden">
+                  {cover ? (
+                    <img src={cover} alt={episode.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-eeriecast-surface-light cover-shimmer" />
+                  )}
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                    <Play className="w-4 h-4 text-white fill-white" />
                   </div>
-
-                  {/* Progress bar */}
-                  <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/[0.06]">
-                    <div
-                      className="h-full bg-gradient-to-r from-red-600 to-red-500 transition-all duration-300 shadow-[0_0_6px_rgba(220,38,38,0.3)]"
-                      style={{ width: `${Math.round(pct)}%` }}
-                    />
-                  </div>
+                  {(podcast?.is_exclusive || episode.is_premium) && (
+                    <div className="absolute top-0.5 right-0.5">
+                      <Lock className="w-2.5 h-2.5 text-yellow-400 drop-shadow-md" />
+                    </div>
+                  )}
                 </div>
 
-                {/* Episode info */}
-                <div className="p-2.5 space-y-0.5 min-h-[3rem] flex flex-col justify-start">
-                  <h3 className="text-white/90 font-semibold text-xs line-clamp-2 leading-tight group-hover:text-red-400 transition-colors duration-300">
+                {/* Info + progress */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
+                  <h3 className="text-white/90 font-semibold text-xs leading-tight truncate group-hover:text-red-400 transition-colors duration-300">
                     {episode.title}
                   </h3>
-                  {podcast?.title ? (
-                    <Link
-                      to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id || podcast.slug)}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-zinc-500 text-[10px] leading-tight line-clamp-1 hover:text-red-400 transition-colors duration-200"
-                    >
-                      {podcast.title}
-                    </Link>
-                  ) : (
-                    <p className="text-zinc-500 text-[10px] leading-tight line-clamp-1">
-                      {podcast?.author || ''}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {podcast?.title ? (
+                      <Link
+                        to={`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id || podcast.slug)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-zinc-500 text-[10px] leading-tight truncate hover:text-red-400 transition-colors duration-200"
+                      >
+                        {podcast.title}
+                      </Link>
+                    ) : (
+                      <span className="text-zinc-500 text-[10px] leading-tight truncate">
+                        {podcast?.author || ''}
+                      </span>
+                    )}
+                    <div className="ml-auto flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <EpisodeMenu episode={episode} podcast={podcast} onAddToPlaylist={onAddToPlaylist} side="right" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex-1 h-[3px] bg-white/[0.06] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-red-600 to-red-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.round(pct)}%` }}
+                      />
+                    </div>
+                    {timeLeft && (
+                      <span className="flex-shrink-0 text-[9px] text-zinc-600 tabular-nums">{timeLeft}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

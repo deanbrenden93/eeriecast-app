@@ -9,7 +9,7 @@ import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
-import { getPodcastCategoriesLower, isAudiobook, getEpisodeAudioUrl } from '@/lib/utils';
+import { getPodcastCategoriesLower, isAudiobook, getEpisodeAudioUrl, isMaturePodcast } from '@/lib/utils';
 import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
@@ -45,7 +45,7 @@ export default function Episodes() {
   const goToPremium = () => navigate(createPageUrl('Premium'));
 
   const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
-  const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium, episodeProgressMap } = useUser();
+  const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium, episodeProgressMap, canViewMature } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { toast } = useToast();
@@ -63,6 +63,10 @@ export default function Episodes() {
       try {
         const detail = await ensureDetail(idParam);
         if (canceled) return;
+        if (detail && isMaturePodcast(detail) && !canViewMature) {
+          navigate(createPageUrl('Podcasts'), { replace: true });
+          return;
+        }
         setShow(detail);
         const list = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
         setEpisodes(list);
@@ -72,7 +76,7 @@ export default function Episodes() {
     }
     load();
     return () => { canceled = true; };
-  }, [idParam, ensureDetail]);
+  }, [idParam, ensureDetail, canViewMature, navigate]);
 
   useEffect(() => {
     if (show && isAudiobook(show)) {

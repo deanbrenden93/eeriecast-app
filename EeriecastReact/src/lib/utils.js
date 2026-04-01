@@ -80,6 +80,40 @@ export function isAudiobook(podcast) {
   }
 }
 
+/** Returns true if this podcast is in the "mature" category. */
+export function isMaturePodcast(podcast) {
+  try { return hasCategory(podcast, 'mature'); } catch { return false; }
+}
+
+/**
+ * Filter out mature podcasts when the viewer isn't allowed to see them.
+ * Pass canViewMature = true to skip filtering (adult authenticated user).
+ */
+export function filterMaturePodcasts(list, canViewMature) {
+  if (canViewMature) return list;
+  return (list || []).filter(p => !isMaturePodcast(p));
+}
+
+/**
+ * Filter out episodes whose parent podcast is mature.
+ * `maturePodcastIds` is a Set<number> of known mature podcast IDs (preferred).
+ * Falls back to resolving via `getPodcast` lookup or embedded podcast data.
+ */
+export function filterMatureEpisodes(episodes, canViewMature, maturePodcastIds, getPodcast) {
+  if (canViewMature) return episodes;
+  return (episodes || []).filter(ep => {
+    const podId = ep.podcast_id || (typeof ep.podcast === 'number' ? ep.podcast : ep.podcast?.id);
+    if (maturePodcastIds && maturePodcastIds.size > 0 && podId) {
+      return !maturePodcastIds.has(podId);
+    }
+    const pod = ep.podcast_data
+      || (ep.podcast && typeof ep.podcast === 'object' ? ep.podcast : null)
+      || (getPodcast ? getPodcast(podId) : null);
+    if (!pod) return true;
+    return !isMaturePodcast(pod);
+  });
+}
+
 /** Prefer ad-free audio, fallback to ad-supported, then default. */
 export function getEpisodeAudioUrl(ep) {
   if (!ep) return "";

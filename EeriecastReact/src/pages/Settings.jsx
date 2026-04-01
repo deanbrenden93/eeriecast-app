@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
   Volume2,
@@ -17,6 +17,7 @@ import {
   Home,
   RefreshCw,
   Crown,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   Select,
@@ -30,7 +31,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
 import { User as UserAPI } from '@/api/entities';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 /* ─── Reusable components ──────────────────────────────────────────── */
@@ -107,8 +108,25 @@ const PlaybackSpeedControl = ({ speed, setSpeed }) => {
 export default function Settings() {
   const { settings, updateSetting } = useSettings();
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
-  const { user, setUser, isAuthenticated, isPremium } = useUser();
+  const { user, setUser, isAuthenticated, isPremium, canViewMature } = useUser();
   const [togglingPremium, setTogglingPremium] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash) {
+      const id = location.hash.replace('#', '');
+      // Delay must exceed the router's scroll-to-top safety-net (500ms)
+      const timer = setTimeout(() => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-1', 'ring-red-500/40', 'rounded-lg');
+          setTimeout(() => el.classList.remove('ring-1', 'ring-red-500/40', 'rounded-lg'), 2000);
+        }
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [location.hash]);
 
   return (
     <div className="min-h-screen bg-eeriecast-surface text-white">
@@ -225,12 +243,12 @@ export default function Settings() {
           />
         </SettingsCard>
 
-        {/* Privacy */}
+        {/* Privacy & Content */}
         <SettingsCard
           icon={Shield}
-          title="Privacy"
+          title="Privacy & Content"
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-4">
             <Button
               variant="outline"
               className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all"
@@ -239,6 +257,19 @@ export default function Settings() {
               Clear Listening History
             </Button>
           </div>
+          {/* Only visible for authenticated users with verified 18+ age */}
+          {/* TODO (backend): persist via User.updateMe({ preferences: { mature_content: val } }) */}
+          {canViewMature && (
+            <div id="mature-content">
+              <SettingsToggle
+                icon={ShieldAlert}
+                label="Mature Content"
+                description="Enable playback of shows marked as Mature (18+ only)"
+                checked={settings.matureContent}
+                onCheckedChange={val => updateSetting('matureContent', val)}
+              />
+            </div>
+          )}
         </SettingsCard>
 
         {/* Testing */}

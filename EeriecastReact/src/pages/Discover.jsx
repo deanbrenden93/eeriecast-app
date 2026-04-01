@@ -5,7 +5,7 @@ import { Podcast, UserLibrary, Category, Episode } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
-import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
+import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower, filterMatureEpisodes } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from '@/context/UserContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
@@ -226,7 +226,7 @@ export default function Discover() {
   })();
 
   const [activeTab, setActiveTab] = useState(queryTab || "Recommended");
-  const { podcasts: rawPodcasts, isLoading, getById } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading, getById, maturePodcastIds } = usePodcasts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -250,7 +250,7 @@ export default function Discover() {
   const [episodeFilters, setEpisodeFilters] = useState({ show: "all", category: "all", sort: "newest", access: "all" });
   const [showFilters, setShowFilters] = useState({ category: "all" });
 
-  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated } = useUser();
+  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated, canViewMature } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -300,7 +300,7 @@ export default function Discover() {
           if (results.length === 0) break;
 
           accumulated = [...accumulated, ...results];
-          setFetchedEpisodes([...accumulated]);
+          setFetchedEpisodes(filterMatureEpisodes([...accumulated], canViewMature, maturePodcastIds));
 
           // After first page, the UI has enough to show — stop blocking
           if (page === 1) setEpisodesLoading(false);

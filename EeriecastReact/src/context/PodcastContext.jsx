@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useContext } 
 import PropTypes from 'prop-types';
 import { Podcast as PodcastApi, Creator } from '@/api/entities';
 import { useUser } from '@/context/UserContext.jsx';
+import { filterMaturePodcasts, isMaturePodcast } from '@/lib/utils';
 
 const PodcastContext = React.createContext(null);
 
 export function PodcastProvider({ children }) {
-  const { isPremium } = useUser();
-  const [podcasts, setPodcasts] = useState([]);
+  const { isPremium, canViewMature } = useUser();
+  const [allPodcasts, setAllPodcasts] = useState([]);
   const [byId, setById] = useState({});
   const [featuredCreators, setFeaturedCreators] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -15,7 +16,22 @@ export function PodcastProvider({ children }) {
   const fetchedListRef = useRef(false);
   const lastFetchedAtRef = useRef(0);
 
-  // Build byId when podcasts change
+  // Derived: podcasts visible to the current user (hides mature for non-adult users)
+  const podcasts = useMemo(
+    () => filterMaturePodcasts(allPodcasts, canViewMature),
+    [allPodcasts, canViewMature],
+  );
+
+  // Set of IDs for podcasts tagged as mature (built from unfiltered list)
+  const maturePodcastIds = useMemo(() => {
+    const ids = new Set();
+    for (const p of allPodcasts) {
+      if (p?.id && isMaturePodcast(p)) ids.add(p.id);
+    }
+    return ids;
+  }, [allPodcasts]);
+
+  // Build byId when visible podcasts change
   useEffect(() => {
     const map = Object.create(null);
     for (const p of podcasts || []) {
@@ -40,7 +56,7 @@ export function PodcastProvider({ children }) {
       const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
 
       console.log('PodcastProvider loaded', arr);
-      setPodcasts(arr);
+      setAllPodcasts(arr);
       setFeaturedCreators(creatorsArr);
       fetchedListRef.current = true;
       lastFetchedAtRef.current = Date.now();
@@ -66,7 +82,7 @@ export function PodcastProvider({ children }) {
       ]);
       const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
       const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
-      setPodcasts(arr);
+      setAllPodcasts(arr);
       setFeaturedCreators(creatorsArr);
       fetchedListRef.current = true;
       lastFetchedAtRef.current = Date.now();
@@ -97,7 +113,7 @@ export function PodcastProvider({ children }) {
     // Fetch detail and merge into state
     const detail = await PodcastApi.get(id);
     const detailWithVariant = { ...detail, __audio_variant: audioVariant };
-    setPodcasts(prev => {
+    setAllPodcasts(prev => {
       const map = new Map(prev.map(p => [p.id, p]));
       map.set(detailWithVariant.id, { ...(map.get(detailWithVariant.id) || {}), ...detailWithVariant });
       return Array.from(map.values());
@@ -107,6 +123,7 @@ export function PodcastProvider({ children }) {
 
   const value = useMemo(() => ({
     podcasts,
+    maturePodcastIds,
     isLoading,
     error,
     lastFetchedAt: lastFetchedAtRef.current,
@@ -114,7 +131,7 @@ export function PodcastProvider({ children }) {
     ensureDetail,
     refreshAll,
     featuredCreators,
-  }), [podcasts, isLoading, error, getById, ensureDetail, refreshAll, featuredCreators]);
+  }), [podcasts, maturePodcastIds, isLoading, error, getById, ensureDetail, refreshAll, featuredCreators]);
 
   return (
     <PodcastContext.Provider value={value}>

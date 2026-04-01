@@ -45,9 +45,9 @@ export default function NewReleasesRow({
 }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
-  const { podcasts, getById } = usePodcasts();
+  const { podcasts, getById, maturePodcastIds } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
-  const { episodeProgressMap, isAuthenticated } = useUser() || {};
+  const { episodeProgressMap, isAuthenticated, canViewMature } = useUser() || {};
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -89,6 +89,11 @@ export default function NewReleasesRow({
             };
           });
 
+        // Hide episodes from mature podcasts for users who can't view them.
+        if (!canViewMature && maturePodcastIds.size > 0) {
+          enriched = enriched.filter(ep => !maturePodcastIds.has(ep.podcast_id));
+        }
+
         // Optional category filter
         if (categoryFilter) {
           const lower = categoryFilter.toLowerCase();
@@ -102,6 +107,36 @@ export default function NewReleasesRow({
           });
         }
 
+        // Backfill with newest releases if the primary feed returned too few
+        if (enriched.length < maxItems && (feedType === "trending" || feedType === "recommended")) {
+          try {
+            const backfillResp = await EpisodeApi.list("-published_at", fetchLimit);
+            if (!cancelled) {
+              const backfillEps = Array.isArray(backfillResp) ? backfillResp : (backfillResp?.results || []);
+              const existingIds = new Set(enriched.map(ep => ep.id));
+              const extras = backfillEps
+                .filter(ep => {
+                  const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
+                  return !audiobookIds.has(podId) && !existingIds.has(ep.id);
+                })
+                .map(ep => {
+                  const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
+                  const podcastData = getById(podId);
+                  return {
+                    ...ep,
+                    podcast_id: podId,
+                    podcast_data: podcastData || (typeof ep.podcast === "object" ? ep.podcast : null),
+                    cover_image: ep.cover_image || podcastData?.cover_image || "",
+                  };
+                });
+              const filtered = (!canViewMature && maturePodcastIds.size > 0)
+                ? extras.filter(ep => !maturePodcastIds.has(ep.podcast_id))
+                : extras;
+              enriched = [...enriched, ...filtered];
+            }
+          } catch { /* backfill is best-effort */ }
+        }
+
         if (!cancelled) {
           setEpisodes(enriched.slice(0, maxItems));
         }
@@ -113,7 +148,7 @@ export default function NewReleasesRow({
       }
     })();
     return () => { cancelled = true; };
-  }, [podcasts, getById, categoryFilter, ordering, feedType, trendWindowHours, maxItems]);
+  }, [podcasts, getById, categoryFilter, ordering, feedType, trendWindowHours, maxItems, canViewMature, maturePodcastIds]);
 
   const scroll = (direction) => {
     const { current } = scrollRef;

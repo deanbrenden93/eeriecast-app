@@ -95,13 +95,13 @@ export default function Search() {
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [activeTab, setActiveTab] = useState("All Content");
-  const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById } = usePodcasts();
+  const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById, maturePodcastIds } = usePodcasts();
   const [showResults, setShowResults] = useState([]);
   const [episodeResults, setEpisodeResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const { isAuthenticated, isPremium } = useUser();
+  const { isAuthenticated, isPremium, canViewMature } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -138,6 +138,7 @@ export default function Search() {
       podcastResults = podcastResults.filter(p => p.is_exclusive);
     }
 
+    if (!canViewMature) podcastResults = podcastResults.filter(p => !isMaturePodcast(p));
     setShowResults(podcastResults);
 
     // --- Episode search (multi-source: dedicated API + client-side fallback) ---
@@ -250,7 +251,13 @@ export default function Search() {
 
       let filteredEpisodes = allEpisodes;
       if (activeTab === "Members Only") {
-        filteredEpisodes = allEpisodes.filter(ep => ep.is_premium);
+        filteredEpisodes = filteredEpisodes.filter(ep => ep.is_premium);
+      }
+      if (!canViewMature && maturePodcastIds.size > 0) {
+        filteredEpisodes = filteredEpisodes.filter(ep => {
+          const podId = ep.podcast_id || (typeof ep.podcast === 'number' ? ep.podcast : ep.podcast?.id);
+          return !maturePodcastIds.has(podId);
+        });
       }
 
       setEpisodeResults(filteredEpisodes);
