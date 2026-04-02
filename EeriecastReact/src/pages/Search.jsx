@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Search as SearchIcon, Play, BookOpen, Headphones, ChevronRight } from "lucide-react";
-import { isAudiobook, getPodcastCategoriesLower } from "@/lib/utils";
+import { isAudiobook, getPodcastCategoriesLower, isMaturePodcast } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
@@ -108,179 +108,194 @@ export default function Search() {
 
   const tabs = ["All Content", "Podcasts", "Episodes", "Audiobooks", "Members Only"];
 
+  const searchIdRef = useRef(0);
+  const debounceRef = useRef(null);
 
-  const performSearch = useCallback(async (query) => {
-    setIsLoading(true);
+  // The actual search logic — receives a cancellation check so stale requests are discarded
+  const runSearch = useCallback(async (query, id) => {
+    const stale = () => searchIdRef.current !== id;
     const lowerQuery = (query || '').toLowerCase();
 
-    // --- Client-side podcast search ---
-    const source = Array.isArray(contextPodcasts) ? contextPodcasts : [];
-    let podcastResults = source.filter(podcast => {
-      const title = podcast.title?.toLowerCase() || '';
-      const author = podcast.author?.toLowerCase() || '';
-      const description = podcast.description?.toLowerCase() || '';
-      const categories = getPodcastCategoriesLower(podcast);
-      const categoryJoined = categories.join(' ');
-      return (
-        title.includes(lowerQuery) ||
-        author.includes(lowerQuery) ||
-        description.includes(lowerQuery) ||
-        categoryJoined.includes(lowerQuery)
-      );
-    });
+    try {
+      // --- Client-side podcast search (synchronous) ---
+      const source = Array.isArray(contextPodcasts) ? contextPodcasts : [];
+      let podcastResults = source.filter(podcast => {
+        const title = podcast.title?.toLowerCase() || '';
+        const author = podcast.author?.toLowerCase() || '';
+        const description = podcast.description?.toLowerCase() || '';
+        const categories = getPodcastCategoriesLower(podcast);
+        const categoryJoined = categories.join(' ');
+        return (
+          title.includes(lowerQuery) ||
+          author.includes(lowerQuery) ||
+          description.includes(lowerQuery) ||
+          categoryJoined.includes(lowerQuery)
+        );
+      });
 
-    // Filter by tab
-    if (activeTab === "Podcasts") {
-      podcastResults = podcastResults.filter(p => !isAudiobook(p));
-    } else if (activeTab === "Audiobooks") {
-      podcastResults = podcastResults.filter(p => isAudiobook(p));
-    } else if (activeTab === "Members Only") {
-      podcastResults = podcastResults.filter(p => p.is_exclusive);
-    }
+      if (activeTab === "Podcasts") {
+        podcastResults = podcastResults.filter(p => !isAudiobook(p));
+      } else if (activeTab === "Audiobooks") {
+        podcastResults = podcastResults.filter(p => isAudiobook(p));
+      } else if (activeTab === "Members Only") {
+        podcastResults = podcastResults.filter(p => p.is_exclusive);
+      }
 
-    if (!canViewMature) podcastResults = podcastResults.filter(p => !isMaturePodcast(p));
-    setShowResults(podcastResults);
+      if (!canViewMature) podcastResults = podcastResults.filter(p => !isMaturePodcast(p));
+      if (stale()) return;
+      setShowResults(podcastResults);
 
-    // --- Episode search (multi-source: dedicated API + client-side fallback) ---
-    if (activeTab !== "Podcasts" && activeTab !== "Audiobooks") {
-      const seenKeys = new Map();
-      let allEpisodes = [];
+      // --- Episode search (multi-source) ---
+      if (activeTab !== "Podcasts" && activeTab !== "Audiobooks") {
+        const seenKeys = new Map();
+        let allEpisodes = [];
 
-      const enrichEpisode = (ep) => {
-        const podId = ep.podcast_id || ep.podcast;
-        const podcastData = podId ? getById(podId) : null;
-        return {
-          ...ep,
-          podcast_id: podId,
-          podcast_title: ep.podcast_title || podcastData?.title || '',
-          podcast_author: ep.podcast_author || podcastData?.author || '',
-          podcast_cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
-          cover_image: ep.cover_image || ep.image_url || ep.artwork || ep.image || podcastData?.cover_image || '',
-          podcast: podcastData || {
-            id: podId,
-            title: ep.podcast_title || '',
-            cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
-          },
+        const enrichEpisode = (ep) => {
+          const podId = ep.podcast_id || ep.podcast;
+          const podcastData = podId ? getById(podId) : null;
+          return {
+            ...ep,
+            podcast_id: podId,
+            podcast_title: ep.podcast_title || podcastData?.title || '',
+            podcast_author: ep.podcast_author || podcastData?.author || '',
+            podcast_cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
+            cover_image: ep.cover_image || ep.image_url || ep.artwork || ep.image || podcastData?.cover_image || '',
+            podcast: podcastData || {
+              id: podId,
+              title: ep.podcast_title || '',
+              cover_image: ep.podcast_cover_image || podcastData?.cover_image || '',
+            },
+          };
         };
-      };
 
-      const addUnique = (episodes) => {
-        for (const ep of episodes) {
-          const key = ep.id || ep.slug || `${ep.title}-${ep.podcast_id || ep.podcast}`;
-          const enriched = enrichEpisode(ep);
-          if (!seenKeys.has(key)) {
-            seenKeys.set(key, allEpisodes.length);
-            allEpisodes.push(enriched);
-          } else {
-            const existing = allEpisodes[seenKeys.get(key)];
-            if (!existing.cover_image && enriched.cover_image) {
-              allEpisodes[seenKeys.get(key)] = { ...existing, ...enriched };
+        const addUnique = (episodes) => {
+          for (const ep of episodes) {
+            const key = ep.id || ep.slug || `${ep.title}-${ep.podcast_id || ep.podcast}`;
+            const enriched = enrichEpisode(ep);
+            if (!seenKeys.has(key)) {
+              seenKeys.set(key, allEpisodes.length);
+              allEpisodes.push(enriched);
+            } else {
+              const existing = allEpisodes[seenKeys.get(key)];
+              if (!existing.cover_image && enriched.cover_image) {
+                allEpisodes[seenKeys.get(key)] = { ...existing, ...enriched };
+              }
             }
           }
+        };
+
+        const [epSearchResult, generalSearchResult, episodeFilterResult] = await Promise.allSettled([
+          SearchApi.searchEpisodes(query),
+          SearchApi.search(query),
+          EpisodeApi.filter({ search: query }, null, 50),
+        ]);
+
+        if (stale()) return;
+
+        if (epSearchResult.status === 'fulfilled') {
+          const epResp = epSearchResult.value;
+          const epResults = Array.isArray(epResp) ? epResp : (epResp?.results || epResp?.episodes || []);
+          addUnique(epResults);
         }
-      };
 
-      // Fire all API sources in parallel — each is individually try/caught so one failure doesn't block the rest
-      const [epSearchResult, generalSearchResult, episodeFilterResult] = await Promise.allSettled([
-        // Source 1: Dedicated episode search endpoint (/search/episodes/)
-        SearchApi.searchEpisodes(query),
-        // Source 2: General search endpoint (/search/)
-        SearchApi.search(query),
-        // Source 3: Episodes list with search filter (/episodes/?search=)
-        EpisodeApi.filter({ search: query }, null, 50),
-      ]);
+        if (generalSearchResult.status === 'fulfilled') {
+          const searchResp = generalSearchResult.value;
+          if (Array.isArray(searchResp?.episodes)) {
+            addUnique(searchResp.episodes);
+          }
+          if (Array.isArray(searchResp?.results)) {
+            const episodeLike = searchResp.results.filter(r =>
+              r.type === 'episode' || r.episode_number != null || r.audio_file || r.audio_url
+            );
+            addUnique(episodeLike);
+          }
+          if (Array.isArray(searchResp)) {
+            const episodeLike = searchResp.filter(r =>
+              r.type === 'episode' || r.episode_number != null || r.audio_file || r.audio_url
+            );
+            addUnique(episodeLike);
+          }
+        }
 
-      // Process Source 1
-      if (epSearchResult.status === 'fulfilled') {
-        const epResp = epSearchResult.value;
-        const epResults = Array.isArray(epResp) ? epResp : (epResp?.results || epResp?.episodes || []);
-        addUnique(epResults);
+        if (episodeFilterResult.status === 'fulfilled') {
+          const filterResp = episodeFilterResult.value;
+          const filterResults = Array.isArray(filterResp) ? filterResp : (filterResp?.results || []);
+          addUnique(filterResults);
+        }
+
+        for (const podcast of source) {
+          if (!Array.isArray(podcast.episodes)) continue;
+          const matchingEps = podcast.episodes.filter(ep => {
+            const t = ep.title?.toLowerCase() || '';
+            const d = ep.description?.toLowerCase() || '';
+            return t.includes(lowerQuery) || d.includes(lowerQuery);
+          });
+          const enriched = matchingEps.map(ep => ({
+            ...ep,
+            podcast_id: ep.podcast_id || ep.podcast || podcast.id,
+            podcast: ep.podcast || podcast.id,
+          }));
+          addUnique(enriched);
+        }
+
+        let filteredEpisodes = allEpisodes;
+        if (activeTab === "Members Only") {
+          filteredEpisodes = filteredEpisodes.filter(ep => ep.is_premium);
+        }
+        if (!canViewMature && maturePodcastIds.size > 0) {
+          filteredEpisodes = filteredEpisodes.filter(ep => {
+            const podId = ep.podcast_id || (typeof ep.podcast === 'number' ? ep.podcast : ep.podcast?.id);
+            return !maturePodcastIds.has(podId);
+          });
+        }
+
+        if (stale()) return;
+        setEpisodeResults(filteredEpisodes);
       } else {
-        console.error('Episode search endpoint failed:', epSearchResult.reason);
+        if (stale()) return;
+        setEpisodeResults([]);
       }
-
-      // Process Source 2 — try multiple response shapes
-      if (generalSearchResult.status === 'fulfilled') {
-        const searchResp = generalSearchResult.value;
-        // Shape A: { episodes: [...] }
-        if (Array.isArray(searchResp?.episodes)) {
-          addUnique(searchResp.episodes);
-        }
-        // Shape B: { results: [...] } — flat list that may contain episode objects
-        if (Array.isArray(searchResp?.results)) {
-          const episodeLike = searchResp.results.filter(r =>
-            r.type === 'episode' || r.episode_number != null || r.audio_file || r.audio_url
-          );
-          addUnique(episodeLike);
-        }
-        // Shape C: direct array
-        if (Array.isArray(searchResp)) {
-          const episodeLike = searchResp.filter(r =>
-            r.type === 'episode' || r.episode_number != null || r.audio_file || r.audio_url
-          );
-          addUnique(episodeLike);
-        }
-      } else {
-        console.error('General search endpoint failed:', generalSearchResult.reason);
-      }
-
-      // Process Source 3 — /episodes/?search= (standard DRF search filter)
-      if (episodeFilterResult.status === 'fulfilled') {
-        const filterResp = episodeFilterResult.value;
-        const filterResults = Array.isArray(filterResp) ? filterResp : (filterResp?.results || []);
-        addUnique(filterResults);
-      } else {
-        console.error('Episode filter endpoint failed:', episodeFilterResult.reason);
-      }
-
-      // Source 4: Client-side search across loaded podcast episodes (instant, no network)
-      for (const podcast of source) {
-        if (!Array.isArray(podcast.episodes)) continue;
-        const matchingEps = podcast.episodes.filter(ep => {
-          const t = ep.title?.toLowerCase() || '';
-          const d = ep.description?.toLowerCase() || '';
-          return t.includes(lowerQuery) || d.includes(lowerQuery);
-        });
-        const enriched = matchingEps.map(ep => ({
-          ...ep,
-          podcast_id: ep.podcast_id || ep.podcast || podcast.id,
-          podcast: ep.podcast || podcast.id,
-        }));
-        addUnique(enriched);
-      }
-
-      let filteredEpisodes = allEpisodes;
-      if (activeTab === "Members Only") {
-        filteredEpisodes = filteredEpisodes.filter(ep => ep.is_premium);
-      }
-      if (!canViewMature && maturePodcastIds.size > 0) {
-        filteredEpisodes = filteredEpisodes.filter(ep => {
-          const podId = ep.podcast_id || (typeof ep.podcast === 'number' ? ep.podcast : ep.podcast?.id);
-          return !maturePodcastIds.has(podId);
-        });
-      }
-
-      setEpisodeResults(filteredEpisodes);
-    } else {
-      setEpisodeResults([]);
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      if (!stale()) setIsLoading(false);
     }
+  }, [contextPodcasts, activeTab, getById, canViewMature, maturePodcastIds]);
 
-    setIsLoading(false);
-  }, [contextPodcasts, activeTab, getById]);
-
+  // Debounced trigger: waits 300ms after last keystroke before firing API calls
   useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
     if (podcastsLoading) return;
-    if (searchQuery.trim()) {
-      performSearch(searchQuery);
-    } else {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      searchIdRef.current += 1;
       setShowResults([]);
       setEpisodeResults([]);
+      setIsLoading(false);
+      return;
     }
-  }, [searchQuery, performSearch, podcastsLoading]);
+
+    setIsLoading(true);
+    const id = ++searchIdRef.current;
+
+    debounceRef.current = setTimeout(() => {
+      runSearch(trimmed, id);
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery, activeTab, podcastsLoading, runSearch]);
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) performSearch(searchQuery);
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setIsLoading(true);
+    const id = ++searchIdRef.current;
+    runSearch(trimmed, id);
   };
 
   const handlePodcastPlay = (podcast) => {

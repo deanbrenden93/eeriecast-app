@@ -110,7 +110,6 @@ export function PodcastProvider({ children }) {
     ) {
       return current;
     }
-    // Fetch detail and merge into state
     const detail = await PodcastApi.get(id);
     const detailWithVariant = { ...detail, __audio_variant: audioVariant };
     setAllPodcasts(prev => {
