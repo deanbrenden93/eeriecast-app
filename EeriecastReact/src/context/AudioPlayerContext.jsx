@@ -12,7 +12,6 @@ import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
 import MatureContentModal from '@/components/MatureContentModal';
-import { PaymentFormModal } from '@/pages/Premium';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const AudioPlayerContext = createContext();
@@ -34,7 +33,6 @@ export const AudioPlayerProvider = ({ children }) => {
   const [repeatMode, setRepeatMode] = useState('off'); // 'off' | 'all' | 'one'
   const [matureModalOpen, setMatureModalOpen] = useState(false);
   const matureBlockedArgsRef = useRef(null);
-  const [premiumModalOpen, setPremiumModalOpen] = useState(false);
 
   // Ref-based onEnd so the audio hook always calls the latest auto-advance logic
   const onEndedRef = useRef(null);
@@ -163,7 +161,7 @@ export const AudioPlayerProvider = ({ children }) => {
     // and individually premium-flagged episodes require a subscription.
     if (pod && !premiumRef.current) {
       if (ep?.is_premium || (pod.is_exclusive && !canAccessExclusiveEpisode(ep, pod, false))) {
-        setPremiumModalOpen(true);
+        navigateRef.current(createPageUrl('Premium'));
         return 'blocked';
       }
     }
@@ -211,12 +209,12 @@ export const AudioPlayerProvider = ({ children }) => {
     if (item.podcast && !premiumRef.current) {
       if (isAudiobook(item.podcast)) {
         if (!canAccessChapter(index, false, FREE_LISTEN_CHAPTER_LIMIT)) {
-          setPremiumModalOpen(true);
+          navigateRef.current(createPageUrl('Premium'));
           return;
         }
       } else if (item.podcast.is_exclusive) {
         if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
-          setPremiumModalOpen(true);
+          navigateRef.current(createPageUrl('Premium'));
           return;
         }
       }
@@ -237,12 +235,12 @@ export const AudioPlayerProvider = ({ children }) => {
         if (item.podcast && !premiumRef.current) {
           if (isAudiobook(item.podcast)) {
             if (!canAccessChapter(idx, false, FREE_LISTEN_CHAPTER_LIMIT)) {
-              setPremiumModalOpen(true);
+              navigateRef.current(createPageUrl('Premium'));
               return;
             }
           } else if (item.podcast.is_exclusive) {
             if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
-              setPremiumModalOpen(true);
+              navigateRef.current(createPageUrl('Premium'));
               return;
             }
           }
@@ -310,12 +308,12 @@ export const AudioPlayerProvider = ({ children }) => {
         if (item.podcast && !premiumRef.current) {
           if (isAudiobook(item.podcast)) {
             if (!canAccessChapter(nextIndex, false, FREE_LISTEN_CHAPTER_LIMIT)) {
-              setPremiumModalOpen(true);
+              navigateRef.current(createPageUrl('Premium'));
               return;
             }
           } else if (item.podcast.is_exclusive) {
             if (!canAccessExclusiveEpisode(item.episode, item.podcast, false)) {
-              setPremiumModalOpen(true);
+              navigateRef.current(createPageUrl('Premium'));
               return;
             }
           }
@@ -688,17 +686,6 @@ export const AudioPlayerProvider = ({ children }) => {
         }}
       />
 
-      {/* Premium / Pricing Modal */}
-      <AnimatePresence>
-        {premiumModalOpen && (
-          <PaymentFormModal
-            open={premiumModalOpen}
-            onClose={() => setPremiumModalOpen(false)}
-            mode="trial"
-            plan="monthly"
-          />
-        )}
-      </AnimatePresence>
 
       {/* Expanded Player - shows when user expands (slide-up enter/exit) */}
       <AnimatePresence onExitComplete={handleExpandedExitComplete}>

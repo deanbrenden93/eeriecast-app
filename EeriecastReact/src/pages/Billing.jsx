@@ -109,7 +109,7 @@ export default function Billing() {
   } : null);
 
   return (
-    <div className="min-h-screen bg-[#0a0a10] text-white relative overflow-y-auto">
+    <div className="min-h-screen bg-[#0a0a10] text-white relative overflow-y-auto overflow-x-hidden">
       {/* Ambient background effects */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[50rem] h-[40rem] rounded-full blur-[200px] opacity-[0.06] bg-gradient-to-br from-red-700 via-amber-600 to-transparent pointer-events-none" />
 
@@ -252,7 +252,7 @@ export default function Billing() {
                       <RefreshCw className="w-4 h-4" />
                     </button>
                   </div>
-                ) : (
+                ) : isPremium ? (
                   <Button
                     variant="ghost"
                     onClick={() => setShowUpdateCard(true)}
@@ -261,7 +261,7 @@ export default function Billing() {
                     <CreditCard className="w-4 h-4 mr-2 opacity-50" />
                     <span className="font-semibold">Add Payment Method</span>
                   </Button>
-                )}
+                ) : null}
 
                 {isPremium ? (
                   !activeSub?.cancel_at_period_end && activeSub?.status !== 'canceled' && (
