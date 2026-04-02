@@ -289,7 +289,9 @@ const UserProvider = ({ children }) => {
       setError(null);
       try {
         await UserAPI.register(payload);
-        // Auto login after registration (if backend returns token) else attempt login
+        if (payload.date_of_birth) {
+          try { localStorage.setItem('eeriecast_user_dob', payload.date_of_birth); } catch { /* */ }
+        }
         const loginResult = await login({ email: payload.email, password: payload.password });
         return loginResult;
       } catch (err) {
@@ -317,6 +319,8 @@ const UserProvider = ({ children }) => {
         djangoClient.removeToken();
       }
     } catch { /* no-op */ }
+
+    try { localStorage.removeItem('eeriecast_user_dob'); } catch { /* */ }
 
     window.location.replace('/');
   }, []);
@@ -463,7 +467,10 @@ const UserProvider = ({ children }) => {
 
   // Derived: user's age in whole years (null if DOB unavailable)
   const userAge = useMemo(() => {
-    const dob = user?.date_of_birth;
+    let dob = user?.date_of_birth;
+    if (!dob) {
+      try { dob = localStorage.getItem('eeriecast_user_dob'); } catch { /* */ }
+    }
     if (!dob) return null;
     const birth = new Date(dob);
     if (isNaN(birth.getTime())) return null;

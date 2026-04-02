@@ -9,7 +9,7 @@ import {
 import { usePodcasts } from '@/context/PodcastContext';
 import { useUser } from '@/context/UserContext';
 import { useSettings } from '@/hooks/use-settings';
-import { isAudiobook, isMaturePodcast } from '@/lib/utils';
+import { isAudiobook, isMaturePodcast, getPodcastCategorySet } from '@/lib/utils';
 import { UserLibrary } from '@/api/entities';
 import { PaymentFormModal } from '@/pages/Premium';
 
@@ -146,12 +146,18 @@ function WelcomeStep({ isPremium, onContinue }) {
 
 WelcomeStep.propTypes = { isPremium: PropTypes.bool.isRequired, onContinue: PropTypes.func.isRequired };
 
+// Members-only frontend overrides (mirrors Podcasts.jsx / Discover.jsx)
+const MEMBERS_ONLY_OVERRIDES = new Set([10, 4]);
+function applyExclusiveOverrides(list) {
+  return list.map(p => (p && MEMBERS_ONLY_OVERRIDES.has(p.id) && !p.is_exclusive) ? { ...p, is_exclusive: true } : p);
+}
+
 // ---------------------------------------------------------------------------
 // Screen 2 — Follow Shows + Mature Toggle
 // ---------------------------------------------------------------------------
 function FollowShowsStep({ onContinue, onSkip }) {
-  const { podcasts } = usePodcasts();
-  const { canViewMature, followedPodcastIds, refreshFollowings, isAuthenticated } = useUser();
+  const { podcasts: rawPodcasts } = usePodcasts();
+  const { canViewMature, isPremium, followedPodcastIds, refreshFollowings } = useUser();
   const { settings, updateSetting } = useSettings();
 
   const [localFollowed, setLocalFollowed] = useState(new Set());
@@ -162,30 +168,55 @@ function FollowShowsStep({ onContinue, onSkip }) {
   }, [followedPodcastIds]);
 
   const shows = useMemo(() => {
-    let list = (podcasts || []).filter(p => !isAudiobook(p));
+    let list = applyExclusiveOverrides(rawPodcasts || []).filter(p => !isAudiobook(p));
     if (!settings.matureContent) {
       list = list.filter(p => !isMaturePodcast(p));
     }
+    if (!isPremium) {
+      list = list.filter(p => !p.is_exclusive);
+    }
     return list;
-  }, [podcasts, settings.matureContent]);
+  }, [rawPodcasts, settings.matureContent, isPremium]);
 
   const grouped = useMemo(() => {
-    const map = new Map();
-    for (const show of shows) {
-      const cats = show.categories || [];
-      const catName = cats[0]?.name || 'Other';
-      if (!map.has(catName)) map.set(catName, []);
-      map.get(catName).push(show);
+    const metaCategories = new Set(['members', 'members only', 'members-only', 'exclusive', 'podcast']);
+
+    function getDisplayCategory(show) {
+      const allCats = Array.from(getPodcastCategorySet(show));
+      const content = allCats.filter(c => !metaCategories.has(c) && c !== 'audiobook' && c !== 'audiobooks');
+      if (content.length) return content[0].charAt(0).toUpperCase() + content[0].slice(1);
+      return 'Shows';
     }
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [shows]);
+
+    const map = new Map();
+    if (isPremium) {
+      const exclusiveShows = shows.filter(p => p.is_exclusive);
+      const freeShows = shows.filter(p => !p.is_exclusive);
+      if (exclusiveShows.length) map.set('Members-Only', exclusiveShows);
+      for (const show of freeShows) {
+        const catName = getDisplayCategory(show);
+        if (!map.has(catName)) map.set(catName, []);
+        map.get(catName).push(show);
+      }
+    } else {
+      for (const show of shows) {
+        const catName = getDisplayCategory(show);
+        if (!map.has(catName)) map.set(catName, []);
+        map.get(catName).push(show);
+      }
+    }
+    const entries = Array.from(map.entries());
+    const membersOnly = entries.filter(([k]) => k === 'Members-Only');
+    const rest = entries.filter(([k]) => k !== 'Members-Only').sort((a, b) => a[0].localeCompare(b[0]));
+    return [...membersOnly, ...rest];
+  }, [shows, isPremium]);
 
   const handleToggleFollow = useCallback(async (showId) => {
-    if (!isAuthenticated || loadingIds.has(showId)) return;
     const numId = Number(showId);
+    if (loadingIds.has(numId)) return;
     const wasFollowing = localFollowed.has(numId);
 
-    setLoadingIds(prev => new Set(prev).add(showId));
+    setLoadingIds(prev => new Set(prev).add(numId));
     setLocalFollowed(prev => {
       const next = new Set(prev);
       wasFollowing ? next.delete(numId) : next.add(numId);
@@ -194,12 +225,13 @@ function FollowShowsStep({ onContinue, onSkip }) {
 
     try {
       if (wasFollowing) {
-        await UserLibrary.unfollowPodcast(showId);
+        await UserLibrary.unfollowPodcast(numId);
       } else {
-        await UserLibrary.followPodcast(showId);
+        await UserLibrary.followPodcast(numId);
       }
-      await refreshFollowings();
-    } catch {
+      refreshFollowings();
+    } catch (err) {
+      if (typeof console !== 'undefined') console.debug('Follow toggle failed', err);
       setLocalFollowed(prev => {
         const next = new Set(prev);
         wasFollowing ? next.add(numId) : next.delete(numId);
@@ -208,11 +240,11 @@ function FollowShowsStep({ onContinue, onSkip }) {
     } finally {
       setLoadingIds(prev => {
         const next = new Set(prev);
-        next.delete(showId);
+        next.delete(numId);
         return next;
       });
     }
-  }, [isAuthenticated, loadingIds, localFollowed, refreshFollowings]);
+  }, [loadingIds, localFollowed, refreshFollowings]);
 
   return (
     <div className="flex flex-col h-full">
@@ -268,11 +300,17 @@ function FollowShowsStep({ onContinue, onSkip }) {
             transition={{ delay: 0.15 + ci * 0.05 }}
             className="mb-5"
           >
-            <h3 className="text-xs uppercase tracking-wider text-zinc-600 font-medium mb-2.5 px-1">{category}</h3>
+            <h3 className={`text-xs uppercase tracking-wider font-medium mb-2.5 px-1 flex items-center gap-1.5 ${
+              category === 'Members-Only' ? 'text-amber-500/80' : 'text-zinc-600'
+            }`}>
+              {category === 'Members-Only' && <Crown className="w-3 h-3" />}
+              {category}
+            </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {categoryShows.map((show) => {
-                const isFollowing = localFollowed.has(Number(show.id));
-                const isLoading = loadingIds.has(show.id);
+                const numId = Number(show.id);
+                const isFollowing = localFollowed.has(numId);
+                const isLoading = loadingIds.has(numId);
                 return (
                   <button
                     key={show.id}
@@ -291,7 +329,12 @@ function FollowShowsStep({ onContinue, onSkip }) {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-zinc-200 truncate">{show.title || show.name}</p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-xs font-medium text-zinc-200 truncate">{show.title || show.name}</p>
+                        {show.is_exclusive && (
+                          <Crown className="w-2.5 h-2.5 text-amber-500/70 flex-shrink-0" />
+                        )}
+                      </div>
                       {show.episode_count != null && (
                         <p className="text-[10px] text-zinc-600 mt-0.5">{show.episode_count} episodes</p>
                       )}

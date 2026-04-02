@@ -238,11 +238,14 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
   }, [clampedPage, chapterIdx, chapter, totalPages, totalChapters, comic]);
 
   /* ─── Chapter-crossing transition ────────────────────────── */
+  const changingRef = useRef(false);
+
   const changeChapter = useCallback((newIdx, goToLastPage, direction) => {
-    if (chapterFade) return;
+    if (changingRef.current) return;
+    changingRef.current = true;
     pendingChapterRef.current = { idx: newIdx, lastPage: goToLastPage };
     setChapterFade(direction);
-  }, [chapterFade]);
+  }, []);
 
   useEffect(() => {
     if (!chapterFade || !pendingChapterRef.current) return;
@@ -258,7 +261,10 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
         setPageIndex(0);
       }
 
-      setTimeout(() => setChapterFade(null), 80);
+      setTimeout(() => {
+        setChapterFade(null);
+        changingRef.current = false;
+      }, 80);
     }, 150);
     return () => clearTimeout(t);
   }, [chapterFade]);
@@ -318,6 +324,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
 
   /* ─── Page navigation ────────────────────────────────────── */
   const nextPage = useCallback(() => {
+    if (changingRef.current) return;
     flipDirectionRef.current = "forward";
     if (pageIndex < totalPages - 1) {
       setPageIndex((p) => p + 1);
@@ -331,6 +338,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
   }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, changeChapter, onSubscribe]);
 
   const prevPage = useCallback(() => {
+    if (changingRef.current) return;
     flipDirectionRef.current = "backward";
     if (pageIndex > 0) {
       setPageIndex((p) => p - 1);

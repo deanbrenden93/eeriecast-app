@@ -12,7 +12,7 @@ import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
 import ExpandedPlayer from '@/components/podcasts/ExpandedPlayer';
 import MatureContentModal from '@/components/MatureContentModal';
-import PremiumRequiredModal from '@/components/PremiumRequiredModal';
+import { PaymentFormModal } from '@/pages/Premium';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const AudioPlayerContext = createContext();
@@ -688,11 +688,17 @@ export const AudioPlayerProvider = ({ children }) => {
         }}
       />
 
-      {/* Premium Required Modal */}
-      <PremiumRequiredModal
-        isOpen={premiumModalOpen}
-        onClose={() => setPremiumModalOpen(false)}
-      />
+      {/* Premium / Pricing Modal */}
+      <AnimatePresence>
+        {premiumModalOpen && (
+          <PaymentFormModal
+            open={premiumModalOpen}
+            onClose={() => setPremiumModalOpen(false)}
+            mode="trial"
+            plan="monthly"
+          />
+        )}
+      </AnimatePresence>
 
       {/* Expanded Player - shows when user expands (slide-up enter/exit) */}
       <AnimatePresence onExitComplete={handleExpandedExitComplete}>

@@ -92,8 +92,12 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
       setSubmitting(false);
       return;
     }
-    const success = await register(registerForm);
-    if (!success) { setLocalError('Registration failed'); setSubmitting(false); return; }
+    const result = await register(registerForm);
+    if (!result || result.success === false) {
+      setLocalError(result?.error || 'Registration failed');
+      setSubmitting(false);
+      return;
+    }
     setSubmitting(false);
     sessionStorage.setItem('eeriecast_just_registered', '1');
     if (afterLoginAction?.fn) return;
