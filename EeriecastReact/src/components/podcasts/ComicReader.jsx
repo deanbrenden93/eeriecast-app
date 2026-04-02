@@ -15,6 +15,8 @@ import {
   Music,
   Loader2,
   AlertTriangle,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FREE_READ_CHAPTER_LIMIT, canAccessChapter } from "@/lib/freeTier";
@@ -27,12 +29,6 @@ import { Podcast } from "@/api/entities";
    progress) but displays one comic page image at a time instead of
    CSS multi-column text.
    ═══════════════════════════════════════════════════════════════════ */
-
-const FIT_MODE_OPTIONS = [
-  { label: "Width", value: "width" },
-  { label: "Height", value: "height" },
-  { label: "Full", value: "contain" },
-];
 
 const DIRECTION_OPTIONS = [
   { label: "LTR", value: "ltr" },
@@ -72,11 +68,48 @@ function saveOstPreference(comicId, asked, enabled) {
   } catch { /* */ }
 }
 
+/* ── Immersive exit button — auto-hides after 3s of inactivity ──── */
+function ImmersiveExitButton({ onExit }) {
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef(null);
+
+  const resetTimer = useCallback(() => {
+    setVisible(true);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setVisible(false), 3000);
+  }, []);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => setVisible(false), 3000);
+    const events = ['pointerdown', 'pointermove', 'wheel', 'keydown'];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    return () => {
+      clearTimeout(timerRef.current);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [resetTimer]);
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onExit}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: visible ? 1 : 0, scale: visible ? 1 : 0.8 }}
+      transition={{ duration: 0.25 }}
+      style={{ pointerEvents: visible ? 'auto' : 'none' }}
+      className="fixed bottom-6 right-6 z-[10000] w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/[0.12] flex items-center justify-center text-zinc-300 hover:text-white hover:bg-black/80 shadow-xl shadow-black/40"
+      title="Exit immersive mode"
+    >
+      <Minimize className="w-5 h-5" />
+    </motion.button>
+  );
+}
+
 export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) {
   /* ─── State ──────────────────────────────────────────────── */
   const [chapterIdx, setChapterIdx] = useState(0);
   const saved = useMemo(() => loadSettings(comic?.id), [comic?.id]);
-  const [fitMode, setFitMode] = useState(saved?.fitMode ?? "contain");
+  const [immersive, setImmersive] = useState(false);
   const [readingDirection, setReadingDirection] = useState(
     saved?.readingDirection ?? comic?.readingDirection ?? "ltr"
   );
@@ -207,8 +240,8 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
 
   /* ─── Persist settings ───────────────────────────────────── */
   useEffect(() => {
-    if (comic?.id) saveSettings(comic.id, { fitMode, readingDirection });
-  }, [comic?.id, fitMode, readingDirection]);
+    if (comic?.id) saveSettings(comic.id, { readingDirection });
+  }, [comic?.id, readingDirection]);
 
   /* ─── Persist progress ───────────────────────────────────── */
   useEffect(() => {
@@ -378,15 +411,22 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
   };
 
   /* ─── Bookmark management ─────────────────────────────────── */
-  const addBookmark = useCallback(() => {
-    if (bookmarks.length >= 10) return;
-    const ch = comic?.chapters?.[chapterIdx];
-    const label = `Ch. ${ch?.number ?? chapterIdx + 1}, p. ${clampedPage + 1}`;
-    const exists = bookmarks.some((b) => b.chapter === chapterIdx && b.page === clampedPage);
-    if (exists) return;
-    const next = [...bookmarks, { chapter: chapterIdx, page: clampedPage, label }];
-    setBookmarks(next);
-    saveBookmarks(comic?.id, next);
+  const isCurrentPageBookmarked = bookmarks.some((b) => b.chapter === chapterIdx && b.page === clampedPage);
+
+  const toggleBookmark = useCallback(() => {
+    const existingIdx = bookmarks.findIndex((b) => b.chapter === chapterIdx && b.page === clampedPage);
+    if (existingIdx >= 0) {
+      const next = bookmarks.filter((_, i) => i !== existingIdx);
+      setBookmarks(next);
+      saveBookmarks(comic?.id, next);
+    } else {
+      if (bookmarks.length >= 10) return;
+      const ch = comic?.chapters?.[chapterIdx];
+      const label = `Ch. ${ch?.number ?? chapterIdx + 1}, p. ${clampedPage + 1}`;
+      const next = [...bookmarks, { chapter: chapterIdx, page: clampedPage, label }];
+      setBookmarks(next);
+      saveBookmarks(comic?.id, next);
+    }
   }, [bookmarks, chapterIdx, clampedPage, comic]);
 
   const removeBookmark = useCallback(
@@ -409,6 +449,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
         setPageIndex(bm.page);
       } else {
         const direction = bm.chapter > chapterIdx ? "forward" : "backward";
+        changingRef.current = true;
         pendingChapterRef.current = {
           idx: bm.chapter,
           lastPage: false,
@@ -425,27 +466,26 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
   const isLocked = !isPremium;
   const showLockedOverlay = !chapterAccessible;
 
-  /* ─── Overall reading progress ───────────────────────────── */
+  /* ─── Overall reading progress (per-page across entire comic) ── */
   const overallPct = useMemo(() => {
-    if (totalChapters === 0) return 0;
-    const cw = 100 / totalChapters;
-    const pp = totalPages > 1 ? clampedPage / (totalPages - 1) : 1;
-    return Math.round(chapterIdx * cw + pp * cw);
-  }, [chapterIdx, clampedPage, totalPages, totalChapters]);
+    const chapters = comic?.chapters;
+    if (!chapters?.length) return 0;
+    let pagesBefore = 0;
+    let totalBookPages = 0;
+    for (let i = 0; i < chapters.length; i++) {
+      const len = chapters[i]?.pages?.length || 0;
+      if (i < chapterIdx) pagesBefore += len;
+      totalBookPages += len;
+    }
+    if (totalBookPages === 0) return 0;
+    return Math.round(((pagesBefore + clampedPage) / (totalBookPages - 1)) * 100);
+  }, [comic?.chapters, chapterIdx, clampedPage]);
 
   // Broadcast overlay open for mini player repositioning
   useEffect(() => {
     document.documentElement.classList.add("ereader-active");
     return () => document.documentElement.classList.remove("ereader-active");
   }, []);
-
-  /* ─── Fit mode image class ──────────────────────────────── */
-  const imgFitClass =
-    fitMode === "width"
-      ? "comic-page-img comic-fit-width"
-      : fitMode === "height"
-        ? "comic-page-img comic-fit-height"
-        : "comic-page-img comic-fit-contain";
 
   if (!comic) return null;
 
@@ -464,6 +504,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[60rem] h-[40rem] rounded-full blur-[180px] opacity-[0.03] bg-gradient-to-br from-red-900 via-purple-900 to-transparent pointer-events-none" />
 
       {/* ═══════════════ TOP BAR ═══════════════════════════════ */}
+      {!immersive && (
       <div className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-3 border-b border-white/[0.04] bg-[#0a0a10]/80 backdrop-blur-md flex-shrink-0">
         <div className="flex items-center gap-2">
           <button
@@ -503,29 +544,12 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={addBookmark}
-            disabled={
-              totalPages === 0 ||
-              bookmarks.length >= 10 ||
-              bookmarks.some(
-                (b) => b.chapter === chapterIdx && b.page === clampedPage
-              )
-            }
-            title={
-              bookmarks.length >= 10
-                ? "Max 10 bookmarks"
-                : bookmarks.some(
-                      (b) =>
-                        b.chapter === chapterIdx && b.page === clampedPage
-                    )
-                  ? "Page bookmarked"
-                  : "Bookmark this page"
-            }
+            onClick={toggleBookmark}
+            disabled={totalPages === 0 || (!isCurrentPageBookmarked && bookmarks.length >= 10)}
+            title={isCurrentPageBookmarked ? "Remove bookmark" : bookmarks.length >= 10 ? "Max 10 bookmarks" : "Bookmark this page"}
             className={cn(
               "w-9 h-9 rounded-full flex items-center justify-center border transition-all",
-              bookmarks.some(
-                (b) => b.chapter === chapterIdx && b.page === clampedPage
-              )
+              isCurrentPageBookmarked
                 ? "bg-red-500/10 border-red-500/20 text-red-400"
                 : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
             )}
@@ -550,6 +574,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
           </button>
         </div>
       </div>
+      )}
 
       {/* ═══════════════ SETTINGS PANEL ════════════════════════ */}
       <AnimatePresence>
@@ -565,25 +590,21 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
           >
             <div className="mb-4">
               <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">
-                Fit Mode
+                Immersive Mode
               </label>
-              <div className="flex gap-1.5">
-                {FIT_MODE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setFitMode(opt.value)}
-                    className={cn(
-                      "flex-1 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
-                      fitMode === opt.value
-                        ? "bg-white/[0.08] border-white/[0.12] text-white"
-                        : "bg-white/[0.02] border-white/[0.04] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => { setImmersive(!immersive); setShowSettings(false); }}
+                className={cn(
+                  "w-full py-1.5 rounded-lg text-[11px] font-medium border transition-all flex items-center justify-center gap-1.5",
+                  immersive
+                    ? "bg-white/[0.08] border-white/[0.12] text-white"
+                    : "bg-white/[0.02] border-white/[0.04] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300"
+                )}
+              >
+                {immersive ? <Minimize className="w-3 h-3" /> : <Maximize className="w-3 h-3" />}
+                {immersive ? "Exit Full View" : "Full View"}
+              </button>
             </div>
             <div className={hasSoundtrack ? "mb-4" : ""}>
               <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-semibold mb-2 block">
@@ -635,7 +656,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
 
       {/* ═══════════════ OST PROMPT BAR ══════════════════════════ */}
       <AnimatePresence>
-        {showOstPrompt && (
+        {showOstPrompt && !immersive && (
           <motion.div
             key="ost-prompt"
             className="relative z-20 flex items-center justify-between gap-3 px-4 sm:px-6 py-2.5 bg-[#141418]/95 backdrop-blur-md border-b border-white/[0.04]"
@@ -751,9 +772,6 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
                       )}
                       {chLocked && (
                         <Lock className="w-3 h-3 text-zinc-700 flex-shrink-0" />
-                      )}
-                      {i === chapterIdx && (
-                        <Bookmark className="w-3.5 h-3.5 text-red-500 fill-red-500 flex-shrink-0" />
                       )}
                     </button>
                   );
@@ -924,7 +942,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
                 key={`${chapterIdx}-${clampedPage}-${retryCount}`}
                 src={pageSrc + (retryCount ? `?_r=${retryCount}` : "")}
                 alt={`Page ${clampedPage + 1}`}
-                className={imgFitClass}
+                className="comic-page-img comic-fit-contain"
                 draggable={false}
                 style={{ touchAction: "pinch-zoom" }}
                 onLoad={() => setImgStatus("loaded")}
@@ -949,6 +967,7 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
       </div>
 
       {/* ═══════════════ BOTTOM BAR ═══════════════════════════ */}
+      {!immersive && (
       <div className="relative z-10 flex-shrink-0 border-t border-white/[0.04] bg-[#0a0a10]/80 backdrop-blur-md">
         <div className="h-[2px] bg-white/[0.04] relative">
           <div
@@ -998,6 +1017,12 @@ export default function ComicReader({ comic, isPremium, onClose, onSubscribe }) 
           </button>
         </div>
       </div>
+      )}
+
+      {/* ═══════════════ IMMERSIVE FLOATING EXIT ═══════════════ */}
+      {immersive && (
+        <ImmersiveExitButton onExit={() => setImmersive(false)} />
+      )}
     </motion.div>
   );
 }

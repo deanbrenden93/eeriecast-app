@@ -541,7 +541,6 @@ export default function ExpandedPlayer({
 
   const cover = episode?.cover_image || podcast?.cover_image;
 
-  // Add favorite for the current episode (not the whole podcast)
   const handleFavoriteClick = async () => {
     const eid = episode?.id;
     if (!eid || favLoading) return;
@@ -550,8 +549,8 @@ export default function ExpandedPlayer({
       openAuth('login');
       return;
     }
-    // Free users can have up to FREE_FAVORITE_LIMIT favorites; premium is unlimited
-    if (!isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
+    const alreadyLiked = isLiked;
+    if (!alreadyLiked && !isPremium && favoriteEpisodeIds.size >= FREE_FAVORITE_LIMIT) {
       toast({
         title: "Favorite limit reached",
         description: `Free accounts can save up to ${FREE_FAVORITE_LIMIT} favorites. Upgrade to premium for unlimited.`,
@@ -561,12 +560,16 @@ export default function ExpandedPlayer({
     }
     try {
       setFavLoading(true);
-      // Optimistic like state
-      setIsLiked(true);
-      await UserLibrary.addFavorite('episode', eid);
+      setIsLiked(!alreadyLiked);
+      if (alreadyLiked) {
+        await UserLibrary.removeFavorite('episode', eid);
+      } else {
+        await UserLibrary.addFavorite('episode', eid);
+      }
       await refreshFavorites();
     } catch (err) {
-      if (typeof console !== 'undefined') console.debug('episode favorite failed', err);
+      setIsLiked(alreadyLiked);
+      if (typeof console !== 'undefined') console.debug('episode favorite toggle failed', err);
     } finally {
       setFavLoading(false);
     }
@@ -1406,18 +1409,18 @@ export default function ExpandedPlayer({
                   {/* Now Playing Section */}
                   <div>
                     <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-4">Now Playing</h3>
-                    {currentItem?.episode && (
+                    {episode && (
                       <div className="flex items-center gap-4 p-3 rounded-2xl bg-white/5 border border-white/5">
                         <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 shadow-lg">
                           <img 
-                            src={currentItem.episode?.cover_image || currentItem.podcast?.cover_image || cover} 
-                            alt={currentItem.episode?.title || episode.title} 
+                            src={episode?.cover_image || podcast?.cover_image || cover} 
+                            alt={episode?.title} 
                             className="w-full h-full object-cover" 
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-white text-base font-bold truncate mb-1">{currentItem.episode?.title || episode.title}</div>
-                          <div className="text-white/60 text-sm truncate">{currentItem.podcast?.title || podcast.title}</div>
+                          <div className="text-white text-base font-bold truncate mb-1">{episode?.title}</div>
+                          <div className="text-white/60 text-sm truncate">{podcast?.title}</div>
                         </div>
                         <div className="pr-2">
                           <div className="w-5 h-5 flex items-center justify-center">

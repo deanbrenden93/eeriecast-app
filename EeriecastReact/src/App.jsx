@@ -67,16 +67,6 @@ function App() {
     return () => window.removeEventListener('eeriecast-start-onboarding', handler);
   }, []);
 
-  // Debug shortcuts: Ctrl+Shift+1 = free onboarding, Ctrl+Shift+2 = premium onboarding
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === '!') { setOnboardingVariant('free'); }
-      if (e.ctrlKey && e.shiftKey && e.key === '@') { setOnboardingVariant('premium'); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
   const handleOnboardingComplete = useCallback(() => {
     setOnboardingVariant(null);
   }, []);

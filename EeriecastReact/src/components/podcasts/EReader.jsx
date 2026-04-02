@@ -129,6 +129,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   const [chapterFade, setChapterFade] = useState(null); // 'forward' | 'backward' | null
   const pendingChapterRef = useRef(null);
   const suppressColumnTransition = useRef(false); // kill column transition during invisible swap
+  const changingRef = useRef(false);
 
   const chapter = book?.chapters?.[chapterIdx];
   const totalChapters = book?.chapters?.length || 0;
@@ -260,10 +261,11 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   // Smoothly fades/slides the reading area out, swaps chapter while invisible,
   // then fades/slides the new content in — avoids the column-sweep flicker.
   const changeChapter = useCallback((newIdx, goToLastPage, direction) => {
-    if (chapterFade) return; // ignore while already transitioning
+    if (changingRef.current) return;
+    changingRef.current = true;
     pendingChapterRef.current = { idx: newIdx, lastPage: goToLastPage };
-    setChapterFade(direction); // triggers fade-out
-  }, [chapterFade]);
+    setChapterFade(direction);
+  }, []);
 
   useEffect(() => {
     if (!chapterFade || !pendingChapterRef.current) return;
@@ -290,13 +292,10 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
         setPageIndex(0);
       }
 
-      // Wait for React render + measurePages + pendingLastPage to fully settle,
-      // then re-enable column transitions and fade the new content in.
-      // Using a short timeout instead of rAF chains for reliability across
-      // React's async batching and measurePages' own rAF.
       setTimeout(() => {
         suppressColumnTransition.current = false;
         setChapterFade(null);
+        changingRef.current = false;
       }, 100);
     }, 150);
 
@@ -375,20 +374,20 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
 
   /* ─── Page navigation ────────────────────────────────────── */
   const nextPage = useCallback(() => {
+    if (changingRef.current) return;
     if (pageIndex < totalPages - 1) {
       setPageIndex(p => p + 1);
     } else if (chapterIdx < totalChapters - 1) {
-      // Check if the NEXT chapter is within the free limit (or user is premium)
       if (canAccessChapter(chapterIdx + 1, isPremium, FREE_READ_CHAPTER_LIMIT)) {
         changeChapter(chapterIdx + 1, false, 'forward');
       } else {
-        // Hit the paywall — trigger subscribe
         onSubscribe?.();
       }
     }
   }, [pageIndex, totalPages, chapterIdx, totalChapters, isPremium, changeChapter, onSubscribe]);
 
   const prevPage = useCallback(() => {
+    if (changingRef.current) return;
     if (pageIndex > 0) {
       setPageIndex(p => p - 1);
     } else if (chapterIdx > 0) {
@@ -422,20 +421,23 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
   };
 
   /* ─── Bookmark management ─────────────────────────────────── */
-  const addBookmark = useCallback(() => {
-    if (bookmarks.length >= 10) return;
-    const ch = book?.chapters?.[chapterIdx];
-    const label = `Ch. ${ch?.number ?? chapterIdx + 1}, p. ${pageIndex + 1}`;
-    // Store fractional progress (0–1) so bookmarks survive font/layout changes.
-    // page 0 → 0, last page → 1, even distribution in between.
-    const fraction = totalPages > 1 ? pageIndex / (totalPages - 1) : 0;
-    const newBm = { chapter: chapterIdx, page: pageIndex, fraction, label };
-    // Don't duplicate the exact same location
-    const exists = bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex);
-    if (exists) return;
-    const next = [...bookmarks, newBm];
-    setBookmarks(next);
-    saveBookmarks(book?.id, next);
+  const isCurrentPageBookmarked = bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex);
+
+  const toggleBookmark = useCallback(() => {
+    const existingIdx = bookmarks.findIndex(b => b.chapter === chapterIdx && b.page === pageIndex);
+    if (existingIdx >= 0) {
+      const next = bookmarks.filter((_, i) => i !== existingIdx);
+      setBookmarks(next);
+      saveBookmarks(book?.id, next);
+    } else {
+      if (bookmarks.length >= 10) return;
+      const ch = book?.chapters?.[chapterIdx];
+      const label = `Ch. ${ch?.number ?? chapterIdx + 1}, p. ${pageIndex + 1}`;
+      const fraction = totalPages > 1 ? pageIndex / (totalPages - 1) : 0;
+      const next = [...bookmarks, { chapter: chapterIdx, page: pageIndex, fraction, label }];
+      setBookmarks(next);
+      saveBookmarks(book?.id, next);
+    }
   }, [bookmarks, chapterIdx, pageIndex, totalPages, book]);
 
   const removeBookmark = useCallback((idx) => {
@@ -462,6 +464,7 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
       // Different chapter — pass fraction so the correct page is computed
       // after the new chapter's layout is measured.
       const direction = bm.chapter > chapterIdx ? 'forward' : 'backward';
+      changingRef.current = true;
       pendingChapterRef.current = {
         idx: bm.chapter,
         lastPage: false,
@@ -529,11 +532,11 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
             <p className="text-[10px] text-zinc-600 font-medium tracking-wide uppercase">{book.author}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={addBookmark}
-              disabled={bookmarks.length >= 10 || bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)}
-              title={bookmarks.length >= 10 ? "Max 10 bookmarks" : bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex) ? "Page bookmarked" : "Bookmark this page"}
+            <button type="button" onClick={toggleBookmark}
+              disabled={!isCurrentPageBookmarked && bookmarks.length >= 10}
+              title={isCurrentPageBookmarked ? "Remove bookmark" : bookmarks.length >= 10 ? "Max 10 bookmarks" : "Bookmark this page"}
               className={cn("w-9 h-9 rounded-full flex items-center justify-center border transition-all",
-                bookmarks.some(b => b.chapter === chapterIdx && b.page === pageIndex)
+                isCurrentPageBookmarked
                   ? "bg-red-500/10 border-red-500/20 text-red-400"
                   : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed")}>
               <BookmarkPlus className="w-4 h-4" />
@@ -632,7 +635,6 @@ export default function EReader({ book, isPremium, onClose, onSubscribe }) {
                         <span className="text-[11px] font-bold text-zinc-600 w-5 text-right tabular-nums">{ch.number}</span>
                         <span className="text-sm font-medium flex-1 truncate italic">{ch.title}</span>
                         {chLocked && <Lock className="w-3 h-3 text-zinc-700 flex-shrink-0" />}
-                        {i === chapterIdx && <Bookmark className="w-3.5 h-3.5 text-red-500 fill-red-500 flex-shrink-0" />}
                       </button>
                     );
                   })}
