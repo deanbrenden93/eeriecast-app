@@ -11,6 +11,12 @@ class User(AbstractUser):
     minutes_listened = models.IntegerField(default=0)
     subscription_expires = models.DateTimeField(blank=True, null=True)
 
+    # Date of birth for age verification
+    date_of_birth = models.DateField(blank=True, null=True)
+
+    # Mature content preference (only effective if user is 18+)
+    allow_mature_content = models.BooleanField(default=False)
+
     # Email verification (not enforced yet)
     email_verified = models.BooleanField(default=False)
     email_verified_at = models.DateTimeField(blank=True, null=True)

@@ -289,20 +289,17 @@ const UserProvider = ({ children }) => {
       setError(null);
       try {
         await UserAPI.register(payload);
-        if (payload.date_of_birth) {
-          try { localStorage.setItem('eeriecast_user_dob', payload.date_of_birth); } catch { /* */ }
-        }
         const loginResult = await login({ email: payload.email, password: payload.password });
         return loginResult;
       } catch (err) {
         const errorData = err?.data || {};
         const msg = errorData.message || err.message || "Registration failed";
         setError(msg);
-        return { 
-          success: false, 
-          error: msg, 
+        return {
+          success: false,
+          error: msg,
           code: errorData.error,
-          data: errorData 
+          data: errorData
         };
       }
     },
@@ -467,10 +464,7 @@ const UserProvider = ({ children }) => {
 
   // Derived: user's age in whole years (null if DOB unavailable)
   const userAge = useMemo(() => {
-    let dob = user?.date_of_birth;
-    if (!dob) {
-      try { dob = localStorage.getItem('eeriecast_user_dob'); } catch { /* */ }
-    }
+    const dob = user?.date_of_birth;
     if (!dob) return null;
     const birth = new Date(dob);
     if (isNaN(birth.getTime())) return null;
@@ -481,11 +475,12 @@ const UserProvider = ({ children }) => {
     return age;
   }, [user]);
 
-  // Only authenticated users whose DOB confirms 18+ can view mature content.
-  // Everyone else (not logged in, no DOB, under 18) sees mature shows hidden.
+  // Only authenticated users whose DOB confirms 18+ AND have enabled mature content can view it.
+  // Everyone else (not logged in, no DOB, under 18, or opted out) sees mature shows hidden.
   const canViewMature = useMemo(() => {
     if (!user) return false;
-    return userAge !== null && userAge >= 18;
+    const isAdult = userAge !== null && userAge >= 18;
+    return isAdult && user.allow_mature_content === true;
   }, [user, userAge]);
 
   // --- Favorite management helpers (episodes & podcasts) ---

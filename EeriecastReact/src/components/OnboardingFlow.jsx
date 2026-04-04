@@ -157,8 +157,7 @@ function applyExclusiveOverrides(list) {
 // ---------------------------------------------------------------------------
 function FollowShowsStep({ onContinue, onSkip }) {
   const { podcasts: rawPodcasts } = usePodcasts();
-  const { canViewMature, isPremium, followedPodcastIds, refreshFollowings } = useUser();
-  const { settings, updateSetting } = useSettings();
+  const { user, userAge, canViewMature, isPremium, followedPodcastIds, refreshFollowings, refreshUser } = useUser();
 
   const [localFollowed, setLocalFollowed] = useState(new Set());
   const [loadingIds, setLoadingIds] = useState(new Set());
@@ -169,14 +168,14 @@ function FollowShowsStep({ onContinue, onSkip }) {
 
   const shows = useMemo(() => {
     let list = applyExclusiveOverrides(rawPodcasts || []).filter(p => !isAudiobook(p));
-    if (!settings.matureContent) {
+    if (!canViewMature) {
       list = list.filter(p => !isMaturePodcast(p));
     }
     if (!isPremium) {
       list = list.filter(p => !p.is_exclusive);
     }
     return list;
-  }, [rawPodcasts, settings.matureContent, isPremium]);
+  }, [rawPodcasts, canViewMature, isPremium]);
 
   const grouped = useMemo(() => {
     const metaCategories = new Set(['members', 'members only', 'members-only', 'exclusive', 'podcast']);
@@ -265,25 +264,33 @@ function FollowShowsStep({ onContinue, onSkip }) {
           Discover something new or follow shows you love
         </motion.p>
 
-        {canViewMature && (
+        {userAge !== null && userAge >= 18 && (
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
             type="button"
-            onClick={() => updateSetting('matureContent', !settings.matureContent)}
+            onClick={async () => {
+              try {
+                const { User: UserAPI } = await import('@/api/entities');
+                await UserAPI.updateMe({ allow_mature_content: !user?.allow_mature_content });
+                await refreshUser();
+              } catch (err) {
+                console.error('Failed to update mature content:', err);
+              }
+            }}
             className="mt-4 mx-auto flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 transition-colors hover:bg-white/[0.04]"
           >
             <ShieldAlert className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
             <span className="text-xs text-zinc-400">Mature Content</span>
             <div
               className={`relative w-8 h-[16px] rounded-full transition-all duration-300 flex-shrink-0 ${
-                settings.matureContent ? 'bg-red-600' : 'bg-zinc-700'
+                user?.allow_mature_content ? 'bg-red-600' : 'bg-zinc-700'
               }`}
             >
               <div
                 className={`absolute top-[2px] w-3 h-3 rounded-full bg-white transition-all duration-300 ${
-                  settings.matureContent ? 'left-[18px]' : 'left-[2px]'
+                  user?.allow_mature_content ? 'left-[18px]' : 'left-[2px]'
                 }`}
               />
             </div>

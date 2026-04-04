@@ -1,18 +1,22 @@
 import PropTypes from 'prop-types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ShieldAlert, X } from 'lucide-react';
-import { useSettings } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext';
+import { User as UserAPI } from '@/api/entities';
 
 export default function MatureContentModal({ isOpen, onClose, onContinue }) {
-  const { settings, updateSetting } = useSettings();
-  const { canViewMature } = useUser();
-  const enabled = !!settings.matureContent;
-  const canToggle = canViewMature;
+  const { user, userAge, refreshUser } = useUser();
+  const enabled = !!user?.allow_mature_content;
+  const canToggle = userAge !== null && userAge >= 18;
 
-  const handleToggle = () => {
-    if (!canToggle) return;
-    updateSetting('matureContent', !enabled);
+  const handleToggle = async () => {
+    if (!canToggle || !user) return;
+    try {
+      await UserAPI.updateMe({ allow_mature_content: !enabled });
+      await refreshUser();
+    } catch (err) {
+      console.error('Failed to update mature content preference:', err);
+    }
   };
 
   return (

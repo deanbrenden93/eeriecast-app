@@ -10,7 +10,8 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
                  'avatar', 'bio', 'is_premium', 'stripe_customer_id', 'minutes_listened',
-                 'subscription_expires', 'created_at', 'shop_discount_code']
+                 'subscription_expires', 'date_of_birth', 'allow_mature_content',
+                 'created_at', 'shop_discount_code']
         read_only_fields = ['id', 'created_at']
 
     def get_shop_discount_code(self, obj):
@@ -42,7 +43,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'first_name', 'last_name']
+        fields = ['username', 'email', 'password', 'first_name', 'last_name', 'date_of_birth']
 
     def validate_email(self, value):
         email = value.lower().strip()

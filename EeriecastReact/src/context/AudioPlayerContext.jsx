@@ -5,7 +5,6 @@ import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { useMediaSession } from '@/hooks/use-media-session';
 import { getEpisodeAudioUrl, isAudiobook, hasCategory } from '@/lib/utils';
-import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
 import { canAccessChapter, canAccessExclusiveEpisode, FREE_LISTEN_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { createPageUrl } from '@/utils';
@@ -131,7 +130,7 @@ export const AudioPlayerProvider = ({ children }) => {
   // user action (pressing play).
 
   // ─── User Context (for real-time progress tracking + smart resume) ─
-  const { updateEpisodeProgress, episodeProgressMap, isPremium } = useUser() || {};
+  const { updateEpisodeProgress, episodeProgressMap, isPremium, canViewMature } = useUser() || {};
 
   // ─── Free-tier chapter gating ──────────────────────────────────────
   const premiumRef = useRef(isPremium);
@@ -151,7 +150,7 @@ export const AudioPlayerProvider = ({ children }) => {
 
     // Mature-content gate
     const pod = rest.podcast;
-    if (pod && hasCategory(pod, 'mature') && !getSetting('matureContent')) {
+    if (pod && hasCategory(pod, 'mature') && !canViewMature) {
       matureBlockedArgsRef.current = args;
       setMatureModalOpen(true);
       return 'blocked';
@@ -197,7 +196,7 @@ export const AudioPlayerProvider = ({ children }) => {
       result = await loadAndPlay({ ...rest, episode: ep, resume });
     }
     return result;
-  }, [loadAndPlay]);
+  }, [loadAndPlay, canViewMature]);
 
   // Queue helpers
   const playQueueIndex = useCallback(async (index) => {
@@ -413,20 +412,16 @@ export const AudioPlayerProvider = ({ children }) => {
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
   };
 
-  // Auto-close the player when matureContent is toggled OFF and the
+  // Auto-close the player when mature content is disabled and the
   // currently playing podcast is mature.
   useEffect(() => {
-    const handler = (e) => {
-      if (e?.detail?.key === 'matureContent' && e?.detail?.value === false) {
-        const currentPod = audioPlayer.podcast;
-        if (currentPod && hasCategory(currentPod, 'mature')) {
-          handleClosePlayer();
-        }
+    if (!canViewMature) {
+      const currentPod = audioPlayer.podcast;
+      if (currentPod && hasCategory(currentPod, 'mature')) {
+        handleClosePlayer();
       }
-    };
-    window.addEventListener('eeriecast-settings-change', handler);
-    return () => window.removeEventListener('eeriecast-settings-change', handler);
-  });
+    }
+  }, [canViewMature, audioPlayer.podcast]);
 
   const handleExpandPlayer = () => {
     setShowExpandedPlayer(true);

@@ -108,9 +108,12 @@ const PlaybackSpeedControl = ({ speed, setSpeed }) => {
 export default function Settings() {
   const { settings, updateSetting } = useSettings();
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
-  const { user, setUser, isAuthenticated, isPremium, canViewMature } = useUser();
+  const { user, setUser, isAuthenticated, isPremium, userAge, refreshUser } = useUser();
   const [togglingPremium, setTogglingPremium] = useState(false);
   const location = useLocation();
+
+  // User can see the toggle if they are 18+
+  const canShowMatureToggle = userAge !== null && userAge >= 18;
 
   useEffect(() => {
     if (location.hash) {
@@ -258,15 +261,21 @@ export default function Settings() {
             </Button>
           </div>
           {/* Only visible for authenticated users with verified 18+ age */}
-          {/* TODO (backend): persist via User.updateMe({ preferences: { mature_content: val } }) */}
-          {canViewMature && (
+          {canShowMatureToggle && (
             <div id="mature-content">
               <SettingsToggle
                 icon={ShieldAlert}
                 label="Mature Content"
                 description="Enable playback of shows marked as Mature (18+ only)"
-                checked={settings.matureContent}
-                onCheckedChange={val => updateSetting('matureContent', val)}
+                checked={!!user?.allow_mature_content}
+                onCheckedChange={async (val) => {
+                  try {
+                    await UserAPI.updateMe({ allow_mature_content: val });
+                    await refreshUser();
+                  } catch (err) {
+                    console.error('Failed to update mature content setting:', err);
+                  }
+                }}
               />
             </div>
           )}

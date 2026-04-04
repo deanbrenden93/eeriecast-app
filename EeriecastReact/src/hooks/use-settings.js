@@ -8,7 +8,6 @@ const DEFAULTS = {
   streamingQuality: '320kbps',
   downloadQuality: '320kbps',
   newEpisodeNotifications: true,
-  matureContent: false,
 };
 
 /** Read all settings from localStorage (plain function, no React needed) */
