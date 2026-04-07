@@ -7,6 +7,7 @@ class User(AbstractUser):
     bio = models.TextField(blank=True)
     is_premium = models.BooleanField(default=False)
     is_imported_from_memberful = models.BooleanField(default=False)
+    memberful_plan_type = models.CharField(max_length=20, blank=True, null=True) # "monthly" or "yearly"
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     minutes_listened = models.IntegerField(default=0)
     subscription_expires = models.DateTimeField(blank=True, null=True)
@@ -16,6 +17,9 @@ class User(AbstractUser):
 
     # Mature content preference (only effective if user is 18+)
     allow_mature_content = models.BooleanField(default=False)
+
+    # Onboarding completion flag
+    onboarding_completed = models.BooleanField(default=False)
 
     # Email verification (not enforced yet)
     email_verified = models.BooleanField(default=False)

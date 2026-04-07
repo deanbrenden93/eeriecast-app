@@ -625,18 +625,90 @@ function CelebrationStep({ onComplete }) {
 CelebrationStep.propTypes = { onComplete: PropTypes.func.isRequired };
 
 // ---------------------------------------------------------------------------
+// Screen: Memberful Welcome (Relaunch Plan)
+// ---------------------------------------------------------------------------
+function MemberfulWelcomeStep({ planType, onContinue }) {
+  const duration = planType === 'yearly' ? 'a year' : '60 days';
+  
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+      <motion.div
+        initial={{ scale: 0, rotate: -20 }}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ type: 'spring', damping: 14, stiffness: 180, delay: 0.1 }}
+        className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center mb-8"
+      >
+        <Heart className="w-10 h-10 text-amber-400" />
+      </motion.div>
+
+      <motion.h1
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="text-2xl sm:text-3xl font-bold text-white mb-4"
+      >
+        Thank you for being a member!
+      </motion.h1>
+      
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="text-sm text-zinc-400 mb-10 max-w-sm space-y-4 leading-relaxed"
+      >
+        <p>
+          Thank you so much for being a member and switching to our new platform! 
+          As a thank you, we are giving you <strong>{duration}</strong> free.
+        </p>
+        <p>
+          If you like the new platform, you will need to sign up for a new membership - 
+          You will no longer be automatically charged for the old membership site.
+        </p>
+        <p>
+          If you sign up for a membership at the end of your free period, 
+          you will begin to be charged then based on your chosen plan. Enjoy!
+        </p>
+      </motion.div>
+
+      <motion.button
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        onClick={onContinue}
+        className="group relative flex items-center gap-2.5 bg-white text-black font-bold px-8 py-3.5 rounded-xl transition-all duration-300 hover:bg-zinc-200"
+      >
+        Continue to Setup
+        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+      </motion.button>
+    </div>
+  );
+}
+
+MemberfulWelcomeStep.propTypes = {
+  planType: PropTypes.string,
+  onContinue: PropTypes.func.isRequired,
+};
+
+// ---------------------------------------------------------------------------
 // Main OnboardingFlow
 // ---------------------------------------------------------------------------
 export default function OnboardingFlow({ variant, onComplete }) {
+  const { user } = useUser();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
-  const isPremium = variant === 'premium';
-  const totalSteps = 3;
+  
+  const isImported = user?.is_imported_from_memberful;
+  const isPremium = variant === 'premium' || (isImported && user?.is_premium);
+  
+  // If imported, we add the MemberfulWelcomeStep as the first step (step -1 or shift others)
+  // Let's just adjust the step logic.
+  const hasMemberfulStep = isImported;
+  const totalSteps = 3 + (hasMemberfulStep ? 1 : 0);
 
   const goForward = useCallback(() => {
     setDirection(1);
     setStep((s) => Math.min(s + 1, totalSteps - 1));
-  }, []);
+  }, [totalSteps]);
 
   const handleComplete = useCallback(() => {
     markOnboardingDone();
@@ -667,7 +739,25 @@ export default function OnboardingFlow({ variant, onComplete }) {
 
       <div className="flex-1 relative overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
-          {step === 0 && (
+          {hasMemberfulStep && step === 0 && (
+            <motion.div
+              key="memberful-welcome"
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+              className="absolute inset-0"
+            >
+              <MemberfulWelcomeStep 
+                planType={user?.memberful_plan_type} 
+                onContinue={goForward} 
+              />
+            </motion.div>
+          )}
+          
+          {step === (hasMemberfulStep ? 1 : 0) && (
             <motion.div
               key="welcome"
               custom={direction}
@@ -681,7 +771,7 @@ export default function OnboardingFlow({ variant, onComplete }) {
               <WelcomeStep isPremium={isPremium} onContinue={goForward} />
             </motion.div>
           )}
-          {step === 1 && (
+          {step === (hasMemberfulStep ? 2 : 1) && (
             <motion.div
               key="follow"
               custom={direction}
@@ -695,7 +785,7 @@ export default function OnboardingFlow({ variant, onComplete }) {
               <FollowShowsStep onContinue={goForward} onSkip={goForward} />
             </motion.div>
           )}
-          {step === 2 && (
+          {step === (hasMemberfulStep ? 3 : 2) && (
             <motion.div
               key="final"
               custom={direction}

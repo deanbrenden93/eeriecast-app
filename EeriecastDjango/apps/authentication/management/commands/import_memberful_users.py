@@ -1,9 +1,9 @@
 import csv
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
-from django.utils.timezone import make_aware
+from django.utils.timezone import make_aware, now
 from django.db import transaction
 
 User = get_user_model()
@@ -50,6 +50,7 @@ class Command(BaseCommand):
                             last_name = parts[1]
 
                     stripe_customer_id = row.get('Stripe Customer ID', '').strip()
+                    plan_name = row.get('Plan', '').strip().lower()
                     active = row.get('Active', '').strip().lower() == 'yes'
                     expiration_date_str = row.get('Expiration date', '').strip()
                     created_at_str = row.get('Created at', '').strip()
@@ -96,12 +97,18 @@ class Command(BaseCommand):
                         if last_name: user.last_name = last_name
                         if stripe_customer_id: user.stripe_customer_id = stripe_customer_id
                         
-                        # Only override is_premium if it's currently False or the CSV says Yes
+                        # Update is_premium and calculate expiration based on plan
                         if active:
                             user.is_premium = True
-                        
-                        if subscription_expires:
-                            user.subscription_expires = subscription_expires
+                            
+                            # Determine plan type and set expiration
+                            if 'yearly' in plan_name or 'annual' in plan_name:
+                                user.memberful_plan_type = 'yearly'
+                                user.subscription_expires = now() + timedelta(days=365)
+                            else:
+                                # Default to monthly if not explicitly yearly
+                                user.memberful_plan_type = 'monthly'
+                                user.subscription_expires = now() + timedelta(days=60)
                         
                         if created and date_joined:
                             user.date_joined = date_joined

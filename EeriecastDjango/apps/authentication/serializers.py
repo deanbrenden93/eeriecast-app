@@ -9,10 +9,11 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
-                 'avatar', 'bio', 'is_premium', 'stripe_customer_id', 'minutes_listened',
+                 'avatar', 'bio', 'is_premium', 'is_imported_from_memberful', 'memberful_plan_type',
+                 'stripe_customer_id', 'minutes_listened',
                  'subscription_expires', 'date_of_birth', 'allow_mature_content',
-                 'created_at', 'shop_discount_code']
-        read_only_fields = ['id', 'created_at']
+                 'onboarding_completed', 'date_joined', 'created_at', 'shop_discount_code']
+        read_only_fields = ['id', 'date_joined', 'created_at', 'is_imported_from_memberful', 'memberful_plan_type']
 
     def get_shop_discount_code(self, obj):
         request = self.context.get('request')

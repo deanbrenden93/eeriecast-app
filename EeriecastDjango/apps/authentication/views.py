@@ -494,4 +494,4 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({'current_password': ['Current password is incorrect.']}, status=400)
         request.user.set_password(new_password)
         request.user.save()
-        return Response(status=200)
+        return Response({'status': 'success', 'detail': 'Password changed successfully'}, status=200)

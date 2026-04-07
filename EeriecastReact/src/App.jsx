@@ -55,6 +55,14 @@ function App() {
 
   // Onboarding flow — triggered via custom event after registration or premium purchase
   const [onboardingVariant, setOnboardingVariant] = useState(null);
+  const { user, isAuthenticated, loading: userLoading } = useUser();
+
+  useEffect(() => {
+    // Check if imported user needs onboarding
+    if (isAuthenticated && user?.is_imported_from_memberful && !user?.onboarding_completed && !isOnboardingDone()) {
+      setOnboardingVariant(user.is_premium ? 'premium' : 'free');
+    }
+  }, [isAuthenticated, user, userLoading]);
 
   useEffect(() => {
     const handler = (e) => {
