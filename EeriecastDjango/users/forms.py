@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.contrib.postgres.forms import SimpleArrayField
+from django.utils.safestring import mark_safe
 
 from users.models import CustomUser
 from django.contrib.auth.forms import (
@@ -15,6 +16,13 @@ except Exception:  # fallback if unfold widgets are unavailable at runtime
 
 
 class CustomUserChangeForm(UserChangeForm):
+    password = ReadOnlyPasswordHashField(
+        label="Password",
+        help_text=mark_safe(
+            'Raw passwords are not stored, so there is no way to see this user\'s password, '
+            'but you can change the password using <a href="../password/">this form</a>.'
+        ),
+    )
 
     class Meta:
         model = CustomUser

@@ -29,6 +29,10 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
+  // Imported user welcome state
+  const [showImportedWelcome, setShowImportedWelcome] = useState(false);
+  const [importedUserEmail, setImportedUserEmail] = useState('');
+
   const FEATURES = [
     'Listening History Sync',
     'Follow Your Favorite Shows',
@@ -50,6 +54,8 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setShowForgotPassword(false);
     setForgotEmail('');
     setForgotSubmitted(false);
+    setShowImportedWelcome(false);
+    setImportedUserEmail('');
     setSuccessState(null);
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
   }, [defaultTab, isOpen]);
@@ -64,13 +70,10 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
       toast({ title: 'Welcome back!', description: 'You\'re now signed in.', variant: 'success' });
       successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); window.location.reload(); }, 1500);
     } else {
-      if (result.code === 'imported_user') {
-        setLocalError(result.error);
-        // Switch to register tab and pre-fill email
-        setTimeout(() => {
-          setTab('register');
-          setRegisterForm(prev => ({ ...prev, email: loginForm.email }));
-        }, 2000);
+      if (result.code === 'imported_user_welcome') {
+        // Show welcome message for imported users
+        setImportedUserEmail(result.email || loginForm.email);
+        setShowImportedWelcome(true);
       } else {
         setLocalError(result.error || 'Invalid credentials');
       }
@@ -94,6 +97,13 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     }
     const result = await register(registerForm);
     if (!result || result.success === false) {
+      // Check if this is an imported user trying to register
+      if (result?.code === 'imported_user_welcome') {
+        setImportedUserEmail(result.email || registerForm.email);
+        setShowImportedWelcome(true);
+        setSubmitting(false);
+        return;
+      }
       setLocalError(result?.error || 'Registration failed');
       setSubmitting(false);
       return;
@@ -117,7 +127,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                 alt="EERIECAST"
                 className="h-8 sm:h-10 md:h-12 mb-2 sm:mb-3 invert opacity-90"
               />
-              {!successState && (
+              {!successState && !showImportedWelcome && (
                 <div className="text-center space-y-1">
                   {tab === 'login' ? (
                     <>
@@ -149,12 +159,48 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
               </div>
             ) : (
             <Tabs value={tab} onValueChange={setTab} className="w-full">
-              <TabsList className="grid grid-cols-2 w-full mb-4 sm:mb-6 bg-[#2a2d36] text-gray-300">
-                <TabsTrigger value="login" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Login</TabsTrigger>
-                <TabsTrigger value="register" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Register</TabsTrigger>
-              </TabsList>
+              {!showImportedWelcome && (
+                <TabsList className="grid grid-cols-2 w-full mb-4 sm:mb-6 bg-[#2a2d36] text-gray-300">
+                  <TabsTrigger value="login" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Login</TabsTrigger>
+                  <TabsTrigger value="register" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Register</TabsTrigger>
+                </TabsList>
+              )}
               <TabsContent value="login">
-                {showForgotPassword ? (
+                {showImportedWelcome ? (
+                  /* Imported user welcome screen */
+                  <div className="flex flex-col items-center py-6 text-center animate-in fade-in duration-300">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600/20 to-red-500/10 flex items-center justify-center mb-4 ring-2 ring-red-600/30">
+                      <CheckCircle className="w-8 h-8 text-red-500" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                      Welcome to the New EERIECAST!
+                    </h3>
+                    <p className="text-sm text-gray-400 mb-2 max-w-[320px]">
+                      We found your account from Memberful. Your premium access is still active!
+                    </p>
+                    <p className="text-sm text-gray-300 mb-6 max-w-[320px]">
+                      We&apos;ve sent an email to <span className="font-semibold text-white">{importedUserEmail}</span> with a link to set up your password.
+                    </p>
+                    <div className="w-full max-w-[320px] bg-[#1b1d23] border border-gray-700 rounded-lg p-4 mb-6">
+                      <div className="flex items-start gap-3 text-left">
+                        <Mail className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-semibold text-gray-300 mb-1">Check your inbox</p>
+                          <p className="text-xs text-gray-400 leading-relaxed">
+                            Click the link in the email to set your password and start enjoying the new platform.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setShowImportedWelcome(false); setImportedUserEmail(''); onClose(); }}
+                      className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1.5 transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : showForgotPassword ? (
                   <div className="animate-in fade-in duration-300">
                     {forgotSubmitted ? (
                       /* Success state */

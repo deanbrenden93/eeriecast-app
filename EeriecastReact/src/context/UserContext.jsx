@@ -273,11 +273,12 @@ const UserProvider = ({ children }) => {
         const errorData = err?.data || {};
         const msg = errorData.message || err.message || "Login failed";
         setError(msg);
-        return { 
-          success: false, 
-          error: msg, 
+        return {
+          success: false,
+          error: msg,
           code: errorData.error,
-          data: errorData 
+          email: errorData.email || credentials.email,
+          data: errorData
         };
       }
     },
@@ -299,6 +300,7 @@ const UserProvider = ({ children }) => {
           success: false,
           error: msg,
           code: errorData.error,
+          email: errorData.email || payload.email,
           data: errorData
         };
       }
@@ -460,6 +462,23 @@ const UserProvider = ({ children }) => {
     const exp = u.subscription_expires ? new Date(u.subscription_expires) : null;
     const notExpired = !exp || exp.getTime() > Date.now();
     return flag && notExpired;
+  }, [user]);
+
+  // Legacy trial information
+  const isOnLegacyTrial = useMemo(() => {
+    return !!user?.is_on_legacy_trial;
+  }, [user]);
+
+  const legacyTrialEnds = useMemo(() => {
+    return user?.free_trial_ends || null;
+  }, [user]);
+
+  const legacyTrialDaysRemaining = useMemo(() => {
+    return user?.legacy_trial_days_remaining || 0;
+  }, [user]);
+
+  const legacyPlanType = useMemo(() => {
+    return user?.memberful_plan_type || null;
   }, [user]);
 
   // Derived: user's age in whole years (null if DOB unavailable)
@@ -639,6 +658,7 @@ const UserProvider = ({ children }) => {
         loading,
         error,
         fetchUser,
+        refreshUser: fetchUser,
         login,
         register,
         logout,
@@ -646,6 +666,11 @@ const UserProvider = ({ children }) => {
         isPremium,
         userAge,
         canViewMature,
+        // legacy trial
+        isOnLegacyTrial,
+        legacyTrialEnds,
+        legacyTrialDaysRemaining,
+        legacyPlanType,
         // favorites
         favoriteEpisodeIds,
         favoritePodcastIds,

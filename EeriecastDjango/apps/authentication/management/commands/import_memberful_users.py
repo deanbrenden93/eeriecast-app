@@ -96,19 +96,28 @@ class Command(BaseCommand):
                         if first_name: user.first_name = first_name
                         if last_name: user.last_name = last_name
                         if stripe_customer_id: user.stripe_customer_id = stripe_customer_id
-                        
+
                         # Update is_premium and calculate expiration based on plan
                         if active:
                             user.is_premium = True
-                            
-                            # Determine plan type and set expiration
+
+                            # Set up legacy free trial for migrated users
+                            user.is_legacy_free_trial = True
+
+                            # Determine plan type and set trial expiration
                             if 'yearly' in plan_name or 'annual' in plan_name:
                                 user.memberful_plan_type = 'yearly'
-                                user.subscription_expires = now() + timedelta(days=365)
+                                # Annual members get 1 full year free
+                                trial_end = now() + timedelta(days=365)
+                                user.free_trial_ends = trial_end
+                                user.subscription_expires = trial_end
                             else:
                                 # Default to monthly if not explicitly yearly
                                 user.memberful_plan_type = 'monthly'
-                                user.subscription_expires = now() + timedelta(days=60)
+                                # Monthly members get 60 days free (Updated from 30)
+                                trial_end = now() + timedelta(days=60)
+                                user.free_trial_ends = trial_end
+                                user.subscription_expires = trial_end
                         
                         if created and date_joined:
                             user.date_joined = date_joined

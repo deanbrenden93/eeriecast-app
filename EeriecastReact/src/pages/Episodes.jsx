@@ -537,7 +537,7 @@ export default function Episodes() {
                       boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
                     }}
                     onClick={() => {
-                      // TODO: restore auth gate before launch: if (!isAuthenticated) { openAuth('login'); return; }
+                      if (!isAuthenticated) { openAuth('login'); return; }
                       setShowReader(true);
                     }}
                   >

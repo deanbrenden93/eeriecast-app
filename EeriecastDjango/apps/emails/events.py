@@ -15,6 +15,7 @@ class EmailEventTypes:
     ACCOUNT_CREATED_VERIFY = "ACCOUNT_CREATED_VERIFY"
     ACCOUNT_VERIFIED = "ACCOUNT_VERIFIED"
     PASSWORD_RESET_LINK = "PASSWORD_RESET_LINK"
+    IMPORTED_USER_WELCOME = "IMPORTED_USER_WELCOME"
     EMAIL_CHANGED_OLD = "EMAIL_CHANGED_OLD"
     EMAIL_CHANGED_NEW = "EMAIL_CHANGED_NEW"
     ACCOUNT_DELETED_CONFIRMATION = "ACCOUNT_DELETED_CONFIRMATION"
@@ -71,6 +72,20 @@ def send_password_reset_link(*, user_id: int | None, to_email: str, reset_url: s
         external_id=f"pwdreset:{uuid.uuid4()}",
         subject="Reset your Eeriecast password",
         template_name="emails/password_reset.html",
+        context={
+            "reset_url": reset_url,
+        },
+        user_id=user_id,
+    )
+
+
+def send_imported_user_welcome(*, user_id: int, to_email: str, reset_url: str):
+    enqueue_event_email(
+        event_type=EmailEventTypes.IMPORTED_USER_WELCOME,
+        to_email=to_email,
+        external_id=f"user:{user_id}:imported_welcome",
+        subject="Welcome to the new EERIECAST!",
+        template_name="emails/imported_user_welcome.html",
         context={
             "reset_url": reset_url,
         },

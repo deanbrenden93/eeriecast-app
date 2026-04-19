@@ -8,6 +8,7 @@ import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
 import UserMenu from "../components/layout/UserMenu";
 import AuthModal from '@/components/auth/AuthModal.jsx';
+import LegacyTrialBanner from '@/components/auth/LegacyTrialBanner.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 import { cn } from "@/lib/utils";
 import { FeatureGate } from '@/lib/featureFlags';
@@ -81,7 +82,15 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
   const notifRef = useRef(null);
-  const { isAuthenticated, isPremium, unreadNotificationCount } = useUser();
+  const {
+    isAuthenticated,
+    isPremium,
+    unreadNotificationCount,
+    isOnLegacyTrial,
+    legacyTrialEnds,
+    legacyTrialDaysRemaining,
+    legacyPlanType
+  } = useUser();
   const { cartCount } = useCart();
   const prevAuthRef = useRef(isAuthenticated);
 
@@ -476,6 +485,16 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         "relative w-full pt-16 pb-16 max-[1000px]:pb-20",
         hasPlayer && "pb-32 max-[1000px]:pb-48"
       )}>
+        {/* Legacy Trial Banner */}
+        {isOnLegacyTrial && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+            <LegacyTrialBanner
+              daysRemaining={legacyTrialDaysRemaining}
+              trialEnds={legacyTrialEnds}
+              planType={legacyPlanType}
+            />
+          </div>
+        )}
         {children}
       </main>
 

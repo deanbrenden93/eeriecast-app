@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { useMediaSession } from '@/hooks/use-media-session';
 import { getEpisodeAudioUrl, isAudiobook, hasCategory } from '@/lib/utils';
+import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
 import { canAccessChapter, canAccessExclusiveEpisode, FREE_LISTEN_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { createPageUrl } from '@/utils';

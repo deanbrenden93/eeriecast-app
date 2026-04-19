@@ -46,6 +46,30 @@ def login_view(request):
                 'message': 'This account has been deleted.'
             }, status=status.HTTP_403_FORBIDDEN)
 
+        # Check if user exists but is imported from memberful and has no usable password
+        # IMPORTANT: Do this BEFORE authenticate() to prevent any chance of login
+        imported_user = UserModel.objects.filter(email=email, is_imported_from_memberful=True).first()
+        if imported_user and not imported_user.has_usable_password():
+            # Automatically send password reset email for imported users
+            uid = urlsafe_base64_encode(force_bytes(imported_user.pk))
+            token = PasswordResetTokenGenerator().make_token(imported_user)
+            reset_url = f"{settings.REACT_BASE_URL.rstrip('/')}/reset-password?uid={uid}&token={token}"
+
+            try:
+                email_events.send_imported_user_welcome(
+                    user_id=imported_user.id,
+                    to_email=imported_user.email,
+                    reset_url=reset_url
+                )
+            except Exception:
+                logger.exception(f"Failed to send welcome email to imported user {email}")
+
+            return Response({
+                'error': 'imported_user_welcome',
+                'message': 'Welcome to the new EERIECAST! We\'ve sent you an email to set up your password.',
+                'email': email
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         user = authenticate(email=email, password=password)
 
         if user:
@@ -55,14 +79,6 @@ def login_view(request):
                 'refresh_token': str(refresh),
                 'user': UserSerializer(user).data
             })
-        
-        # Check if user exists but is imported from memberful and has no usable password
-        imported_user = UserModel.objects.filter(email=email, is_imported_from_memberful=True).first()
-        if imported_user and not imported_user.has_usable_password():
-             return Response({
-                'error': 'imported_user',
-                'message': 'Your account was imported from Memberful. Please set a password to continue.'
-            }, status=status.HTTP_403_FORBIDDEN)
 
         return Response({
             'error': 'invalid_credentials',
@@ -75,6 +91,32 @@ def login_view(request):
 def register_view(request):
     serializer = RegisterSerializer(data=request.data)
     if serializer.is_valid():
+        email = serializer.validated_data.get('email', '').lower().strip()
+
+        # Check if this email belongs to an imported user without a password
+        UserModel = get_user_model()
+        imported_user = UserModel.objects.filter(email=email, is_imported_from_memberful=True).first()
+        if imported_user and not imported_user.has_usable_password():
+            # Automatically send password reset email for imported users
+            uid = urlsafe_base64_encode(force_bytes(imported_user.pk))
+            token = PasswordResetTokenGenerator().make_token(imported_user)
+            reset_url = f"{settings.REACT_BASE_URL.rstrip('/')}/reset-password?uid={uid}&token={token}"
+
+            try:
+                email_events.send_imported_user_welcome(
+                    user_id=imported_user.id,
+                    to_email=imported_user.email,
+                    reset_url=reset_url
+                )
+            except Exception:
+                logger.exception(f"Failed to send welcome email to imported user {email}")
+
+            return Response({
+                'error': 'imported_user_welcome',
+                'message': 'Welcome back! We found your account from Memberful. Check your email to set up your password.',
+                'email': email
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         user = serializer.save()
         try:
             email_events.send_account_created_verify(user_id=user.id, to_email=user.email)
@@ -442,15 +484,32 @@ class UserViewSet(viewsets.ModelViewSet):
                 'message': 'This account has been deleted.'
             }, status=status.HTTP_403_FORBIDDEN)
 
+        # Check if user exists but is imported from memberful and has no usable password
+        # IMPORTANT: Do this BEFORE authenticate() to prevent any chance of login
+        imported_user = User.objects.filter(email=email, is_imported_from_memberful=True).first()
+        if imported_user and not imported_user.has_usable_password():
+            # Automatically send password reset email for imported users
+            uid = urlsafe_base64_encode(force_bytes(imported_user.pk))
+            token = PasswordResetTokenGenerator().make_token(imported_user)
+            reset_url = f"{settings.REACT_BASE_URL.rstrip('/')}/reset-password?uid={uid}&token={token}"
+
+            try:
+                email_events.send_imported_user_welcome(
+                    user_id=imported_user.id,
+                    to_email=imported_user.email,
+                    reset_url=reset_url
+                )
+            except Exception:
+                logger.exception(f"Failed to send welcome email to imported user {email}")
+
+            return Response({
+                'error': 'imported_user_welcome',
+                'message': 'Welcome to the new EERIECAST! We\'ve sent you an email to set up your password.',
+                'email': email
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         user = authenticate(email=email, password=password)
         if not user:
-            # Check if user exists but is imported from memberful and has no usable password
-            imported_user = User.objects.filter(email=email, is_imported_from_memberful=True).first()
-            if imported_user and not imported_user.has_usable_password():
-                return Response({
-                    'error': 'imported_user',
-                    'message': 'Your account was imported from Memberful. Please set a password to continue.'
-                }, status=status.HTTP_403_FORBIDDEN)
             return Response({
                 'error': 'invalid_credentials',
                 'message': 'Invalid email or password. Please try again.'

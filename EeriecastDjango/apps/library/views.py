@@ -328,6 +328,19 @@ def log_playback_event(request):
         return Response(serializer.data, status=201)
     return Response(serializer.errors, status=400)
 
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def clear_listening_history(request):
+    """
+    Delete all listening history entries for the authenticated user.
+    This cannot be undone.
+    """
+    deleted_count, _ = ListeningHistory.objects.filter(user=request.user).delete()
+    return Response({
+        'deleted': deleted_count,
+        'message': 'Listening history cleared successfully.'
+    }, status=200)
+
 
 class PlaylistViewSet(viewsets.ModelViewSet):
     serializer_class = PlaylistSerializer

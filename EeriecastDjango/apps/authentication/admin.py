@@ -4,9 +4,11 @@ from django.conf import settings
 from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin
 from .models import User
+from .forms import CustomUserChangeForm
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
+    form = CustomUserChangeForm
     list_display = ('email', 'username', 'first_name', 'last_name', 'email_verified', 'is_premium', 'is_imported_from_memberful', 'minutes_listened', 'is_staff', 'date_joined')
     list_filter = ('email_verified', 'is_premium', 'is_imported_from_memberful', 'is_staff', 'is_superuser', 'is_active', 'date_joined')
     search_fields = ('email', 'username', 'first_name', 'last_name', 'stripe_customer_id')

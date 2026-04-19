@@ -448,6 +448,11 @@ export const UserLibrary = {
   // Optional: log player events
   async logEvent(eventBody) {
     return djangoClient.post('/library/history/events/', eventBody);
+  },
+
+  // Clear all listening history for the current user
+  async clearHistory() {
+    return djangoClient.delete('/library/history/clear/');
   }
 };
 

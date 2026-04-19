@@ -30,9 +30,10 @@ import { Button } from "@/components/ui/button";
 import { useSettings } from '@/hooks/use-settings';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
-import { User as UserAPI } from '@/api/entities';
+import { User as UserAPI, UserLibrary } from '@/api/entities';
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { useToast } from '@/components/ui/use-toast';
 
 /* ─── Reusable components ──────────────────────────────────────────── */
 
@@ -110,10 +111,36 @@ export default function Settings() {
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
   const { user, setUser, isAuthenticated, isPremium, userAge, refreshUser } = useUser();
   const [togglingPremium, setTogglingPremium] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const location = useLocation();
+  const { toast } = useToast();
 
   // User can see the toggle if they are 18+
   const canShowMatureToggle = userAge !== null && userAge >= 18;
+
+  const handleClearHistory = async () => {
+    if (!window.confirm('Are you sure you want to clear your listening history? This cannot be undone.')) {
+      return;
+    }
+
+    setClearingHistory(true);
+    try {
+      const result = await UserLibrary.clearHistory();
+      toast({
+        title: 'History cleared',
+        description: `${result.deleted || 0} entries removed from your listening history.`,
+      });
+    } catch (err) {
+      console.error('Failed to clear history:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to clear listening history. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setClearingHistory(false);
+    }
+  };
 
   useEffect(() => {
     if (location.hash) {
@@ -254,10 +281,12 @@ export default function Settings() {
           <div className="flex items-center gap-4 mb-4">
             <Button
               variant="outline"
-              className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all"
+              onClick={handleClearHistory}
+              disabled={clearingHistory}
+              className="border-red-900/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Clear Listening History
+              {clearingHistory ? 'Clearing...' : 'Clear Listening History'}
             </Button>
           </div>
           {/* Only visible for authenticated users with verified 18+ age */}

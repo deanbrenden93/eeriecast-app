@@ -95,6 +95,11 @@ def me_status(request):
         "active_subscription": SubscriptionSerializer(active).data if active else None,
         "all_subscriptions": SubscriptionSerializer(subs, many=True).data,
         "payment_method": payment_method,
+        # Legacy trial information
+        "is_on_legacy_trial": user.is_on_legacy_trial() if hasattr(user, 'is_on_legacy_trial') else False,
+        "legacy_trial_ends": getattr(user, "free_trial_ends", None),
+        "legacy_trial_days_remaining": user.legacy_trial_days_remaining() if hasattr(user, 'legacy_trial_days_remaining') else 0,
+        "legacy_plan_type": getattr(user, "memberful_plan_type", None),
     }
     return Response(data)
 

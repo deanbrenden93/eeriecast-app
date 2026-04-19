@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -11,6 +12,10 @@ class User(AbstractUser):
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     minutes_listened = models.IntegerField(default=0)
     subscription_expires = models.DateTimeField(blank=True, null=True)
+
+    # Legacy free trial fields for migrated Memberful users
+    is_legacy_free_trial = models.BooleanField(default=False)
+    free_trial_ends = models.DateTimeField(blank=True, null=True)
 
     # Date of birth for age verification
     date_of_birth = models.DateField(blank=True, null=True)
@@ -41,10 +46,16 @@ class User(AbstractUser):
     def is_premium_member(self) -> bool:
         """
         Return True if this user should be treated as a premium member.
-        Checks for an active Subscription record first, then falls back
-        to the is_premium boolean flag on the user model.
+        Checks for:
+        1. Active legacy free trial (migrated Memberful users)
+        2. Active Subscription record
+        3. is_premium boolean flag on the user model
         """
-        # Check the stored flag first (set via admin, test toggle, etc.)
+        # Check if user is on active legacy free trial
+        if self.is_on_legacy_trial():
+            return True
+
+        # Check the stored flag (set via admin, test toggle, etc.)
         if bool(getattr(self, 'is_premium', False)):
             return True
 
@@ -59,3 +70,23 @@ class User(AbstractUser):
             if getattr(sub, 'is_active', False):
                 return True
         return False
+
+    def is_on_legacy_trial(self) -> bool:
+        """
+        Return True if this user is currently on an active legacy free trial.
+        """
+        if not self.is_legacy_free_trial:
+            return False
+        if not self.free_trial_ends:
+            return False
+        return timezone.now() < self.free_trial_ends
+
+    def legacy_trial_days_remaining(self) -> int:
+        """
+        Return the number of days remaining in the legacy free trial.
+        Returns 0 if not on trial or trial has expired.
+        """
+        if not self.is_on_legacy_trial():
+            return 0
+        delta = self.free_trial_ends - timezone.now()
+        return max(0, delta.days)

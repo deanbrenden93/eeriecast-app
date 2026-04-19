@@ -19,9 +19,14 @@ export function isOnboardingDone() {
   return localStorage.getItem(ONBOARDING_KEY) === '1';
 }
 
-export function markOnboardingDone() {
+export async function markOnboardingDone() {
   localStorage.setItem(ONBOARDING_KEY, '1');
-  // TODO (backend): persist via User.updateMe({ onboarding_completed: true })
+  try {
+    const { User: UserAPI } = await import('@/api/entities');
+    await UserAPI.updateMe({ onboarding_completed: true });
+  } catch (err) {
+    console.error('Failed to persist onboarding completion to backend:', err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -710,8 +715,8 @@ export default function OnboardingFlow({ variant, onComplete }) {
     setStep((s) => Math.min(s + 1, totalSteps - 1));
   }, [totalSteps]);
 
-  const handleComplete = useCallback(() => {
-    markOnboardingDone();
+  const handleComplete = useCallback(async () => {
+    await markOnboardingDone();
     onComplete();
   }, [onComplete]);
 

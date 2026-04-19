@@ -62,6 +62,10 @@ export default function Profile() {
     isPremium,
     favoriteEpisodeIds,
     followedPodcastIds,
+    isOnLegacyTrial,
+    legacyTrialEnds,
+    legacyTrialDaysRemaining,
+    legacyPlanType,
   } = useUser();
   const { loadAndPlay } = useAudioPlayerContext();
 
@@ -239,7 +243,7 @@ export default function Profile() {
                   {email}
                 </p>
               )}
-              <div className="flex items-center justify-center sm:justify-start gap-2 mt-2">
+              <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 flex-wrap">
                 <span
                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
                     isPremium
@@ -250,6 +254,11 @@ export default function Profile() {
                   {isPremium && <Crown className="w-3 h-3" />}
                   {isPremium ? "Premium Member" : "Free Account"}
                 </span>
+                {isOnLegacyTrial && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30">
+                    Free Trial • {legacyTrialDaysRemaining} days left
+                  </span>
+                )}
                 {memberSince && (
                   <span className="text-xs text-gray-500">
                     Since {memberSince}

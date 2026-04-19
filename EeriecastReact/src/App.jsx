@@ -12,6 +12,7 @@ import CartDrawer from '@/components/shop/CartDrawer.jsx';
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
 import OnboardingFlow, { isOnboardingDone } from '@/components/OnboardingFlow.jsx';
+import LegacyTrialReminderModal from '@/components/auth/LegacyTrialReminderModal.jsx';
 import { djangoClient } from '@/api/djangoClient.js';
 
 function GlobalAuthModal() {
@@ -55,7 +56,15 @@ function App() {
 
   // Onboarding flow — triggered via custom event after registration or premium purchase
   const [onboardingVariant, setOnboardingVariant] = useState(null);
-  const { user, isAuthenticated, loading: userLoading } = useUser();
+  const {
+    user,
+    isAuthenticated,
+    loading: userLoading,
+    isOnLegacyTrial,
+    legacyTrialEnds,
+    legacyTrialDaysRemaining,
+    legacyPlanType
+  } = useUser();
 
   useEffect(() => {
     // Check if imported user needs onboarding
@@ -78,6 +87,42 @@ function App() {
   const handleOnboardingComplete = useCallback(() => {
     setOnboardingVariant(null);
   }, []);
+
+  // Legacy trial reminder modal
+  const [showLegacyTrialModal, setShowLegacyTrialModal] = useState(false);
+  const [hasShownFirstLoginModal, setHasShownFirstLoginModal] = useState(false);
+
+  useEffect(() => {
+    // Show modal for legacy trial users at strategic times
+    if (!isAuthenticated || !isOnLegacyTrial || userLoading) return;
+
+    const modalShownKey = `legacy_trial_modal_shown_${user?.id}`;
+    const firstLoginShown = localStorage.getItem(`${modalShownKey}_first_login`);
+
+    // Show on first login after import
+    if (!firstLoginShown && !hasShownFirstLoginModal) {
+      const timer = setTimeout(() => {
+        setShowLegacyTrialModal(true);
+        setHasShownFirstLoginModal(true);
+        localStorage.setItem(`${modalShownKey}_first_login`, 'true');
+      }, 2000); // Delay to let page load
+      return () => clearTimeout(timer);
+    }
+
+    // Show reminders based on days remaining
+    const reminderShownToday = sessionStorage.getItem(`${modalShownKey}_${new Date().toDateString()}`);
+    if (!reminderShownToday) {
+      if (legacyTrialDaysRemaining <= 1 ||
+          legacyTrialDaysRemaining === 3 ||
+          legacyTrialDaysRemaining === 7) {
+        const timer = setTimeout(() => {
+          setShowLegacyTrialModal(true);
+          sessionStorage.setItem(`${modalShownKey}_${new Date().toDateString()}`, 'true');
+        }, 5000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAuthenticated, isOnLegacyTrial, legacyTrialDaysRemaining, user?.id, userLoading, hasShownFirstLoginModal]);
 
   return (
     <AuthModalProvider>
@@ -107,6 +152,17 @@ function App() {
               />
             )}
           </AnimatePresence>
+          {/* Legacy trial reminder modal */}
+          {isOnLegacyTrial && (
+            <LegacyTrialReminderModal
+              isOpen={showLegacyTrialModal}
+              onClose={() => setShowLegacyTrialModal(false)}
+              daysRemaining={legacyTrialDaysRemaining}
+              trialEnds={legacyTrialEnds}
+              planType={legacyPlanType}
+              isFirstLogin={!hasShownFirstLoginModal && !localStorage.getItem(`legacy_trial_modal_shown_${user?.id}_first_login`)}
+            />
+          )}
           </CartProvider>
         </AudioPlayerProvider>
       </Router>
