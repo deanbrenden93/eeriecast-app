@@ -114,7 +114,8 @@ function App() {
     if (!reminderShownToday) {
       if (legacyTrialDaysRemaining <= 1 ||
           legacyTrialDaysRemaining === 3 ||
-          legacyTrialDaysRemaining === 7) {
+          legacyTrialDaysRemaining === 7 ||
+          legacyTrialDaysRemaining === 30) {
         const timer = setTimeout(() => {
           setShowLegacyTrialModal(true);
           sessionStorage.setItem(`${modalShownKey}_${new Date().toDateString()}`, 'true');

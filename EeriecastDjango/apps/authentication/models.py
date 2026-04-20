@@ -77,9 +77,11 @@ class User(AbstractUser):
         """
         if not self.is_legacy_free_trial:
             return False
-        if not self.free_trial_ends:
+        # Use subscription_expires as a fallback to ensure banner stays in sync
+        expires_at = self.free_trial_ends or self.subscription_expires
+        if not expires_at:
             return False
-        return timezone.now() < self.free_trial_ends
+        return timezone.now() < expires_at
 
     def legacy_trial_days_remaining(self) -> int:
         """
@@ -88,5 +90,6 @@ class User(AbstractUser):
         """
         if not self.is_on_legacy_trial():
             return 0
-        delta = self.free_trial_ends - timezone.now()
+        expires_at = self.free_trial_ends or self.subscription_expires
+        delta = expires_at - timezone.now()
         return max(0, delta.days)

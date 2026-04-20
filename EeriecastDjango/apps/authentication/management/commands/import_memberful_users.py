@@ -107,17 +107,22 @@ class Command(BaseCommand):
                             # Determine plan type and set trial expiration
                             if 'yearly' in plan_name or 'annual' in plan_name:
                                 user.memberful_plan_type = 'yearly'
-                                # Annual members get 1 full year free
-                                trial_end = now() + timedelta(days=365)
-                                user.free_trial_ends = trial_end
-                                user.subscription_expires = trial_end
+                                default_expiry = now() + timedelta(days=365)
                             else:
                                 # Default to monthly if not explicitly yearly
                                 user.memberful_plan_type = 'monthly'
-                                # Monthly members get 60 days free (Updated from 30)
-                                trial_end = now() + timedelta(days=60)
-                                user.free_trial_ends = trial_end
-                                user.subscription_expires = trial_end
+                                default_expiry = now() + timedelta(days=60)
+
+                            # Use CSV date if it's in the future, otherwise use the default trial duration from now
+                            trial_end = subscription_expires if (subscription_expires and subscription_expires > now()) else default_expiry
+                            user.free_trial_ends = trial_end
+                            user.subscription_expires = trial_end
+                        
+                        # Sync free_trial_ends if it's missing but we have a subscription_expires
+                        if user.is_legacy_free_trial and not user.free_trial_ends and user.subscription_expires:
+                            user.free_trial_ends = user.subscription_expires
+                        elif user.is_legacy_free_trial and user.free_trial_ends and not user.subscription_expires:
+                            user.subscription_expires = user.free_trial_ends
                         
                         if created and date_joined:
                             user.date_joined = date_joined

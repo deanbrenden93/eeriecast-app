@@ -18,7 +18,13 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     
     fieldsets = BaseUserAdmin.fieldsets + (
         ('Eeriecast Profile', {
-            'fields': ('avatar', 'bio', 'email_verified', 'email_verified_at', 'is_premium', 'is_imported_from_memberful', 'stripe_customer_id', 'minutes_listened', 'subscription_expires', 'get_shop_discount_code')
+            'fields': (
+                'avatar', 'bio', 'email_verified', 'email_verified_at', 
+                'is_premium', 'is_imported_from_memberful', 
+                'is_legacy_free_trial', 'free_trial_ends', 
+                'stripe_customer_id', 'minutes_listened', 
+                'subscription_expires', 'get_shop_discount_code'
+            )
         }),
     )
     

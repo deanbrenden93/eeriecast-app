@@ -70,10 +70,8 @@ export default function LegacyTrialBanner({
       return 'Your free trial expires tomorrow!';
     } else if (daysRemaining <= 3) {
       return `Only ${daysRemaining} days left in your free trial!`;
-    } else if (daysRemaining <= 7) {
+    } else if (daysRemaining <= 30) {
       return `Your free trial expires in ${daysRemaining} days`;
-    } else if (daysRemaining <= 14) {
-      return `You have ${daysRemaining} days remaining in your free trial`;
     } else {
       const planTypeText = planType === 'yearly' ? 'year' : 'month';
       return `Welcome! Enjoy your free ${planTypeText} to try the new platform`;
