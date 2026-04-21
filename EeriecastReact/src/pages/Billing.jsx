@@ -36,7 +36,7 @@ import {
 
 export default function Billing() {
   const navigate = useNavigate();
-  const { user, isPremium, fetchUser } = useUser();
+  const { user, isPremium, fetchUser, isOnLegacyTrial: contextTrial } = useUser();
   const [loading, setLoading] = useState(true);
   const [billingData, setBillingData] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -100,7 +100,9 @@ export default function Billing() {
   };
 
   const activeSub = billingData?.active_subscription;
-  const status = activeSub?.status || (isPremium ? "active" : "none");
+  const isLegacyTrial = !activeSub && (billingData?.is_on_legacy_trial || contextTrial);
+  const status = activeSub?.status || (isLegacyTrial ? "trialing" : (isPremium ? "active" : "none"));
+  const trialEnds = billingData?.legacy_trial_ends || user?.free_trial_ends;
   const paymentMethod = billingData?.payment_method || (activeSub?.card_brand ? {
     brand: activeSub.card_brand,
     last4: activeSub.card_last4,
@@ -166,7 +168,7 @@ export default function Billing() {
                     )}
                   </div>
                   <p className="text-zinc-400 text-sm">
-                    {activeSub?.plan_nickname || (isPremium ? "Monthly Subscription" : "Free Plan")}
+                    {activeSub?.plan_nickname || (isLegacyTrial ? "Legacy Free Trial" : (isPremium ? "Monthly Subscription" : "Free Plan"))}
                   </p>
                 </div>
                 <div className="text-left sm:text-right">
@@ -176,14 +178,14 @@ export default function Billing() {
                     status === 'past_due' ? 'bg-red-500/10 text-red-400' :
                     'bg-white/5 text-zinc-500'
                   }`}>
-                    {status === 'trialing' && <Clock className="w-3.5 h-3.5" />}
-                    {status === 'active' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                    {(status === 'trialing' || isLegacyTrial) && <Clock className="w-3.5 h-3.5" />}
+                    {status === 'active' && !isLegacyTrial && <CheckCircle2 className="w-3.5 h-3.5" />}
                     {status === 'past_due' && <AlertCircle className="w-3.5 h-3.5" />}
-                    <span className="capitalize">{status}</span>
+                    <span className="capitalize">{isLegacyTrial ? "Free Trial" : status}</span>
                   </div>
-                  {activeSub?.current_period_end && (
+                  {(activeSub?.current_period_end || (isLegacyTrial && trialEnds)) && (
                     <p className="text-[11px] text-zinc-500 mt-2">
-                      {activeSub.cancel_at_period_end ? "Ends on" : "Renews on"} {formatDate(activeSub.current_period_end)}
+                      {(activeSub?.cancel_at_period_end || isLegacyTrial) ? "Ends on" : "Renews on"} {formatDate(activeSub?.current_period_end || trialEnds)}
                     </p>
                   )}
                 </div>
@@ -263,7 +265,7 @@ export default function Billing() {
                   </Button>
                 ) : null}
 
-                {isPremium ? (
+                {isPremium && !isLegacyTrial ? (
                   !activeSub?.cancel_at_period_end && activeSub?.status !== 'canceled' && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>

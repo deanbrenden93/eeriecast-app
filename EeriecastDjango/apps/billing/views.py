@@ -298,7 +298,11 @@ def create_checkout_session(request):
     """
     user = request.user
     
-    if user.is_premium_member():
+    # Allow users on legacy trial to subscribe, but block if they already have an active Stripe subscription
+    from apps.billing.models import Subscription
+    has_active_sub = Subscription.objects.filter(user=user, status__in=['active', 'trialing']).exists()
+    
+    if has_active_sub or (user.is_premium and not user.is_on_legacy_trial()):
         return Response({"detail": "You already have an active subscription."}, status=status.HTTP_400_BAD_REQUEST)
 
     stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -340,7 +344,11 @@ def start_trial_custom(request):
     user = request.user
     data = request.data
     
-    if user.is_premium_member():
+    # Allow if on legacy trial, but block if an actual subscription exists
+    from apps.billing.models import Subscription
+    has_active_sub = Subscription.objects.filter(user=user, status__in=['active', 'trialing']).exists()
+    
+    if has_active_sub or (user.is_premium and not user.is_on_legacy_trial()):
         return Response({"detail": "You already have an active subscription."}, status=status.HTTP_400_BAD_REQUEST)
     
     logger.info(f"Custom trial signup started for user {user.email}")

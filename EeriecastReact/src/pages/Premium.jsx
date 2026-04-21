@@ -604,7 +604,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
 export default function Premium() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAuthenticated } = useUser();
+  const { user, isAuthenticated, isPremium, isOnLegacyTrial } = useUser();
   const { openAuth } = useAuthModal();
   const [showPayment, setShowPayment] = useState(false);
   const [localSuccess, setLocalSuccess] = useState(false);
@@ -620,7 +620,8 @@ export default function Premium() {
     }
     
     // Check if user is already premium to avoid opening the modal
-    if (user?.is_premium) {
+    // EXCEPT if they are on a legacy trial, in which case we want to let them subscribe
+    if (isPremium && !isOnLegacyTrial) {
       toast({
         title: 'Already Subscribed',
         description: 'You already have an active Premium subscription.',
@@ -629,7 +630,7 @@ export default function Premium() {
     }
 
     setShowPayment(true);
-  }, [isAuthenticated, openAuth, user]);
+  }, [isAuthenticated, openAuth, isPremium, isOnLegacyTrial]);
 
   // Check for success or canceled status in URL
   useEffect(() => {

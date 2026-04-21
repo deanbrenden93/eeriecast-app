@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { HelpCircle } from 'lucide-react';
 
 export default function UserMenu({ isOpen, onClose }) {
-  const { user, logout } = useUser();
+  const { user, logout, isOnLegacyTrial } = useUser();
 
   if (!isOpen) return null;
 
@@ -17,7 +17,7 @@ export default function UserMenu({ isOpen, onClose }) {
   const displayName = user?.full_name || user?.name || user?.username || 'Guest User';
   const email = user?.email || '';
   const isPremium = !!user?.is_premium;
-  const accountType = isPremium ? 'Premium Member' : 'Free Account';
+  const accountType = isOnLegacyTrial ? 'Free Trial' : (isPremium ? 'Premium Member' : 'Free Account');
 
   return (
     <motion.div
