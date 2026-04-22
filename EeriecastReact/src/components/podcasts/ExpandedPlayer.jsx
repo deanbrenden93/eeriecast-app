@@ -37,6 +37,12 @@ import { isAudiobook } from "@/lib/utils";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 import { Capacitor } from '@capacitor/core';
 
+// Feature flag: offline downloads are an app-only feature. The player's
+// Options modal exposes a "Download episode" action behind this flag;
+// flip it back to `true` once the Capacitor mobile build is shipping so
+// the section reappears for premium members.
+const DOWNLOAD_SECTION_ENABLED = false;
+
 // Custom SVG icons matching the MobilePlayer exactly
 const PlayIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -1680,8 +1686,13 @@ export default function ExpandedPlayer({
                   )}
                 </div>
 
-                {/* ── Download Section (premium-only) ── */}
-                {isPremium && (
+                {/* ── Download Section (premium-only) ──
+                    Temporarily hidden: offline downloads are an app-only
+                    feature and the Capacitor mobile build isn't shipping
+                    yet. Flip DOWNLOAD_SECTION_ENABLED (declared near the
+                    top of the component) back to true once the app is
+                    live. */}
+                {DOWNLOAD_SECTION_ENABLED && isPremium && (
                   <>
                     <div className="h-px bg-white/[0.06] my-6" />
                     <div>
