@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Episode, Search as SearchApi } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play } from 'lucide-react';
+import { Play, Share2 } from 'lucide-react';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
-import { getEpisodeAudioUrl } from '@/lib/utils';
+import { getEpisodeAudioUrl, getPodcastCategoriesLower } from '@/lib/utils';
+import { shareOrCopy } from '@/lib/share';
 import { useUser } from '@/context/UserContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
@@ -101,6 +102,43 @@ export default function CreatorEpisodes() {
   // Prefer creator profile avatar/cover_image; fallback to episode/podcast imagery
   const heroImage = creatorProfile?.avatar || creatorProfile?.cover_image || creatorInfo?.podcast?.cover_image || creatorInfo?.cover_image || '';
 
+  // Derive a unique, case-insensitive list of category tags from the creator's episodes/shows.
+  // Titleize for display (e.g. "non-fiction" → "Non-Fiction").
+  const titleize = (s) => String(s || '')
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+
+  const creatorTags = (() => {
+    const seen = new Set();
+    const out = [];
+    for (const ep of episodes) {
+      const pod = ep?.podcast;
+      if (!pod) continue;
+      const cats = getPodcastCategoriesLower(pod);
+      for (const c of cats) {
+        if (!c) continue;
+        if (c === 'audiobook' || c === 'mature') continue; // admin-only tags — hide from hero
+        const key = c.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(titleize(c));
+        if (out.length >= 4) return out;
+      }
+    }
+    return out;
+  })();
+
+  const handleShareCreator = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    await shareOrCopy({
+      title: heroAuthor ? `${heroAuthor} on Eeriecast` : 'Eeriecast Creator',
+      text: heroAuthor ? `Listen to episodes from ${heroAuthor} on Eeriecast` : 'Listen on Eeriecast',
+      url,
+    });
+  };
+
   const handlePlay = async (ep) => {
     try {
       if (!ep) return;
@@ -177,12 +215,13 @@ export default function CreatorEpisodes() {
           <div className="flex-1">
             <h1 className="text-3xl md:text-5xl font-bold mb-2">{heroAuthor}</h1>
             <p className="text-gray-300 mb-3 text-sm md:text-base">Episodes from {heroAuthor} <span className="text-gray-500 ml-2">{sortedEpisodes.length} episodes</span></p>
-            <div className="flex flex-wrap gap-2 md:gap-3 text-xs md:text-sm text-gray-300 mb-4 md:mb-6">
-              <span className="bg-gray-800/60 px-2 py-1 rounded">Non-Fiction</span>
-              <span className="bg-gray-800/60 px-2 py-1 rounded">Narration</span>
-              <span className="bg-gray-800/60 px-2 py-1 rounded">Monsters</span>
-              <span className="bg-gray-800/60 px-2 py-1 rounded">Paranormal</span>
-            </div>
+            {creatorTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 md:gap-3 text-xs md:text-sm text-gray-300 mb-4 md:mb-6">
+                {creatorTags.map((tag) => (
+                  <span key={tag} className="bg-gray-800/60 px-2 py-1 rounded">{tag}</span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 md:gap-3">
              <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 md:px-6 py-2 rounded-full flex items-center gap-2 text-sm md:text-base" onClick={() => handlePlay(sortedEpisodes[0])}>
@@ -192,7 +231,14 @@ export default function CreatorEpisodes() {
             <Button variant="outline" className="bg-transparent border-gray-600 text-white hover:bg-gray-800 hover:text-white px-4 md:px-6 py-2 rounded-full text-sm md:text-base" onClick={() => { if (!isAuthenticated) { openAuth('login'); } }}>
               Follow
             </Button>
-            <Button variant="outline" className="bg-transparent border-gray-600 text-white hover:bg-gray-800 hover:text-white px-4 md:px-6 py-2 rounded-full text-sm md:text-base">Share</Button>
+            <Button
+              variant="outline"
+              onClick={handleShareCreator}
+              className="bg-transparent border-gray-600 text-white hover:bg-gray-800 hover:text-white px-4 md:px-6 py-2 rounded-full flex items-center gap-2 text-sm md:text-base"
+            >
+              <Share2 className="w-4 h-4" />
+              Share
+            </Button>
           </div>
         </div>
       </div>

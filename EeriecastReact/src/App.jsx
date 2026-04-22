@@ -10,6 +10,7 @@ import { useUser } from '@/context/UserContext.jsx';
 import { CartProvider } from '@/context/CartContext.jsx';
 import CartDrawer from '@/components/shop/CartDrawer.jsx';
 import AuthModal from '@/components/auth/AuthModal.jsx';
+import ErrorBoundary from '@/components/ErrorBoundary.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
 import OnboardingFlow, { isOnboardingDone } from '@/components/OnboardingFlow.jsx';
 import LegacyTrialReminderModal from '@/components/auth/LegacyTrialReminderModal.jsx';
@@ -126,6 +127,7 @@ function App() {
   }, [isAuthenticated, isOnLegacyTrial, legacyTrialDaysRemaining, user?.id, userLoading, hasShownFirstLoginModal]);
 
   return (
+    <ErrorBoundary>
     <AuthModalProvider>
       <Router>
         <AudioPlayerProvider>
@@ -168,6 +170,7 @@ function App() {
         </AudioPlayerProvider>
       </Router>
     </AuthModalProvider>
+    </ErrorBoundary>
   )
 }
 

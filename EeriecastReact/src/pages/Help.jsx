@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Loader2,
   Tag,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -437,6 +438,7 @@ export default function Help() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('faq');
   const [closing, setClosing] = useState(false);
+  const [faqQuery, setFaqQuery] = useState('');
 
   const handleClose = () => {
     setClosing(true);
@@ -447,6 +449,21 @@ export default function Help() {
     { id: 'faq', label: 'FAQ', icon: HelpCircle },
     { id: 'contact', label: 'Contact', icon: MessageSquare },
   ];
+
+  // Client-side filter: match question or answer, collapse empty categories.
+  const filteredFaq = (() => {
+    const q = faqQuery.trim().toLowerCase();
+    if (!q) return FAQ_ITEMS;
+    return FAQ_ITEMS
+      .map((section) => ({
+        ...section,
+        questions: section.questions.filter(({ q: qn, a: an }) =>
+          qn.toLowerCase().includes(q) || an.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((section) => section.questions.length > 0);
+  })();
+  const totalMatches = filteredFaq.reduce((n, s) => n + s.questions.length, 0);
 
   return (
     <div className="fixed inset-0 z-[9999] overflow-hidden">
@@ -535,13 +552,43 @@ export default function Help() {
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.2 }}
                 >
-                  {FAQ_ITEMS.map((section, sIdx) => (
+                  {/* Search */}
+                  <div className="relative mb-6">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 pointer-events-none" />
+                    <input
+                      type="search"
+                      value={faqQuery}
+                      onChange={(e) => setFaqQuery(e.target.value)}
+                      placeholder="Search FAQs…"
+                      className="w-full pl-10 pr-9 py-3 rounded-xl bg-black/40 border border-white/[0.08] text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-red-500/40 focus:ring-1 focus:ring-red-500/20 transition-all"
+                    />
+                    {faqQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setFaqQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.04] transition-colors"
+                        aria-label="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {faqQuery && (
+                    <p className="text-xs text-zinc-500 mb-4 px-1">
+                      {totalMatches === 0
+                        ? 'No results match your search.'
+                        : `${totalMatches} match${totalMatches === 1 ? '' : 'es'} for "${faqQuery}"`}
+                    </p>
+                  )}
+
+                  {filteredFaq.map((section, sIdx) => (
                     <motion.div
                       key={section.category}
                       className="mb-8"
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.28 + sIdx * 0.06, duration: 0.35 }}
+                      transition={{ delay: faqQuery ? 0 : 0.28 + sIdx * 0.06, duration: 0.35 }}
                     >
                       <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-600 mb-3 px-1">
                         {section.category}

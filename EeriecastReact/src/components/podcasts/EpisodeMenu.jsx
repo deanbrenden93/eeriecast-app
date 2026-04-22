@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play } from 'lucide-react';
+import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play, Share2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { toast } from '@/components/ui/use-toast';
+import { shareEpisode } from '@/lib/share';
 
 /**
  * Three-dot overflow menu for episode actions.
@@ -115,6 +116,10 @@ export default function EpisodeMenu({
     onAddToPlaylist?.(episode);
   };
 
+  const handleShare = () => {
+    shareEpisode(podcast, episode);
+  };
+
   return (
     <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange} modal={inline ? false : undefined}>
       <DropdownMenuTrigger asChild>
@@ -174,17 +179,23 @@ export default function EpisodeMenu({
         )}
 
         {onAddToPlaylist && (
-          <>
-            <DropdownMenuSeparator className="my-1 bg-white/[0.08]" />
-            <DropdownMenuItem
-              onClick={handleAddToPlaylist}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add to Playlist
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem
+            onClick={handleAddToPlaylist}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add to Playlist
+          </DropdownMenuItem>
         )}
+
+        <DropdownMenuSeparator className="my-1 bg-white/[0.08]" />
+        <DropdownMenuItem
+          onClick={handleShare}
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
+        >
+          <Share2 className="w-4 h-4" />
+          Share
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -8,6 +8,10 @@ const DEFAULTS = {
   streamingQuality: '320kbps',
   downloadQuality: '320kbps',
   newEpisodeNotifications: true,
+  // Seconds to skip forward/backward when the player's skip buttons are used.
+  // Defaults to the classic podcast 10s increment.
+  skipBackwardSeconds: 10,
+  skipForwardSeconds: 10,
 };
 
 /** Read all settings from localStorage (plain function, no React needed) */

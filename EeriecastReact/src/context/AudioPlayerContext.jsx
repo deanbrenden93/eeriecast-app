@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { useMediaSession } from '@/hooks/use-media-session';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { getEpisodeAudioUrl, isAudiobook, hasCategory } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
@@ -543,6 +544,17 @@ export const AudioPlayerProvider = ({ children }) => {
     }
   }, [playQueueIndex, audioRef, seek]);
 
+  // ─── Global Keyboard Shortcuts ───────────────────────────────────
+  // Space = play/pause, ←/→ = skip, M = mute. Only active while an
+  // episode is loaded so shortcuts don't fire on marketing pages.
+  useKeyboardShortcuts({
+    isActive: !!episode,
+    toggle,
+    skip,
+    audioRef,
+    setVolume,
+  });
+
   // ─── Lock Screen / Media Session ─────────────────────────────────
   useMediaSession({
     episode,
@@ -606,6 +618,48 @@ export const AudioPlayerProvider = ({ children }) => {
     }
   }, []);
 
+  // Reorder queue items — supports moving anywhere except the currently
+  // playing track (which stays pinned). queueIndex is recalculated so
+  // it continues pointing at the same item after the shuffle.
+  const reorderQueue = useCallback((fromIndex, toIndex) => {
+    if (typeof fromIndex !== 'number' || typeof toIndex !== 'number') return;
+    if (fromIndex === toIndex) return;
+    setQueue(prev => {
+      if (fromIndex < 0 || fromIndex >= prev.length) return prev;
+      if (toIndex < 0 || toIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    // Keep queueIndex pointing at the currently playing item
+    setQueueIndex(prev => {
+      const cur = prev;
+      if (cur < 0) return cur;
+      if (cur === fromIndex) return toIndex;
+      // If the moved item was above the current, the current slides up
+      if (fromIndex < cur && toIndex >= cur) return cur - 1;
+      // If the moved item was below the current and now lands above, slide down
+      if (fromIndex > cur && toIndex <= cur) return cur + 1;
+      return cur;
+    });
+  }, []);
+
+  // Clear the queue except for the currently playing item so playback
+  // isn't interrupted. If nothing is playing, clear everything.
+  const clearQueue = useCallback(() => {
+    const curIdx = idxRef.current ?? -1;
+    const list = queueRef.current || [];
+    if (curIdx >= 0 && curIdx < list.length) {
+      const current = list[curIdx];
+      setQueue([current]);
+      setQueueIndex(0);
+    } else {
+      setQueue([]);
+      setQueueIndex(-1);
+    }
+  }, []);
+
   // ─── Handlers to expose to UI ─────────────────────────────────────
   const toggleShuffle = useCallback(() => {
     setIsShuffling((s) => !s);
@@ -656,6 +710,8 @@ export const AudioPlayerProvider = ({ children }) => {
         addToQueue,
         addNext,
         removeFromQueue,
+        reorderQueue,
+        clearQueue,
         // sleep timer api
         sleepTimerRemaining,
         sleepTimerEndTime,
@@ -821,6 +877,8 @@ export const useAudioPlayerContext = () => {
       addToQueue: noop,
       addNext: noop,
       removeFromQueue: noop,
+      reorderQueue: noop,
+      clearQueue: noop,
       sleepTimerRemaining: 0,
       sleepTimerEndTime: null,
       setSleepTimer: noop,

@@ -15,7 +15,9 @@ import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useToast } from "@/components/ui/use-toast";
 import { FREE_FAVORITE_LIMIT, canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, ArrowLeft } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { getCategoryStyle, normalizeCategoryKey } from "@/lib/categoryStyles";
 
 /* ─────────────────────────── helpers ─────────────────────────── */
 
@@ -226,7 +228,7 @@ export default function Discover() {
   })();
 
   const [activeTab, setActiveTab] = useState(queryTab || "Recommended");
-  const { podcasts: rawPodcasts, isLoading, getById, maturePodcastIds } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading, getById, maturePodcastIds, softRefreshIfStale } = usePodcasts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -270,16 +272,40 @@ export default function Discover() {
 
   /* ─── data loading ─── */
 
-  useEffect(() => {
-
-    (async () => {
-      try {
-        setIsCategoriesLoading(true);
-        const resp = await Category.list();
-        setCategories(Array.isArray(resp) ? resp : (resp?.results || []));
-      } catch { setCategories([]); } finally { setIsCategoriesLoading(false); }
-    })();
+  const fetchCategories = useCallback(async ({ showSpinner = true } = {}) => {
+    try {
+      if (showSpinner) setIsCategoriesLoading(true);
+      const resp = await Category.list();
+      setCategories(Array.isArray(resp) ? resp : (resp?.results || []));
+    } catch {
+      setCategories([]);
+    } finally {
+      if (showSpinner) setIsCategoriesLoading(false);
+    }
   }, []);
+
+  useEffect(() => { fetchCategories({ showSpinner: true }); }, [fetchCategories]);
+
+  // Keep the category + podcast lists fresh when the user returns to this
+  // page (e.g. after editing categories in the backend admin). Soft refresh
+  // means no spinners, no flicker — the UI just updates in place the next
+  // time React re-renders. Runs on mount and whenever the tab regains focus.
+  useEffect(() => {
+    const refresh = () => {
+      softRefreshIfStale(60_000);
+      fetchCategories({ showSpinner: false });
+    };
+    refresh();
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [softRefreshIfStale, fetchCategories]);
 
   // Progressively fetch ALL episodes in background (page_size=100 batches)
   useEffect(() => {
@@ -345,6 +371,9 @@ export default function Discover() {
   // Uses a ref to track the last applied param so it only fires once per unique value,
   // preventing re-selection when the user clicks "Back to Categories".
   const lastAppliedCategoryParam = useRef(null);
+  // Remember the scroll position on the category grid so we can restore it
+  // when the user clicks "Back to Categories" from a category detail view.
+  const categoriesGridScrollRef = useRef(0);
 
   useEffect(() => {
     if (
@@ -681,40 +710,74 @@ export default function Discover() {
 
   /* ─── categories view ─── */
 
+  const handleEnterCategory = useCallback((payload) => {
+    // Remember scroll position so we can restore it on back.
+    try { categoriesGridScrollRef.current = window.scrollY || 0; } catch { /* noop */ }
+    setSelectedCategory(payload);
+  }, []);
+
+  const handleExitCategory = useCallback(() => {
+    setSelectedCategory(null);
+    lastAppliedCategoryParam.current = null;
+    // Clear the category URL param so a page refresh shows the grid.
+    const params = new URLSearchParams(location.search);
+    if (params.has('category')) {
+      params.delete('category');
+      navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+    }
+    // Restore scroll position after the grid remounts.
+    const y = categoriesGridScrollRef.current || 0;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try { window.scrollTo({ top: y, left: 0, behavior: 'auto' }); } catch { /* noop */ }
+      });
+    });
+  }, [location.pathname, location.search, navigate]);
+
   const renderCategoryDetailView = () => {
-    const selKey = (selectedCategory?.key || '').toLowerCase();
+    const selKey = normalizeCategoryKey(selectedCategory?.key);
     const filtered = podcasts.filter(p => {
       if (!selKey) return true;
       if (selKey === 'audiobook' || selKey === 'audiobooks') return isAudiobook(p);
       if (selKey === 'free') return !p.is_exclusive && !isAudiobook(p);
-      if (selKey === 'members-only' || selKey === 'members only' || selKey === 'members_only') return p.is_exclusive || isAudiobook(p);
+      if (selKey === 'members-only' || selKey === 'members_only') return p.is_exclusive || isAudiobook(p);
       return hasCategory(p, selKey);
     });
     const heading = (selectedCategory?.label || selKey || 'All').toString();
+    const style = getCategoryStyle({ slug: selKey });
+    const Icon = style.icon;
 
     return (
-      <div>
-        <div className="flex items-center gap-4 mb-6">
+      <motion.div
+        key="category-detail"
+        initial={{ opacity: 0, x: 16 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -12 }}
+        transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+      >
+        <div className="flex items-center gap-3 mb-6">
           <button
-            onClick={() => {
-              setSelectedCategory(null);
-              lastAppliedCategoryParam.current = null;
-              // Clear the category URL param so a page refresh shows the grid
-              const params = new URLSearchParams(location.search);
-              if (params.has('category')) {
-                params.delete('category');
-                navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-              }
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-eeriecast-surface-lighter hover:bg-white/[0.06] text-white border border-white/[0.06] transition-all duration-300"
+            onClick={handleExitCategory}
+            className="group inline-flex items-center gap-2 pl-3 pr-4 py-2 rounded-full bg-white/[0.04] hover:bg-white/[0.08] text-white/80 hover:text-white border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300"
+            aria-label="Back to categories"
           >
-            <span className="text-lg">←</span>
+            <ArrowLeft className="w-4 h-4 transition-transform duration-300 group-hover:-translate-x-0.5" />
             <span className="text-sm font-medium">Back to Categories</span>
           </button>
         </div>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">{heading}</h2>
-          <span className="text-sm text-zinc-500">{filtered.length} {filtered.length === 1 ? 'show' : 'shows'}</span>
+        {/* Hero-ish heading block using the category's theme */}
+        <div className={`relative overflow-hidden rounded-2xl border ${style.border} bg-gradient-to-br ${style.gradient} p-5 md:p-6 mb-6`}>
+          <div className={`absolute -top-10 -right-10 w-40 h-40 rounded-full ${style.iconBg} blur-3xl opacity-50 pointer-events-none`} />
+          <div className="relative flex items-center gap-4">
+            <div className={`flex-shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl ${style.iconBg} border ${style.border} flex items-center justify-center`}>
+              <Icon className={`w-6 h-6 md:w-7 md:h-7 ${style.iconColor}`} strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-1">Category</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-white truncate">{heading}</h2>
+              <p className="text-xs md:text-sm text-white/50 mt-1">{filtered.length} {filtered.length === 1 ? 'show' : 'shows'}</p>
+            </div>
+          </div>
         </div>
         {filtered.length === 0 ? (
           <div className="text-center py-10 text-zinc-500">No podcasts found in this category.</div>
@@ -725,28 +788,11 @@ export default function Discover() {
             ))}
           </ShowGrid>
         )}
-      </div>
+      </motion.div>
     );
   };
 
   const renderCategoriesView = () => {
-    const gradients = [
-      'from-red-900/60 to-red-950/80',
-      'from-violet-900/60 to-violet-950/80',
-      'from-slate-800/60 to-slate-900/80',
-      'from-blue-900/60 to-blue-950/80',
-      'from-zinc-800/60 to-zinc-900/80',
-      'from-rose-900/60 to-rose-950/80',
-      'from-amber-900/60 to-amber-950/80',
-      'from-teal-900/60 to-teal-950/80',
-      'from-purple-900/60 to-purple-950/80',
-      'from-pink-900/60 to-pink-950/80',
-      'from-cyan-900/60 to-cyan-950/80',
-      'from-emerald-900/60 to-emerald-950/80',
-      'from-indigo-900/60 to-indigo-950/80',
-      'from-orange-900/60 to-orange-950/80',
-    ];
-
     const getCountForCategory = (cat) => {
       const slug = (cat.slug || '').toLowerCase();
       const name = (cat.name || '').toLowerCase();
@@ -761,63 +807,88 @@ export default function Discover() {
     };
 
     if (isCategoriesLoading) {
-      return <div className="text-zinc-500 text-center py-10">Loading categories...</div>;
+      return (
+        <motion.div
+          key="category-loading"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="text-zinc-500 text-center py-10"
+        >
+          Loading categories...
+        </motion.div>
+      );
     }
     if (!categories || categories.length === 0) {
-      return <div className="text-center py-10 text-zinc-500">No categories available.</div>;
+      return (
+        <motion.div
+          key="category-empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="text-center py-10 text-zinc-500"
+        >
+          No categories available.
+        </motion.div>
+      );
     }
 
     return (
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-6">Browse by Category</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3 auto-rows-[4.875rem] sm:auto-rows-[5.625rem] md:auto-rows-[6rem] grid-flow-row-dense">
+      <motion.div
+        key="category-grid"
+        initial={{ opacity: 0, x: -12 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 16 }}
+        transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+      >
+        <div className="mb-5">
+          <h2 className="text-2xl md:text-3xl font-bold text-white">Browse by Category</h2>
+          <p className="text-zinc-500 text-sm mt-1">Tap a category to see every show in it.</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5 md:gap-3">
           {categories.map((cat, idx) => {
-            const color = gradients[idx % gradients.length];
             const shows = getCountForCategory(cat);
             const label = (cat.name || cat.title || cat.slug || '').toString();
             const slugOrName = (cat.slug || cat.name || '').toString().toLowerCase();
-
-            const VAR_FULL = 'md:col-span-6 lg:col-span-8 xl:col-span-10';
-            const VAR_XL = 'md:col-span-4 lg:col-span-6 xl:col-span-7';
-            const VAR_L = 'md:col-span-3 lg:col-span-4 xl:col-span-5';
-            const VAR_M = 'md:col-span-2 lg:col-span-3 xl:col-span-4';
-            const VAR_S = 'md:col-span-2 lg:col-span-2 xl:col-span-3';
-
-            const patternIdx = idx % 16;
-            let sizeClass;
-            switch (patternIdx) {
-              case 0: sizeClass = VAR_FULL; break;
-              case 1: sizeClass = VAR_XL; break;
-              case 2: sizeClass = VAR_L; break;
-              case 3: sizeClass = VAR_M; break;
-              case 4: sizeClass = VAR_L; break;
-              case 5: sizeClass = VAR_XL; break;
-              case 6: sizeClass = VAR_S; break;
-              case 7: sizeClass = VAR_M; break;
-              case 8: sizeClass = VAR_XL; break;
-              case 9: sizeClass = VAR_L; break;
-              case 10: sizeClass = VAR_FULL; break;
-              case 11: sizeClass = VAR_M; break;
-              case 12: sizeClass = VAR_S; break;
-              case 13: sizeClass = VAR_L; break;
-              case 14: sizeClass = VAR_XL; break;
-              case 15: sizeClass = VAR_M; break;
-              default: sizeClass = VAR_M;
-            }
+            const style = getCategoryStyle(cat);
+            const Icon = style.icon;
 
             return (
-              <div
+              <motion.button
                 key={cat.id || cat.slug || label}
-                className={`bg-gradient-to-br ${color} border border-white/[0.06] rounded-xl p-4 cursor-pointer hover:border-white/10 hover:-translate-y-0.5 transition-all duration-500 h-full ${sizeClass} flex flex-col justify-between`}
-                onClick={() => setSelectedCategory({ key: slugOrName, label, count: shows })}
+                type="button"
+                onClick={() => handleEnterCategory({ key: slugOrName, label, count: shows })}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(idx * 0.02, 0.24), ease: [0.25, 0.1, 0.25, 1] }}
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                className={`group relative overflow-hidden text-left bg-gradient-to-br ${style.gradient} border ${style.border} hover:border-white/15 rounded-xl p-3 md:p-3.5 h-[4.25rem] md:h-[4.5rem] flex items-center gap-3 transition-colors duration-300 shadow-md shadow-black/20 ${style.glow} hover:shadow-lg`}
               >
-                <h3 className="text-white font-bold text-sm md:text-base mb-1 truncate">{label.toUpperCase()}</h3>
-                <p className="text-white/50 text-xs">{shows} {shows === 1 ? 'show' : 'shows'}</p>
-              </div>
+                {/* ambient glow */}
+                <div className={`absolute -top-4 -right-4 w-16 h-16 rounded-full ${style.iconBg} blur-2xl opacity-60 group-hover:opacity-90 transition-opacity duration-500`} />
+                {/* shimmer */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+
+                <div className={`relative z-10 flex-shrink-0 ${style.iconBg} rounded-lg p-1.5 border ${style.border} group-hover:scale-110 transition-transform duration-300`}>
+                  <Icon className={`w-4 h-4 ${style.iconColor}`} strokeWidth={1.75} />
+                </div>
+
+                <div className="relative z-10 min-w-0 flex-1">
+                  <h3 className="text-white font-bold text-[11px] md:text-xs uppercase tracking-wider truncate leading-tight">
+                    {label}
+                  </h3>
+                  <p className="text-[10px] text-white/40 mt-0.5 truncate">
+                    {shows} {shows === 1 ? 'show' : 'shows'}
+                  </p>
+                </div>
+              </motion.button>
             );
           })}
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -862,7 +933,11 @@ export default function Discover() {
         return renderShowList(freeContent, "Free Content", "No free content found.");
       }
       case "Categories":
-        return selectedCategory ? renderCategoryDetailView() : renderCategoriesView();
+        return (
+          <AnimatePresence mode="wait" initial={false}>
+            {selectedCategory ? renderCategoryDetailView() : renderCategoriesView()}
+          </AnimatePresence>
+        );
       default:
         return renderEpisodeList(recommendedEpisodes, "Recommended for You");
     }

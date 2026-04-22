@@ -16,6 +16,7 @@ import Episodes from "./Episodes";
 import Playlist from "./Playlist";
 import Help from "./Help";
 import Shop from "./Shop";
+import NotFound from "./NotFound";
 import VerifyEmail from "./VerifyEmail";
 import ResetPassword from "./ResetPassword";
 import ConfirmEmailChange from "./ConfirmEmailChange";
@@ -188,6 +189,9 @@ function PagesContent() {
 
                     <Route path="/Shop" element={<AnimatedPage><Shop /></AnimatedPage>} />
                     <Route path="/shop" element={<AnimatedPage><Shop /></AnimatedPage>} />
+
+                    {/* 404 catch-all — must stay last */}
+                    <Route path="*" element={<AnimatedPage><NotFound /></AnimatedPage>} />
                 </Routes>
             </AnimatePresence>
         </Layout>

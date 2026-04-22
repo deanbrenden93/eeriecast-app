@@ -95,6 +95,37 @@ export function PodcastProvider({ children }) {
     }
   }, []);
 
+  /**
+   * Refetch the podcast list in the background — no loading spinner, no UI
+   * flicker — when cached data is older than `maxAgeMs`. Lets pages like
+   * Discover pick up newly-added categories/shows without forcing a hard
+   * reload, without hammering the API on every mount.
+   * Returns true if a refresh actually happened.
+   */
+  const inflightSoftRefreshRef = useRef(false);
+  const softRefreshIfStale = useCallback(async (maxAgeMs = 60_000) => {
+    const age = Date.now() - (lastFetchedAtRef.current || 0);
+    if (age < maxAgeMs) return false;
+    if (inflightSoftRefreshRef.current) return false;
+    inflightSoftRefreshRef.current = true;
+    try {
+      const [resPodcasts, resCreators] = await Promise.all([
+        PodcastApi.list('-created_date'),
+        Creator.featured(),
+      ]);
+      const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
+      const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
+      setAllPodcasts(arr);
+      setFeaturedCreators(creatorsArr);
+      lastFetchedAtRef.current = Date.now();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      inflightSoftRefreshRef.current = false;
+    }
+  }, []);
+
   const getById = useCallback((id) => byId[id], [byId]);
 
   const ensureDetail = useCallback(async (id) => {
@@ -129,8 +160,9 @@ export function PodcastProvider({ children }) {
     getById,
     ensureDetail,
     refreshAll,
+    softRefreshIfStale,
     featuredCreators,
-  }), [podcasts, maturePodcastIds, isLoading, error, getById, ensureDetail, refreshAll, featuredCreators]);
+  }), [podcasts, maturePodcastIds, isLoading, error, getById, ensureDetail, refreshAll, softRefreshIfStale, featuredCreators]);
 
   return (
     <PodcastContext.Provider value={value}>

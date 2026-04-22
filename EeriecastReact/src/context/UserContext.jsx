@@ -461,6 +461,31 @@ const UserProvider = ({ children }) => {
     }
   }, [notifications]);
 
+  // Batch "Mark all as read" — fires mark_read for every unread notification
+  // in parallel, with optimistic UI updates so the UI flips instantly.
+  const markAllNotificationsRead = useCallback(async () => {
+    const unread = (notifications || []).filter((n) => n && n.is_read === false);
+    if (unread.length === 0) return { updated: 0 };
+    const prevList = notifications;
+    // Optimistic: mark all unread as read locally
+    const nextList = (notifications || []).map((n) => (
+      n && n.is_read === false ? { ...n, is_read: true } : n
+    ));
+    setNotifications(nextList);
+    setUnreadNotificationCount(0);
+    try {
+      await Promise.all(
+        unread.map((n) => UserLibrary.markNotificationRead(n.id).catch(() => null))
+      );
+      return { updated: unread.length };
+    } catch {
+      // Rollback on failure — best-effort; individual calls shouldn't throw
+      setNotifications(prevList);
+      setUnreadNotificationCount(unread.length);
+      return { updated: 0 };
+    }
+  }, [notifications]);
+
   // Derived flag: whether the user has an active premium subscription
   const isPremium = useMemo(() => {
     const u = user;
@@ -712,6 +737,7 @@ const UserProvider = ({ children }) => {
         unreadNotificationCount,
         refreshNotifications,
         markNotificationRead,
+        markAllNotificationsRead,
         removeEpisodeFromPlaylist,
         // listening history / episode progress
         episodeProgressMap,

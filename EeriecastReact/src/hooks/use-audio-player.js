@@ -17,6 +17,45 @@ function getDeviceId() {
   }
 }
 
+// ─── Per-show playback speed memory ────────────────────────────────
+// Persists a map of { [podcastId]: playbackRate } so audiobooks can stay at 1x
+// while true-story podcasts stay at 1.5x (etc.) across sessions.
+const PER_SHOW_SPEED_KEY = 'eeriecast_per_show_speed';
+
+function readPerShowSpeedMap() {
+  try {
+    const raw = localStorage.getItem(PER_SHOW_SPEED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePerShowSpeedMap(map) {
+  try { localStorage.setItem(PER_SHOW_SPEED_KEY, JSON.stringify(map || {})); } catch { /* */ }
+}
+
+/** Returns the remembered playback rate for a podcast id, or null. */
+export function getSavedPlaybackRateForPodcast(podcastId) {
+  if (!podcastId && podcastId !== 0) return null;
+  const map = readPerShowSpeedMap();
+  const key = String(podcastId);
+  const val = parseFloat(map[key]);
+  return Number.isFinite(val) && val > 0 ? val : null;
+}
+
+/** Remember the current playback rate for a given podcast id. */
+export function savePlaybackRateForPodcast(podcastId, rate) {
+  if (!podcastId && podcastId !== 0) return;
+  const r = parseFloat(rate);
+  if (!Number.isFinite(r) || r <= 0) return;
+  const map = readPerShowSpeedMap();
+  map[String(podcastId)] = r;
+  writePerShowSpeedMap(map);
+}
+
 export function useAudioPlayer({ onEnd } = {}) {
   const audioRef = useRef(null);
   const heartbeatRef = useRef(null);
@@ -219,8 +258,15 @@ export function useAudioPlayer({ onEnd } = {}) {
 
       // Swap in the new source and resume position
       audio.src = url;
-      // Preserve playback rate across tracks
-      try { audio.playbackRate = parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { /* */ }
+      // Apply playback rate: prefer per-show memory (so audiobooks stay at 1x
+      // while podcasts remember 1.5x), then fall back to the global default.
+      try {
+        const perShow = getSavedPlaybackRateForPodcast(p?.id || podcast?.id);
+        const fallback = parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1;
+        const rate = perShow || fallback;
+        audio.playbackRate = rate;
+        setPlaybackRateState(rate);
+      } catch { /* */ }
 
       const resumeSeconds = Math.max(0, Math.floor(resume?.progress || 0));
       // Best-effort: set immediately (may be ignored until metadata loads)
@@ -320,7 +366,9 @@ export function useAudioPlayer({ onEnd } = {}) {
     if (audio) audio.playbackRate = r;
     setPlaybackRateState(r);
     try { localStorage.setItem('eeriecast_playback_rate', String(r)); } catch { /* */ }
-  }, []);
+    // Remember this rate for the currently playing show so it sticks next time
+    if (podcast?.id != null) savePlaybackRateForPodcast(podcast.id, r);
+  }, [podcast?.id]);
 
   return {
     audioRef,

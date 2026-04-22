@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { Podcast } from "@/api/entities";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Podcast, Episode, UserLibrary } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
-import { hasCategory, isAudiobook, filterMaturePodcasts } from "@/lib/utils";
+import { hasCategory, isAudiobook, filterMaturePodcasts, getEpisodeAudioUrl } from "@/lib/utils";
+import { createPageUrl } from "@/utils";
 import { useUser } from "@/context/UserContext.jsx";
+import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 
 export default function CategoryPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const categoryParam = (params.get("category") || "").toLowerCase();
-  const { canViewMature } = useUser();
+  const { canViewMature, isPremium } = useUser();
+  const { loadAndPlay } = useAudioPlayerContext();
 
   const [allPodcasts, setAllPodcasts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +42,43 @@ export default function CategoryPage() {
     if (!categoryParam) return "All";
     return categoryParam.toUpperCase();
   }, [categoryParam]);
+
+  const handlePodcastPlay = async (podcast) => {
+    try {
+      if (!podcast?.id) return;
+      // Audiobooks and members-only shows for non-premium users: route to show page.
+      if (isAudiobook(podcast) || (podcast?.is_exclusive && !isPremium)) {
+        navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
+        return;
+      }
+      let episodes = Array.isArray(podcast.episodes) ? podcast.episodes : [];
+      if (!episodes.length) {
+        const detail = await Podcast.get(podcast.id);
+        episodes = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
+      }
+      let resume;
+      try { resume = await UserLibrary.resumeForPodcast(podcast.id); } catch { resume = null; }
+      let ep;
+      const resumeEp = resume && resume.episode_detail;
+      if (resumeEp) {
+        const found = episodes.find(e => e.id === resumeEp.id);
+        ep = found ? { ...found, ...resumeEp } : resumeEp;
+      } else {
+        ep = episodes[0];
+      }
+      if (!ep) return;
+      if (!getEpisodeAudioUrl(ep) && ep?.id) {
+        try { const fullEp = await Episode.get(ep.id); ep = fullEp || ep; } catch { /* ignore */ }
+      }
+      if (ep?.is_premium && !isPremium) {
+        navigate(createPageUrl('Premium'));
+        return;
+      }
+      await loadAndPlay({ podcast, episode: ep, resume });
+    } catch (e) {
+      if (typeof console !== 'undefined') console.debug('category play failed', e);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-white px-2.5 lg:px-10 py-8">
@@ -69,7 +110,7 @@ export default function CategoryPage() {
                   <ShowCard
                     key={podcast.id}
                     podcast={podcast}
-                    onPlay={() => {}}
+                    onPlay={handlePodcastPlay}
                     subtext={subtext}
                   />
                 );

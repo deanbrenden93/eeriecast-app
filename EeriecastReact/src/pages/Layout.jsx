@@ -1,8 +1,8 @@
 /* eslint-disable react/prop-types */
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown, ShoppingBag } from "lucide-react";
+import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown, ShoppingBag, CheckCheck } from "lucide-react";
 import { useCart } from '@/context/CartContext';
 import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
@@ -512,7 +512,15 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
 /* ─── Notifications popover ─── */
 
 function NotificationsPopover({ onClose }) {
-  const { notifications, notificationsLoading, refreshNotifications, isAuthenticated, markNotificationRead } = useUser();
+  const {
+    notifications,
+    notificationsLoading,
+    refreshNotifications,
+    isAuthenticated,
+    markNotificationRead,
+    markAllNotificationsRead,
+  } = useUser();
+  const navigate = useNavigate();
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -524,6 +532,31 @@ function NotificationsPopover({ onClose }) {
     }
   }, [isAuthenticated, refreshNotifications]);
 
+  // Resolve the best deep-link target for a notification. Each notification
+  // references a podcast and usually an episode — route to the show page
+  // (so the user sees the episode in context) and include ?ep=<id> so the
+  // page can scroll/highlight the specific episode if supported.
+  const resolveDeepLink = (n) => {
+    const podId = (n?.podcast && typeof n.podcast === 'object') ? n.podcast.id : n?.podcast;
+    const epId = (n?.episode && typeof n.episode === 'object') ? n.episode.id : n?.episode;
+    if (!podId) return null;
+    const base = `${createPageUrl('Episodes')}?id=${encodeURIComponent(podId)}`;
+    return epId ? `${base}&ep=${encodeURIComponent(epId)}` : base;
+  };
+
+  const handleNotificationClick = (n) => {
+    if (!n) return;
+    // Mark as read first so the dot updates even if navigation is cancelled
+    if (n.is_read === false) markNotificationRead(n.id);
+    const target = resolveDeepLink(n);
+    if (target) {
+      onClose?.();
+      navigate(target);
+    }
+  };
+
+  const hasUnread = (notifications || []).some((n) => n && n.is_read === false);
+
   return (
     <motion.div
       className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl bg-[#12121a] text-white shadow-2xl shadow-black/50 ring-1 ring-white/[0.06] overflow-hidden z-50"
@@ -534,7 +567,19 @@ function NotificationsPopover({ onClose }) {
     >
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.04]">
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Notifications</h3>
-        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors">Close</button>
+        <div className="flex items-center gap-3">
+          {hasUnread && typeof markAllNotificationsRead === 'function' && (
+            <button
+              onClick={() => markAllNotificationsRead()}
+              className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition-colors"
+              title="Mark all as read"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              Mark all read
+            </button>
+          )}
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors">Close</button>
+        </div>
       </div>
       <div className="max-h-80 overflow-auto">
         {notificationsLoading ? (
@@ -547,10 +592,10 @@ function NotificationsPopover({ onClose }) {
               <li
                 key={n.id}
                 className={`px-4 py-3 hover:bg-white/[0.03] cursor-pointer transition-colors ${n.is_read ? 'opacity-60' : ''}`}
-                onClick={() => markNotificationRead(n.id)}
+                onClick={() => handleNotificationClick(n)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markNotificationRead(n.id); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(n); } }}
                 aria-label={`Notification: ${n?.message || ''}`}
               >
                 <div className="flex items-start gap-3">

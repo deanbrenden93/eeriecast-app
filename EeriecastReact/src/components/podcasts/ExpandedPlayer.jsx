@@ -1,7 +1,24 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
-import { Heart, X, Plus, Settings2, UserPlus, UserCheck } from "lucide-react";
+import { Heart, X, Plus, Settings2, UserPlus, UserCheck, Share2, GripVertical, Trash2 } from "lucide-react";
+import { shareEpisodeAtTimestamp } from "@/lib/share";
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/context/UserContext.jsx";
@@ -9,6 +26,7 @@ import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext.jsx";
 import { Podcast, Episode, UserLibrary, Playlist } from "@/api/entities";
+import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/utils";
@@ -51,16 +69,18 @@ const DownloadIcon = () => (
 const ListMusicIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
 );
-const Backward10Icon = () => (
+const BackwardIcon = ({ seconds = 10 }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <text x="50%" y="50%" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="700" fill="currentColor" stroke="none" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif">-10</text>
+    <text x="50%" y="50%" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="700" fill="currentColor" stroke="none" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif">{`-${seconds}`}</text>
   </svg>
 );
-const Forward10Icon = () => (
+BackwardIcon.propTypes = { seconds: PropTypes.number };
+const ForwardIcon = ({ seconds = 10 }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <text x="50%" y="50%" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="700" fill="currentColor" stroke="none" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif">+10</text>
+    <text x="50%" y="50%" textAnchor="middle" dy=".35em" fontSize="12" fontWeight="700" fill="currentColor" stroke="none" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif">{`+${seconds}`}</text>
   </svg>
 );
+ForwardIcon.propTypes = { seconds: PropTypes.number };
 
 function formatTime(s) {
   if (!s && s !== 0) return "0:00";
@@ -301,6 +321,34 @@ function stripHtmlToText(html) {
   return str.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/**
+ * Sanitize a show-notes HTML blob to the small subset of tags we want to
+ * preserve (paragraphs, line breaks, inline emphasis, and links). Anything
+ * else is dropped. The result is safe to inject via dangerouslySetInnerHTML.
+ */
+function sanitizeShowNotes(html) {
+  if (!html) return '';
+  const allowed = /^(p|br|strong|b|em|i|u|ul|ol|li|a)$/i;
+  let str = String(html).replace(/<script[\s\S]*?<\/script>/gi, '');
+  str = str.replace(/<style[\s\S]*?<\/style>/gi, '');
+  // Drop disallowed tags entirely
+  str = str.replace(/<\/?([a-zA-Z0-9]+)([^>]*)>/g, (match, tagName, attrs) => {
+    if (!allowed.test(tagName)) return '';
+    const tag = tagName.toLowerCase();
+    const closing = match.startsWith('</') ? '/' : '';
+    if (tag === 'a' && !closing) {
+      // Extract href only, force safe attributes
+      const hrefMatch = attrs.match(/href\s*=\s*("([^"]*)"|'([^']*)')/i);
+      const href = hrefMatch ? (hrefMatch[2] || hrefMatch[3] || '').trim() : '';
+      if (!/^https?:\/\//i.test(href)) return '';
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer nofollow" class="text-red-400 hover:underline">`;
+    }
+    return `<${closing}${tag}>`;
+  });
+  // Collapse excessive whitespace
+  return str.trim();
+}
+
 /** Small scrolling marquee for compact card titles. */
 function MarqueeText({ text, className = '' }) {
   const containerRef = useRef(null);
@@ -370,6 +418,127 @@ function MarqueeTitle({ text, suffix }) {
 }
 MarqueeTitle.propTypes = { text: PropTypes.string, suffix: PropTypes.string };
 
+/** Expandable episode show-notes block with basic rich formatting preserved. */
+function ExpandableShowNotes({ html }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const bodyRef = useRef(null);
+
+  const sanitized = useMemo(() => sanitizeShowNotes(html), [html]);
+  const looksLikeHtml = useMemo(() => /<[a-z][\s\S]*>/i.test(html || ''), [html]);
+  const plainText = useMemo(() => stripHtmlToText(html), [html]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    // Detect overflow against the collapsed max-height (matches style below)
+    setOverflows(el.scrollHeight > 150);
+  }, [sanitized, plainText, html]);
+
+  if (!plainText) return null;
+
+  return (
+    <div className="w-full max-w-2xl mt-6">
+      <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-3">Show Notes</h3>
+      <div className="relative rounded-xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
+        <div
+          ref={bodyRef}
+          className="p-4 overflow-hidden text-sm text-white/75 leading-relaxed show-notes-body"
+          style={{ maxHeight: expanded ? 'none' : 140 }}
+        >
+          {looksLikeHtml ? (
+            <div dangerouslySetInnerHTML={{ __html: sanitized }} />
+          ) : (
+            <p className="whitespace-pre-line">{plainText}</p>
+          )}
+        </div>
+        {!expanded && overflows && (
+          <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/80 to-transparent pointer-events-none" />
+        )}
+        {(overflows || expanded) && (
+          <div className="px-4 pb-3 relative">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="text-[11px] font-semibold tracking-wider uppercase text-red-400 hover:text-red-300 transition-colors"
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+ExpandableShowNotes.propTypes = { html: PropTypes.string };
+
+/** Drag-sortable row in the Up Next queue drawer. */
+function SortableQueueItem({ id, item, podcast, onPlay }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 'auto',
+    opacity: isDragging ? 0.85 : 1,
+  };
+
+  const ep = item?.episode || item;
+  const pd = item?.podcast || podcast;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all text-left ${
+        isDragging
+          ? 'bg-white/10 shadow-2xl shadow-black/50 ring-1 ring-white/10'
+          : 'hover:bg-white/5'
+      }`}
+    >
+      <button
+        type="button"
+        className="flex-shrink-0 p-1 -ml-1 text-white/30 hover:text-white/70 cursor-grab active:cursor-grabbing touch-none"
+        aria-label="Drag to reorder"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onPlay}
+        className="flex-1 flex items-center gap-4 min-w-0 group text-left"
+      >
+        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 group-hover:shadow-lg transition-shadow">
+          {(ep?.cover_image || pd?.cover_image) ? (
+            <img src={ep?.cover_image || pd?.cover_image} alt={ep?.title || 'Episode'} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-white/20 text-[10px] font-bold">EP</div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-white text-sm font-semibold truncate mb-0.5 group-hover:text-[#ff0040] transition-colors">{ep?.title || 'Episode'}</div>
+          <div className="text-white/40 text-xs truncate uppercase tracking-wider">{pd?.title || ''}</div>
+        </div>
+      </button>
+    </div>
+  );
+}
+SortableQueueItem.propTypes = {
+  id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  item: PropTypes.object,
+  podcast: PropTypes.object,
+  onPlay: PropTypes.func,
+};
+
 export default function ExpandedPlayer({ 
   podcast, 
   episode, 
@@ -398,11 +567,23 @@ export default function ExpandedPlayer({
   const { openAuth } = useAuthModal();
 
   // Sleep timer & playback speed from context
-  const { sleepTimerRemaining, setSleepTimer, cancelSleepTimer, playbackRate, setPlaybackRate, audioRef, removeFromQueue } = useAudioPlayerContext();
+  const {
+    sleepTimerRemaining,
+    setSleepTimer,
+    cancelSleepTimer,
+    playbackRate,
+    setPlaybackRate,
+    audioRef,
+    removeFromQueue,
+    reorderQueue,
+    clearQueue,
+  } = useAudioPlayerContext();
   const sleepTimerActive = sleepTimerRemaining > 0;
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
+  // Custom sleep timer input (minutes)
+  const [customSleepMinutes, setCustomSleepMinutes] = useState('');
 
   // Follow state
   const isFollowing = followedPodcastIds?.has(Number(podcast?.id));
@@ -430,8 +611,30 @@ export default function ExpandedPlayer({
     }
   };
 
+  // Configurable skip intervals from user settings
+  const { settings } = useSettings();
+  const skipBack = Number(settings?.skipBackwardSeconds) || 10;
+  const skipFwd = Number(settings?.skipForwardSeconds) || 10;
+
   // New: Queue sheet state
   const [showQueue, setShowQueue] = useState(false);
+
+  // ── Drag & drop sensors for Up Next reordering ──
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleQueueDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    // Item ids use the absolute queue index so we can translate directly.
+    const fromIdx = Number(active.id);
+    const toIdx = Number(over.id);
+    if (!Number.isFinite(fromIdx) || !Number.isFinite(toIdx)) return;
+    if (typeof reorderQueue === 'function') reorderQueue(fromIdx, toIdx);
+  };
 
   // (Header menu state removed — favorite & playlist moved to toolbar)
 
@@ -865,53 +1068,69 @@ export default function ExpandedPlayer({
           />
         </div>
 
-        {/* Action buttons */}
+        {/* Action buttons — compact icon-only row. Download lives in Options modal. */}
         <div className="player-controls-section">
           <div className="player-action-buttons">
-            <button className="episode-download-btn" onClick={handleDownload} disabled={downloading}>
-              <span className="icon" style={{ fontSize: 16 }}><DownloadIcon /></span>
-              <span>{downloading ? 'Saving…' : 'Download'}</span>
-            </button>
-
             <button
-              className={`player-options-btn ${sleepTimerActive || playbackRate !== 1 ? 'has-indicators' : ''}`}
-              onClick={() => setShowOptionsModal(true)}
-              aria-haspopup="dialog"
-              aria-expanded={showOptionsModal}
+              type="button"
+              className={`player-action-icon-btn ${isLiked ? 'liked' : ''}`}
+              onClick={handleFavoriteClick}
+              title={isLiked ? 'Favorited' : 'Add to favorites'}
+              aria-pressed={isLiked}
+              disabled={favLoading}
             >
-              {/* Show active indicators inline */}
-              {sleepTimerActive && (
-                <span className="inline-flex items-center gap-1 text-amber-400">
-                  <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" /></span>
-                  <span className="text-[11px] font-mono font-semibold tabular-nums">{formatTimerDisplay(sleepTimerRemaining)}</span>
-                </span>
-              )}
-              {playbackRate !== 1 && (
-                <span className="text-[11px] font-semibold text-indigo-400 tabular-nums">{playbackRate}x</span>
-              )}
-              {!sleepTimerActive && playbackRate === 1 && (
-                <span className="icon" style={{ fontSize: 16 }}><Settings2 className="w-4 h-4" /></span>
-              )}
-              {!sleepTimerActive && playbackRate === 1 && <span>Options</span>}
+              <span className="pi-circle">
+                <Heart className={`w-[18px] h-[18px] ${isLiked ? 'fill-red-500' : ''}`} />
+              </span>
+              <span className="pi-label">{isLiked ? 'Liked' : 'Like'}</span>
             </button>
 
             <button
-              className="episode-download-btn"
+              type="button"
+              className="player-action-icon-btn"
+              onClick={() => {
+                const ts = currentTime > 5 ? currentTime : 0;
+                shareEpisodeAtTimestamp(podcast, episode, ts);
+              }}
+              title={currentTime > 5 ? 'Share at current time' : 'Share episode'}
+            >
+              <span className="pi-circle">
+                <Share2 className="w-[18px] h-[18px]" />
+              </span>
+              <span className="pi-label">Share</span>
+            </button>
+
+            <button
+              type="button"
+              className="player-action-icon-btn"
               onClick={handleOpenAddToPlaylist}
               title="Add to playlist"
             >
-              <span className="icon" style={{ fontSize: 16 }}><Plus className="w-4 h-4" /></span>
-              <span>Playlist</span>
+              <span className="pi-circle">
+                <Plus className="w-[18px] h-[18px]" />
+              </span>
+              <span className="pi-label">Playlist</span>
             </button>
 
             <button
-              className={`episode-download-btn ${isLiked ? '!text-red-500 !border-red-500/30 !bg-red-500/10' : ''}`}
-              onClick={handleFavoriteClick}
-              title={isLiked ? 'Favorited' : 'Add to favorites'}
-              disabled={favLoading}
+              type="button"
+              className={`player-action-icon-btn ${sleepTimerActive || playbackRate !== 1 ? 'active' : ''}`}
+              onClick={() => setShowOptionsModal(true)}
+              aria-haspopup="dialog"
+              aria-expanded={showOptionsModal}
+              title="Player options"
             >
-              <span className="icon" style={{ fontSize: 16 }}><Heart className={`w-4 h-4 ${isLiked ? 'fill-red-500' : ''}`} /></span>
-              <span>{isLiked ? 'Liked' : 'Like'}</span>
+              <span className="pi-circle">
+                <Settings2 className="w-[18px] h-[18px]" />
+                {(sleepTimerActive || playbackRate !== 1) && <span className="pi-dot" />}
+              </span>
+              <span className="pi-label tabular-nums">
+                {sleepTimerActive
+                  ? formatTimerDisplay(sleepTimerRemaining)
+                  : playbackRate !== 1
+                  ? `${playbackRate}x`
+                  : 'Options'}
+              </span>
             </button>
           </div>
         </div>
@@ -951,8 +1170,8 @@ export default function ExpandedPlayer({
             >
               <span className="icon"><ShuffleIcon /></span>
             </button>
-            <button className="player-control-large seek-btn backward-btn" title="Back 10" onClick={() => onSkip && onSkip(-10)}>
-              <span className="icon"><Backward10Icon /></span>
+            <button className="player-control-large seek-btn backward-btn" title={`Back ${skipBack}`} onClick={() => onSkip && onSkip(-skipBack)}>
+              <span className="icon"><BackwardIcon seconds={skipBack} /></span>
             </button>
             <button className="player-control-large prev-btn" title="Previous track" onClick={() => onPrev && onPrev()}>
               <span className="icon"><PrevIcon /></span>
@@ -968,8 +1187,8 @@ export default function ExpandedPlayer({
             <button className="player-control-large next-btn" title="Next track" onClick={() => onNext && onNext()}>
               <span className="icon"><NextIcon /></span>
             </button>
-            <button className="player-control-large seek-btn forward-btn" title="Forward 10" onClick={() => onSkip && onSkip(10)}>
-              <span className="icon"><Forward10Icon /></span>
+            <button className="player-control-large seek-btn forward-btn" title={`Forward ${skipFwd}`} onClick={() => onSkip && onSkip(skipFwd)}>
+              <span className="icon"><ForwardIcon seconds={skipFwd} /></span>
             </button>
             <button
               className={`player-control-large repeat-btn ${effectiveRepeat !== 'off' ? 'active' : ''} ${effectiveRepeat === 'one' ? 'repeat-one' : ''}`}
@@ -986,23 +1205,9 @@ export default function ExpandedPlayer({
             BELOW-CONTROLS CONTENT SECTIONS
             ═══════════════════════════════════════════════════════════ */}
 
-        {/* ── 1. Episode Description Preview ── */}
+        {/* ── 1. Episode Show Notes (expandable) ── */}
         {(episode?.description || episode?.summary) && (
-          <div className="w-full max-w-2xl mt-6">
-            <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-3">About this Episode</h3>
-            <div
-              className="relative rounded-xl bg-white/[0.04] border border-white/[0.06] overflow-hidden"
-              style={{ maxHeight: 140 }}
-            >
-              <div className="p-4 overflow-y-auto custom-scrollbar" style={{ maxHeight: 140 }}>
-                <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line">
-                  {stripHtmlToText(episode?.description || episode?.summary || '')}
-                </p>
-              </div>
-              {/* Bottom fade hint */}
-              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#0a0a0f] to-transparent pointer-events-none" />
-            </div>
-          </div>
+          <ExpandableShowNotes html={episode?.description || episode?.summary || ''} />
         )}
 
         {/* ── Loading indicator for below-controls sections ── */}
@@ -1283,7 +1488,7 @@ export default function ExpandedPlayer({
                       { label: '30m', minutes: 30 },
                       { label: '45m', minutes: 45 },
                       { label: '60m', minutes: 60 },
-                      { label: 'End of ep', minutes: null },
+                      { label: isAudiobook(podcast) ? 'End of chapter' : 'End of ep', minutes: null },
                       ...(sleepTimerActive ? [{ label: 'Off', minutes: -1 }] : []),
                     ].map((opt) => (
                       <button
@@ -1309,6 +1514,38 @@ export default function ExpandedPlayer({
                       </button>
                     ))}
                   </div>
+
+                  {/* Custom minutes input */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const mins = parseInt(customSleepMinutes, 10);
+                      if (Number.isFinite(mins) && mins > 0 && mins <= 600) {
+                        setSleepTimer(mins);
+                        setCustomSleepMinutes('');
+                        setShowOptionsModal(false);
+                      }
+                    }}
+                    className="mt-3 flex items-center gap-2"
+                  >
+                    <input
+                      type="number"
+                      min="1"
+                      max="600"
+                      inputMode="numeric"
+                      placeholder="Custom (minutes)"
+                      value={customSleepMinutes}
+                      onChange={(e) => setCustomSleepMinutes(e.target.value.replace(/[^0-9]/g, ''))}
+                      className="flex-1 bg-white/[0.04] border border-white/[0.06] rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-amber-500/40 focus:ring-1 focus:ring-amber-500/20 transition-all"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!customSleepMinutes || !Number.isFinite(parseInt(customSleepMinutes, 10))}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Set
+                    </button>
+                  </form>
                 </div>
 
                 {/* Divider */}
@@ -1349,6 +1586,33 @@ export default function ExpandedPlayer({
                     </button>
                   )}
                 </div>
+
+                {/* ── Download Section (premium-only) ── */}
+                {isPremium && (
+                  <>
+                    <div className="h-px bg-white/[0.06] my-6" />
+                    <div>
+                      <div className="flex items-center gap-2.5 mb-3">
+                        <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                          <DownloadIcon />
+                        </div>
+                        <h3 className="text-sm font-semibold text-white/90 uppercase tracking-wider">Download</h3>
+                      </div>
+                      <p className="text-xs text-white/50 mb-3 leading-relaxed">
+                        Save this episode to your device for offline listening.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => { handleDownload(); setShowOptionsModal(false); }}
+                        disabled={downloading}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                      >
+                        <DownloadIcon />
+                        <span>{downloading ? 'Saving…' : 'Download episode'}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>
@@ -1439,41 +1703,50 @@ export default function ExpandedPlayer({
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">Up Next</h3>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {(!upNext || upNext.length === 0) ? (
-                        <div className="text-white/40 text-sm py-8 text-center bg-white/[0.02] rounded-2xl border border-dashed border-white/5">
-                          No upcoming episodes
-                        </div>
-                      ) : (
-                        upNext.map((item, idx) => {
-                          const absoluteIndex = (Array.isArray(queue) && queue.length > 0 && queueIndex >= 0) ? (queueIndex + 1 + idx) : undefined;
-                          const ep = item.episode || item;
-                          const pd = item.podcast || podcast;
-                          const key = (ep?.id ?? ep?.slug ?? idx);
-                          return (
-                            <button 
-                              key={key} 
-                              onClick={() => handlePlayFromQueue(item, absoluteIndex)} 
-                              className="w-full flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-all group text-left"
-                            >
-                              <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 group-hover:shadow-lg transition-shadow">
-                                {ep?.cover_image || pd?.cover_image ? (
-                                  <img src={ep?.cover_image || pd?.cover_image} alt={ep?.title || 'Episode'} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-white/20 text-[10px] font-bold">EP</div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-white text-sm font-semibold truncate mb-0.5 group-hover:text-[#ff0040] transition-colors">{ep?.title || 'Episode'}</div>
-                                <div className="text-white/40 text-xs truncate uppercase tracking-wider">{pd?.title || ''}</div>
-                              </div>
-                            </button>
-                          );
-                        })
+                      {upNext && upNext.length > 0 && typeof clearQueue === 'function' && (
+                        <button
+                          type="button"
+                          onClick={clearQueue}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-wider text-white/40 hover:text-red-400 uppercase transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Clear
+                        </button>
                       )}
                     </div>
+
+                    {(!upNext || upNext.length === 0) ? (
+                      <div className="text-white/40 text-sm py-8 text-center bg-white/[0.02] rounded-2xl border border-dashed border-white/5">
+                        No upcoming episodes
+                      </div>
+                    ) : (() => {
+                      const hasAbsoluteIndex = Array.isArray(queue) && queue.length > 0 && queueIndex >= 0;
+                      const ids = upNext.map((_, idx) => hasAbsoluteIndex ? String(queueIndex + 1 + idx) : String(idx));
+                      return (
+                        <DndContext
+                          sensors={dndSensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleQueueDragEnd}
+                        >
+                          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-1.5">
+                              {upNext.map((item, idx) => {
+                                const absoluteIndex = hasAbsoluteIndex ? (queueIndex + 1 + idx) : idx;
+                                return (
+                                  <SortableQueueItem
+                                    key={absoluteIndex}
+                                    id={String(absoluteIndex)}
+                                    item={item}
+                                    podcast={podcast}
+                                    onPlay={() => handlePlayFromQueue(item, hasAbsoluteIndex ? absoluteIndex : undefined)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

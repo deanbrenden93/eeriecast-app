@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Minimal typographic styling for sanitized episode show-notes. */
+.show-notes-body p { margin: 0 0 0.75rem 0; }
+.show-notes-body p:last-child { margin-bottom: 0; }
+.show-notes-body ul, .show-notes-body ol { margin: 0 0 0.75rem 1.25rem; }
+.show-notes-body li { margin-bottom: 0.25rem; }
+.show-notes-body a { color: #f87171; text-decoration: underline; text-underline-offset: 2px; }
+.show-notes-body strong, .show-notes-body b { color: #fff; font-weight: 600; }
+.show-notes-body em, .show-notes-body i { font-style: italic; }
+
 
 /* ═══════════════════════════════════════════════════════
    EERIECAST — Dark Horror Theme
@@ -684,27 +693,95 @@ body::-webkit-scrollbar,
 
 .player-action-buttons {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 8px;
+  gap: 18px;
   margin-bottom: 12px;
   flex-wrap: nowrap;
 }
 
-/* Scale toolbar buttons down on narrow screens so they never overflow */
-@media (max-width: 374px) {
+@media (max-width: 420px) {
   .player-action-buttons {
-    gap: 4px;
-    transform: scale(0.88);
-    transform-origin: center;
+    gap: 14px;
   }
 }
-@media (min-width: 375px) and (max-width: 420px) {
+@media (max-width: 360px) {
   .player-action-buttons {
-    gap: 5px;
-    transform: scale(0.92);
-    transform-origin: center;
+    gap: 10px;
   }
+}
+
+/* Compact icon-only action buttons with a micro-label below. */
+.player-action-icon-btn {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary, #aaa);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  min-width: 44px;
+}
+.player-action-icon-btn .pi-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.player-action-icon-btn:hover {
+  color: var(--text-primary, #fff);
+}
+.player-action-icon-btn:hover .pi-circle {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.25);
+}
+.player-action-icon-btn:active .pi-circle {
+  transform: scale(0.94);
+}
+.player-action-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.player-action-icon-btn.liked {
+  color: #ef4444;
+}
+.player-action-icon-btn.liked .pi-circle {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.player-action-icon-btn.active {
+  color: #fbbf24;
+}
+.player-action-icon-btn.active .pi-circle {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.player-action-icon-btn .pi-dot {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 0 2px var(--bg-player, #0d0d12);
+}
+.player-action-icon-btn .pi-label {
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .episode-description-toggle-btn,

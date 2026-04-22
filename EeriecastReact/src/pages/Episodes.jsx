@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart, Loader2 } from 'lucide-react';
+import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart, Loader2, Share2 } from 'lucide-react';
+import { sharePodcast } from '@/lib/share';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
@@ -526,6 +527,16 @@ export default function Episodes() {
                       />
                   }
                   {isFollowing ? 'Following' : 'Follow'}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="px-5 py-2.5 rounded-full bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.1] transition-all duration-300 text-sm text-zinc-300"
+                  onClick={() => sharePodcast(show)}
+                  aria-label="Share show"
+                >
+                  <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                  Share
                 </Button>
 
                 {/* Read Book — audiobooks only */}

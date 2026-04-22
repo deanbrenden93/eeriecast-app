@@ -11,6 +11,8 @@ import {
   BookmarkCheck,
   Trash2,
   ShieldAlert,
+  Rewind,
+  FastForward,
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useSettings } from '@/hooks/use-settings';
@@ -86,6 +88,27 @@ const PlaybackSpeedControl = ({ speed, setSpeed }) => {
           }`}
         >
           {s}x
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const SkipIntervalControl = ({ value, onChange }) => {
+  const options = [10, 15, 30, 45];
+  return (
+    <div className="flex items-center gap-1.5 bg-black/40 border border-white/[0.06] p-1 rounded-xl">
+      {options.map(s => (
+        <button
+          key={s}
+          onClick={() => onChange(s)}
+          className={`flex-1 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+            value === s
+              ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]'
+          }`}
+        >
+          {s}s
         </button>
       ))}
     </div>
@@ -182,6 +205,26 @@ export default function Settings() {
             <PlaybackSpeedControl
               speed={playbackRate}
               setSpeed={setPlaybackRate}
+            />
+          </div>
+          <div className="mb-5">
+            <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-3">
+              <Rewind className="w-3.5 h-3.5" />
+              Skip Backward
+            </label>
+            <SkipIntervalControl
+              value={settings.skipBackwardSeconds}
+              onChange={(val) => updateSetting('skipBackwardSeconds', val)}
+            />
+          </div>
+          <div className="mb-5">
+            <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-3">
+              <FastForward className="w-3.5 h-3.5" />
+              Skip Forward
+            </label>
+            <SkipIntervalControl
+              value={settings.skipForwardSeconds}
+              onChange={(val) => updateSetting('skipForwardSeconds', val)}
             />
           </div>
           <SettingsToggle
