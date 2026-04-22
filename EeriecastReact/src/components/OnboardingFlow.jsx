@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
   Heart, Crown, BookOpen, Clock, Star, Headphones,
   ShieldAlert, Play, Sparkles, ChevronRight, X,
@@ -12,6 +13,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { isAudiobook, isMaturePodcast, getPodcastCategorySet } from '@/lib/utils';
 import { UserLibrary } from '@/api/entities';
 import { PaymentFormModal } from '@/pages/Premium';
+import { createPageUrl } from '@/utils';
 
 const ONBOARDING_KEY = 'eeriecast_onboarding_done';
 
@@ -699,16 +701,25 @@ MemberfulWelcomeStep.propTypes = {
 // ---------------------------------------------------------------------------
 export default function OnboardingFlow({ variant, onComplete }) {
   const { user } = useUser();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
-  
+
   const isImported = user?.is_imported_from_memberful;
-  const isPremium = variant === 'premium' || (isImported && user?.is_premium);
-  
+  const isExistingPremium = variant === 'premium-existing';
+  const isPremium = variant === 'premium' || isExistingPremium || (isImported && user?.is_premium);
+
   // If imported, we add the MemberfulWelcomeStep as the first step (step -1 or shift others)
   // Let's just adjust the step logic.
   const hasMemberfulStep = isImported;
-  const totalSteps = 3 + (hasMemberfulStep ? 1 : 0);
+  // Existing premium users skip the FollowShowsStep (they already use the app),
+  // so their flow is just Welcome + Celebration.
+  const hasFollowShowsStep = !isExistingPremium;
+  const totalSteps =
+    1 /* welcome */ +
+    (hasFollowShowsStep ? 1 : 0) +
+    1 /* celebration/upsell */ +
+    (hasMemberfulStep ? 1 : 0);
 
   const goForward = useCallback(() => {
     setDirection(1);
@@ -718,7 +729,10 @@ export default function OnboardingFlow({ variant, onComplete }) {
   const handleComplete = useCallback(async () => {
     await markOnboardingDone();
     onComplete();
-  }, [onComplete]);
+    if (isExistingPremium) {
+      navigate(createPageUrl('Home'));
+    }
+  }, [onComplete, isExistingPremium, navigate]);
 
   return (
     <motion.div
@@ -762,51 +776,60 @@ export default function OnboardingFlow({ variant, onComplete }) {
             </motion.div>
           )}
           
-          {step === (hasMemberfulStep ? 1 : 0) && (
-            <motion.div
-              key="welcome"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
-              className="absolute inset-0"
-            >
-              <WelcomeStep isPremium={isPremium} onContinue={goForward} />
-            </motion.div>
-          )}
-          {step === (hasMemberfulStep ? 2 : 1) && (
-            <motion.div
-              key="follow"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
-              className="absolute inset-0"
-            >
-              <FollowShowsStep onContinue={goForward} onSkip={goForward} />
-            </motion.div>
-          )}
-          {step === (hasMemberfulStep ? 3 : 2) && (
-            <motion.div
-              key="final"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
-              className="absolute inset-0"
-            >
-              {isPremium
-                ? <CelebrationStep onComplete={handleComplete} />
-                : <PremiumUpsellStep onComplete={handleComplete} />
-              }
-            </motion.div>
-          )}
+          {(() => {
+            const welcomeIndex = hasMemberfulStep ? 1 : 0;
+            const followIndex = hasFollowShowsStep ? welcomeIndex + 1 : -1;
+            const finalIndex = totalSteps - 1;
+            return (
+              <>
+                {step === welcomeIndex && (
+                  <motion.div
+                    key="welcome"
+                    custom={direction}
+                    variants={slideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+                    className="absolute inset-0"
+                  >
+                    <WelcomeStep isPremium={isPremium} onContinue={goForward} />
+                  </motion.div>
+                )}
+                {hasFollowShowsStep && step === followIndex && (
+                  <motion.div
+                    key="follow"
+                    custom={direction}
+                    variants={slideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+                    className="absolute inset-0"
+                  >
+                    <FollowShowsStep onContinue={goForward} onSkip={goForward} />
+                  </motion.div>
+                )}
+                {step === finalIndex && (
+                  <motion.div
+                    key="final"
+                    custom={direction}
+                    variants={slideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+                    className="absolute inset-0"
+                  >
+                    {isPremium
+                      ? <CelebrationStep onComplete={handleComplete} />
+                      : <PremiumUpsellStep onComplete={handleComplete} />
+                    }
+                  </motion.div>
+                )}
+              </>
+            );
+          })()}
         </AnimatePresence>
       </div>
     </motion.div>
@@ -814,6 +837,6 @@ export default function OnboardingFlow({ variant, onComplete }) {
 }
 
 OnboardingFlow.propTypes = {
-  variant: PropTypes.oneOf(['free', 'premium']).isRequired,
+  variant: PropTypes.oneOf(['free', 'premium', 'premium-existing']).isRequired,
   onComplete: PropTypes.func.isRequired,
 };

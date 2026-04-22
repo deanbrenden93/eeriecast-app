@@ -76,7 +76,7 @@ function App() {
   useEffect(() => {
     const handler = (e) => {
       const variant = e?.detail?.variant;
-      if (variant === 'free' || variant === 'premium') {
+      if (variant === 'free' || variant === 'premium' || variant === 'premium-existing') {
         setOnboardingVariant(variant);
       }
     };

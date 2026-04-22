@@ -350,7 +350,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
           sessionStorage.removeItem('eeriecast_just_registered');
           window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'premium' } }));
         } else if (mode === 'trial') {
-          toast({ title: 'Welcome to Eeriecast Premium', description: 'Your free trial has started', duration: 4000 });
+          window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'premium-existing' } }));
         } else {
           toast({ title: 'Success', description: 'Your payment method has been updated', duration: 4000 });
         }
@@ -632,16 +632,10 @@ export default function Premium() {
     setShowPayment(true);
   }, [isAuthenticated, openAuth, isPremium, isOnLegacyTrial]);
 
-  // Check for success or canceled status in URL
+  // Check for canceled status in URL. The success celebration is handled by
+  // the OnboardingFlow overlay triggered from PaymentFormModal, so no toast is
+  // fired here to avoid duplicates.
   useEffect(() => {
-    if (successMessage) {
-      toast({
-        title: 'Welcome to Premium',
-        description: 'Your 7-day free trial has started!',
-        duration: 5000,
-      });
-      // Optionally refresh user state to reflect premium status
-    }
     if (queryParams.get('canceled') === 'true') {
       toast({
         title: 'Subscription Canceled',
@@ -649,7 +643,7 @@ export default function Premium() {
         variant: 'destructive',
       });
     }
-  }, [successMessage, location.search]);
+  }, [location.search]);
 
   // Lock viewport-level overflow so no scrollbar can appear during the
   // page-transition animation.  This page scrolls inside its own container.
