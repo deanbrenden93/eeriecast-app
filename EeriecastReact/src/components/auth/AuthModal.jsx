@@ -1,14 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
-import { Check, ArrowLeft, Mail, Eye, EyeOff, CheckCircle, Loader2 } from 'lucide-react';
+import {
+  Check,
+  ArrowLeft,
+  Mail,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  Loader2,
+  Crown,
+  Headphones,
+  Skull,
+  Moon,
+  Sparkles,
+} from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { User } from '@/api/entities';
+import TermsOfServiceModal from '@/components/legal/TermsOfServiceModal';
+import PrivacyPolicyModal from '@/components/legal/PrivacyPolicyModal';
+
+const FEATURES = [
+  { icon: Headphones, label: 'Ad-free listening across the whole catalog' },
+  { icon: Crown,      label: 'Exclusive members-only shows & bonus episodes' },
+  { icon: Skull,      label: 'Full horror audiobook library' },
+  { icon: Moon,       label: 'Sleep timer, playback speed & downloads' },
+  { icon: Sparkles,   label: 'Cross-device sync, follows, favorites, playlists' },
+];
 
 export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { login, register, error, isAuthenticated, loading } = useUser();
@@ -24,21 +46,15 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const [successState, setSuccessState] = useState(null);
   const successTimerRef = useRef(null);
 
-  // Forgot password sub-view
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
-  // Imported user welcome state
   const [showImportedWelcome, setShowImportedWelcome] = useState(false);
   const [importedUserEmail, setImportedUserEmail] = useState('');
 
-  const FEATURES = [
-    'Listening History Sync',
-    'Follow Your Favorite Shows',
-    'Sleep Timer & Playback Speed',
-    'Sample Exclusive Content',
-  ];
+  const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
 
   const prevAuthRef = useRef(isAuthenticated);
 
@@ -57,6 +73,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setShowImportedWelcome(false);
     setImportedUserEmail('');
     setSuccessState(null);
+    setLocalError(null);
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
   }, [defaultTab, isOpen]);
 
@@ -71,7 +88,6 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
       successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); window.location.reload(); }, 1500);
     } else {
       if (result.code === 'imported_user_welcome') {
-        // Show welcome message for imported users
         setImportedUserEmail(result.email || loginForm.email);
         setShowImportedWelcome(true);
       } else {
@@ -97,7 +113,6 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     }
     const result = await register(registerForm);
     if (!result || result.success === false) {
-      // Check if this is an imported user trying to register
       if (result?.code === 'imported_user_welcome') {
         setImportedUserEmail(result.email || registerForm.email);
         setShowImportedWelcome(true);
@@ -110,83 +125,133 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     }
     setSubmitting(false);
     sessionStorage.setItem('eeriecast_just_registered', '1');
-    if (afterLoginAction?.fn) return;
+
+    const pendingAction = afterLoginAction?.fn;
     onClose();
+
+    if (pendingAction) {
+      setTimeout(() => pendingAction(), 0);
+      return;
+    }
     window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'free' } }));
   };
 
+  const isLogin = tab === 'login';
+  const contextSubtitle = subtitle
+    || (isLogin
+      ? 'Log in to continue your eerie listening journey.'
+      : 'Sign up for members-only features like favorites, history, playlists, follows and downloads.');
+
+  // Reusable password input with our own show-password toggle.
+  const PasswordField = ({ id, value, onChange, show, onToggleShow, autoComplete, label }) => (
+    <div>
+      <label htmlFor={id} className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">
+        {label}
+      </label>
+      <div className="relative group">
+        <Input
+          id={id}
+          type={show ? 'text' : 'password'}
+          required
+          autoComplete={autoComplete}
+          value={value}
+          onChange={onChange}
+          className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg pr-11 transition-colors text-sm"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onToggleShow}
+          aria-label={show ? 'Hide password' : 'Show password'}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-white/[0.04]"
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+  PasswordField.propTypes = {
+    id: PropTypes.string.isRequired,
+    value: PropTypes.string.isRequired,
+    onChange: PropTypes.func.isRequired,
+    show: PropTypes.bool.isRequired,
+    onToggleShow: PropTypes.func.isRequired,
+    autoComplete: PropTypes.string,
+    label: PropTypes.string.isRequired,
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-[95vw] sm:max-w-[500px] md:max-w-[760px] bg-gradient-to-br from-black via-[#121316] to-[#1f2128] text-white border border-red-600/40 shadow-2xl shadow-red-900/40 p-0 overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="flex flex-col md:flex-row w-full">
-          {/* Left / Main Form Section */}
-          <div className="flex-1 p-4 sm:p-6 md:p-8">
-            <div className="flex flex-col items-center mb-4 sm:mb-6">
-              <img
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e37bc9c15_logo.png"
-                alt="EERIECAST"
-                className="h-8 sm:h-10 md:h-12 mb-2 sm:mb-3 invert opacity-90"
-              />
-              {!successState && !showImportedWelcome && (
-                <div className="text-center space-y-1">
-                  {tab === 'login' ? (
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent
+          className="p-0 overflow-hidden border-0 bg-transparent shadow-none
+                     max-w-[95vw] sm:max-w-[460px] md:max-w-[860px]
+                     max-h-[92vh] sm:max-h-[88vh]"
+        >
+          <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#0a0a0d] via-[#11101a] to-[#15101b] border border-white/[0.06] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.8),0_0_0_1px_rgba(220,38,38,0.04)]">
+            {/* Ambient glow accents */}
+            <div className="pointer-events-none absolute -top-40 -left-40 w-[28rem] h-[28rem] rounded-full bg-red-600/[0.08] blur-[120px]" />
+            <div className="pointer-events-none absolute -bottom-40 -right-40 w-[28rem] h-[28rem] rounded-full bg-amber-500/[0.05] blur-[120px]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_0%,rgba(220,38,38,0.08),transparent_60%)]" />
+
+            <div className="relative flex flex-col md:flex-row w-full max-h-[92vh] sm:max-h-[88vh]">
+              {/* ═════════ Left — form ═════════ */}
+              <div className="flex-1 p-6 sm:p-8 md:p-10 overflow-y-auto">
+                {/* Brand mark */}
+                <div className="flex flex-col items-center text-center mb-6 sm:mb-7">
+                  <img
+                    src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e37bc9c15_logo.png"
+                    alt="EERIECAST"
+                    className="h-8 sm:h-9 mb-3 invert opacity-95"
+                  />
+                  {!successState && !showImportedWelcome && (
                     <>
-                      <h2 className="text-lg sm:text-xl font-semibold tracking-wide">Welcome Back</h2>
-                      <p className="text-xs sm:text-sm text-gray-400 px-2">{subtitle || 'Log in to continue your eerie listening journey.'}</p>
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="text-lg sm:text-xl font-semibold tracking-wide">Create Your Account</h2>
-                      <p className="text-xs sm:text-sm text-gray-400 px-2">{subtitle || 'Sign up for members-only features like favorites, history, playlists, follows and downloads!'}</p>
+                      <h2 className="text-[22px] sm:text-[26px] font-bold tracking-tight text-white">
+                        {isLogin ? 'Welcome back' : 'Create your account'}
+                      </h2>
+                      <p className="text-[13px] text-zinc-400 mt-1.5 max-w-[320px] leading-relaxed">
+                        {contextSubtitle}
+                      </p>
                     </>
                   )}
                 </div>
-              )}
-            </div>
-            {successState ? (
-              <div className="flex flex-col items-center py-8 animate-in fade-in zoom-in-95 duration-300">
-                <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center mb-4 ring-1 ring-green-500/20">
-                  <CheckCircle className="w-7 h-7 text-green-500" />
-                </div>
-                <h3 className="text-lg font-semibold mb-1">
-                  {successState === 'login' ? 'Welcome back!' : 'Welcome to EERIECAST!'}
-                </h3>
-                <p className="text-sm text-gray-400">
-                  {successState === 'login'
-                    ? 'You\'re signed in. Enjoy the show.'
-                    : 'Your account is ready. Let the nightmares begin.'}
-                </p>
-              </div>
-            ) : (
-            <Tabs value={tab} onValueChange={setTab} className="w-full">
-              {!showImportedWelcome && (
-                <TabsList className="grid grid-cols-2 w-full mb-4 sm:mb-6 bg-[#2a2d36] text-gray-300">
-                  <TabsTrigger value="login" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Login</TabsTrigger>
-                  <TabsTrigger value="register" className="data-[state=active]:bg-red-600 data-[state=active]:text-white text-sm sm:text-base">Register</TabsTrigger>
-                </TabsList>
-              )}
-              <TabsContent value="login">
-                {showImportedWelcome ? (
-                  /* Imported user welcome screen */
+
+                {successState ? (
+                  <div className="flex flex-col items-center py-10 animate-in fade-in zoom-in-95 duration-300">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/[0.12] flex items-center justify-center mb-5 ring-1 ring-emerald-500/30">
+                      <CheckCircle className="w-8 h-8 text-emerald-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2 text-white">
+                      {successState === 'login' ? 'Welcome back!' : 'Welcome to EERIECAST'}
+                    </h3>
+                    <p className="text-sm text-zinc-400 text-center max-w-[280px]">
+                      {successState === 'login'
+                        ? "You're signed in. Enjoy the show."
+                        : 'Your account is ready. Let the nightmares begin.'}
+                    </p>
+                  </div>
+                ) : showImportedWelcome ? (
                   <div className="flex flex-col items-center py-6 text-center animate-in fade-in duration-300">
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600/20 to-red-500/10 flex items-center justify-center mb-4 ring-2 ring-red-600/30">
                       <CheckCircle className="w-8 h-8 text-red-500" />
                     </div>
-                    <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                      Welcome to the New EERIECAST!
+                    <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">
+                      Welcome to the new EERIECAST!
                     </h3>
-                    <p className="text-sm text-gray-400 mb-2 max-w-[320px]">
+                    <p className="text-sm text-zinc-400 mb-2 max-w-[320px] leading-relaxed">
                       We found your account from Memberful. Your premium access is still active!
                     </p>
-                    <p className="text-sm text-gray-300 mb-6 max-w-[320px]">
+                    <p className="text-sm text-zinc-300 mb-6 max-w-[320px]">
                       We&apos;ve sent an email to <span className="font-semibold text-white">{importedUserEmail}</span> with a link to set up your password.
                     </p>
-                    <div className="w-full max-w-[320px] bg-[#1b1d23] border border-gray-700 rounded-lg p-4 mb-6">
+                    <div className="w-full max-w-[340px] bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 mb-6">
                       <div className="flex items-start gap-3 text-left">
-                        <Mail className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                          <Mail className="w-4 h-4 text-red-400" />
+                        </div>
                         <div>
-                          <p className="text-xs font-semibold text-gray-300 mb-1">Check your inbox</p>
-                          <p className="text-xs text-gray-400 leading-relaxed">
+                          <p className="text-xs font-semibold text-zinc-200 mb-1">Check your inbox</p>
+                          <p className="text-xs text-zinc-400 leading-relaxed">
                             Click the link in the email to set your password and start enjoying the new platform.
                           </p>
                         </div>
@@ -195,7 +260,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                     <button
                       type="button"
                       onClick={() => { setShowImportedWelcome(false); setImportedUserEmail(''); onClose(); }}
-                      className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1.5 transition-colors"
+                      className="text-sm text-red-400 hover:text-red-300 transition-colors"
                     >
                       Close
                     </button>
@@ -203,45 +268,46 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                 ) : showForgotPassword ? (
                   <div className="animate-in fade-in duration-300">
                     {forgotSubmitted ? (
-                      /* Success state */
                       <div className="flex flex-col items-center py-4 text-center">
-                        <div className="w-12 h-12 rounded-full bg-red-600/10 flex items-center justify-center mb-3 ring-1 ring-red-600/20">
-                          <Mail className="w-6 h-6 text-red-500" />
+                        <div className="w-14 h-14 rounded-full bg-red-500/[0.08] flex items-center justify-center mb-4 ring-1 ring-red-500/20">
+                          <Mail className="w-6 h-6 text-red-400" />
                         </div>
-                        <h3 className="text-base font-semibold mb-1">Check your inbox</h3>
-                        <p className="text-xs text-gray-400 mb-4 max-w-[280px]">
-                          If an account exists for <span className="text-gray-300">{forgotEmail}</span>, we&apos;ll send a password reset link shortly.
+                        <h3 className="text-base font-semibold text-white mb-2">Check your inbox</h3>
+                        <p className="text-xs text-zinc-400 mb-5 max-w-[300px] leading-relaxed">
+                          If an account exists for <span className="text-zinc-200">{forgotEmail}</span>, we&apos;ll send a password reset link shortly.
                         </p>
                         <button
                           type="button"
                           onClick={() => { setShowForgotPassword(false); setForgotSubmitted(false); setForgotEmail(''); }}
-                          className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1.5"
+                          className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1.5 transition-colors"
                         >
                           <ArrowLeft className="w-3.5 h-3.5" />
                           Back to login
                         </button>
                       </div>
                     ) : (
-                      /* Email input form */
                       <div className="space-y-4">
-                        <div className="text-center mb-2">
-                          <h3 className="text-base font-semibold mb-1">Forgot your password?</h3>
-                          <p className="text-xs text-gray-400">Enter your email and we&apos;ll send you a reset link.</p>
+                        <div className="text-center">
+                          <h3 className="text-base font-semibold text-white mb-1">Forgot your password?</h3>
+                          <p className="text-xs text-zinc-400">Enter your email and we&apos;ll send you a reset link.</p>
                         </div>
                         <div>
-                          <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
+                          <label className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Email</label>
                           <Input
                             type="email"
                             required
                             autoComplete="email"
                             value={forgotEmail}
                             onChange={(e) => setForgotEmail(e.target.value)}
-                            className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base"
+                            className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm"
                             placeholder="you@example.com"
                           />
                         </div>
+                        {localError && (
+                          <p className="text-red-400 text-xs bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2">{localError}</p>
+                        )}
                         <Button
-                          className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base"
+                          className="w-full h-11 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-lg transition-all duration-300 shadow-[0_4px_14px_rgba(220,38,38,0.25)] hover:shadow-[0_6px_20px_rgba(220,38,38,0.35)]"
                           disabled={submitting || !forgotEmail.trim()}
                           onClick={async () => {
                             if (!forgotEmail.trim()) return;
@@ -262,13 +328,13 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                               <Loader2 className="w-4 h-4 animate-spin" />
                               Sending...
                             </span>
-                          ) : 'Send Reset Link'}
+                          ) : 'Send reset link'}
                         </Button>
                         <p className="text-xs text-center">
                           <button
                             type="button"
-                            onClick={() => { setShowForgotPassword(false); setForgotEmail(''); }}
-                            className="text-red-400 hover:text-red-300 flex items-center gap-1.5 mx-auto"
+                            onClick={() => { setShowForgotPassword(false); setForgotEmail(''); setLocalError(null); }}
+                            className="text-red-400 hover:text-red-300 flex items-center gap-1.5 mx-auto transition-colors"
                           >
                             <ArrowLeft className="w-3.5 h-3.5" />
                             Back to login
@@ -278,105 +344,279 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                     )}
                   </div>
                 ) : (
-                  <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
-                    <div>
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
-                      <Input type="email" required autoComplete="email" value={loginForm.email} onChange={e=>setLoginForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
+                  <>
+                    {/* Segmented tab switcher */}
+                    <div className="relative grid grid-cols-2 p-1 mb-5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                      <div
+                        className={`absolute top-1 bottom-1 w-[calc(50%-0.25rem)] rounded-lg bg-gradient-to-br from-red-600 to-red-700 shadow-[0_2px_8px_rgba(220,38,38,0.35)] transition-transform duration-300 ease-out ${isLogin ? 'translate-x-0' : 'translate-x-full'}`}
+                        style={{ left: '0.25rem' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setTab('login'); setLocalError(null); }}
+                        className={`relative z-[1] py-2 text-sm font-semibold transition-colors ${isLogin ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        Log in
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setTab('register'); setLocalError(null); }}
+                        className={`relative z-[1] py-2 text-sm font-semibold transition-colors ${!isLogin ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                      >
+                        Create account
+                      </button>
                     </div>
-                    <div>
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>
-                      <div className="relative">
-                        <Input type={showLoginPw ? 'text' : 'password'} required autoComplete="current-password" value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base pr-10" />
-                        <button type="button" tabIndex={-1} onClick={() => setShowLoginPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
-                          {showLoginPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                      <div className="text-right mt-1">
-                        <button type="button" onClick={() => setShowForgotPassword(true)} className="text-xs text-gray-500 hover:text-red-400 transition-colors">Forgot password?</button>
+
+                    {isLogin ? (
+                      <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in duration-300">
+                        <div>
+                          <label htmlFor="login-email" className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Email</label>
+                          <Input
+                            id="login-email"
+                            type="email"
+                            required
+                            autoComplete="email"
+                            value={loginForm.email}
+                            onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
+                            className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm"
+                            placeholder="you@example.com"
+                          />
+                        </div>
+
+                        <PasswordField
+                          id="login-password"
+                          value={loginForm.password}
+                          onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+                          show={showLoginPw}
+                          onToggleShow={() => setShowLoginPw(v => !v)}
+                          autoComplete="current-password"
+                          label="Password"
+                        />
+
+                        <div className="flex justify-end -mt-1">
+                          <button
+                            type="button"
+                            onClick={() => { setShowForgotPassword(true); setLocalError(null); }}
+                            className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                          >
+                            Forgot password?
+                          </button>
+                        </div>
+
+                        {(localError || error) && (
+                          <p className="text-red-400 text-xs bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2">
+                            {localError || error}
+                          </p>
+                        )}
+
+                        <Button
+                          type="submit"
+                          className="w-full h-11 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-lg transition-all duration-300 shadow-[0_4px_14px_rgba(220,38,38,0.25)] hover:shadow-[0_6px_20px_rgba(220,38,38,0.35)]"
+                          disabled={submitting || loading}
+                        >
+                          {submitting ? (
+                            <span className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Logging in...
+                            </span>
+                          ) : 'Log in'}
+                        </Button>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleRegister} className="space-y-4 animate-in fade-in duration-300">
+                        <div>
+                          <label htmlFor="reg-username" className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Username</label>
+                          <Input
+                            id="reg-username"
+                            required
+                            value={registerForm.username}
+                            onChange={e => setRegisterForm(f => ({ ...f, username: e.target.value }))}
+                            className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm"
+                            placeholder="horrorfan666"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="reg-email" className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Email</label>
+                          <Input
+                            id="reg-email"
+                            type="email"
+                            required
+                            autoComplete="email"
+                            value={registerForm.email}
+                            onChange={e => setRegisterForm(f => ({ ...f, email: e.target.value }))}
+                            className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm"
+                            placeholder="you@example.com"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="reg-dob" className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Date of birth</label>
+                          <Input
+                            id="reg-dob"
+                            type="date"
+                            required
+                            autoComplete="bday"
+                            value={registerForm.date_of_birth}
+                            onChange={e => setRegisterForm(f => ({ ...f, date_of_birth: e.target.value }))}
+                            max={new Date().toISOString().split('T')[0]}
+                            className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm [color-scheme:dark]"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <PasswordField
+                            id="reg-password"
+                            value={registerForm.password}
+                            onChange={e => setRegisterForm(f => ({ ...f, password: e.target.value }))}
+                            show={showRegPw}
+                            onToggleShow={() => setShowRegPw(v => !v)}
+                            autoComplete="new-password"
+                            label="Password"
+                          />
+                          <PasswordField
+                            id="reg-confirm-password"
+                            value={registerForm.confirm_password}
+                            onChange={e => setRegisterForm(f => ({ ...f, confirm_password: e.target.value }))}
+                            show={showRegConfirmPw}
+                            onToggleShow={() => setShowRegConfirmPw(v => !v)}
+                            autoComplete="new-password"
+                            label="Confirm"
+                          />
+                        </div>
+
+                        {(localError || error) && (
+                          <p className="text-red-400 text-xs bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2">
+                            {localError || error}
+                          </p>
+                        )}
+
+                        <Button
+                          type="submit"
+                          className="w-full h-11 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-lg transition-all duration-300 shadow-[0_4px_14px_rgba(220,38,38,0.25)] hover:shadow-[0_6px_20px_rgba(220,38,38,0.35)]"
+                          disabled={submitting || loading}
+                        >
+                          {submitting ? (
+                            <span className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Creating...
+                            </span>
+                          ) : 'Create account'}
+                        </Button>
+                      </form>
+                    )}
+
+                    {/* ─── Mobile-only condensed membership promo ───
+                         Desktop uses the full-height right-column aside.
+                         Small screens get this minimal, single-row card
+                         so the ad + trial CTA are still visible without
+                         crowding the form above the fold. */}
+                    <div className="md:hidden mt-5 rounded-xl border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-white/[0.01] p-3 relative overflow-hidden">
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(220,38,38,0.16),transparent_65%)]" />
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_100%,rgba(245,158,11,0.08),transparent_55%)]" />
+                      <div className="relative flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400/[0.2] to-amber-500/[0.08] border border-amber-400/25 flex items-center justify-center flex-shrink-0">
+                          <Crown className="w-4 h-4 text-amber-300" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[12.5px] font-bold text-white tracking-tight">Go Premium</span>
+                            <span className="text-[10px] font-semibold text-amber-300/90 uppercase tracking-[0.14em]">7 days free</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 leading-snug mt-0.5 truncate">
+                            Ad-free &middot; exclusive shows &middot; full audiobook library
+                          </p>
+                        </div>
+                        <span className="text-[11px] font-semibold text-zinc-300 whitespace-nowrap">
+                          $7.99<span className="text-zinc-500 font-normal">/mo</span>
+                        </span>
                       </div>
                     </div>
-                    {(localError || error) && <p className="text-red-400 text-xs sm:text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{localError || error}</p>}
-                    <Button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base" disabled={submitting || loading}>{submitting ? 'Logging in...' : 'Login'}</Button>
-                    <p className="text-xs text-center text-gray-400">Don&apos;t have an account? <button type="button" onClick={()=>setTab('register')} className="text-red-400 hover:text-red-300 underline-offset-2 hover:underline">Create one free</button></p>
-                  </form>
+
+                    {/* Fine-print with real Terms / Privacy buttons */}
+                    <p className="text-[11px] text-center text-zinc-500 mt-5 leading-relaxed">
+                      By continuing you agree to our{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowTerms(true)}
+                        className="text-zinc-300 hover:text-red-400 underline-offset-2 hover:underline transition-colors"
+                      >
+                        Terms
+                      </button>
+                      {' '}and{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowPrivacy(true)}
+                        className="text-zinc-300 hover:text-red-400 underline-offset-2 hover:underline transition-colors"
+                      >
+                        Privacy Policy
+                      </button>
+                      .
+                    </p>
+                  </>
                 )}
-              </TabsContent>
-              <TabsContent value="register">
-                <form onSubmit={handleRegister} className="space-y-3 sm:space-y-4 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="md:col-span-2">
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Username</label>
-                      <Input required value={registerForm.username} onChange={e=>setRegisterForm(f=>({...f,username:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Email</label>
-                      <Input type="email" required autoComplete="email" value={registerForm.email} onChange={e=>setRegisterForm(f=>({...f,email:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Date of Birth</label>
-                      <Input type="date" required autoComplete="bday" value={registerForm.date_of_birth} onChange={e=>setRegisterForm(f=>({...f,date_of_birth:e.target.value}))} max={new Date().toISOString().split('T')[0]} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base [color-scheme:dark]" />
-                    </div>
-                    <div>
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Password</label>
-                      <div className="relative">
-                        <Input type={showRegPw ? 'text' : 'password'} required autoComplete="new-password" value={registerForm.password} onChange={e=>setRegisterForm(f=>({...f,password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base pr-10" />
-                        <button type="button" tabIndex={-1} onClick={() => setShowRegPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
-                          {showRegPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Confirm Password</label>
-                      <div className="relative">
-                        <Input type={showRegConfirmPw ? 'text' : 'password'} required autoComplete="new-password" value={registerForm.confirm_password} onChange={e=>setRegisterForm(f=>({...f,confirm_password:e.target.value}))} className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600 text-sm sm:text-base pr-10" />
-                        <button type="button" tabIndex={-1} onClick={() => setShowRegConfirmPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors">
-                          {showRegConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
+              </div>
+
+              {/* ═════════ Right — membership promo (hidden on mobile) ═════════ */}
+              <aside className="hidden md:flex w-[300px] xl:w-[320px] flex-shrink-0 flex-col justify-between relative border-l border-white/[0.05] bg-gradient-to-br from-black/60 via-[#14101c]/60 to-[#0f0b14]/60 backdrop-blur-sm overflow-hidden">
+                {/* Glow details */}
+                <div className="pointer-events-none absolute -top-20 -right-16 w-60 h-60 rounded-full bg-red-600/[0.15] blur-[80px]" />
+                <div className="pointer-events-none absolute -bottom-20 -left-16 w-60 h-60 rounded-full bg-amber-500/[0.08] blur-[80px]" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(220,38,38,0.08),transparent_50%)]" />
+
+                <div className="relative p-7 xl:p-8">
+                  {/* Premium badge */}
+                  <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-400/[0.18] to-amber-500/[0.08] text-amber-300 text-[10px] font-bold uppercase tracking-[0.2em] px-2.5 py-1 rounded-full border border-amber-400/[0.2] mb-5">
+                    <Crown className="w-3 h-3" />
+                    <span>Membership</span>
                   </div>
-                  {(localError || error) && <p className="text-red-400 text-xs sm:text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{localError || error}</p>}
-                  <Button type="submit" className="w-full bg-red-600 hover:bg-red-500 text-sm sm:text-base" disabled={submitting || loading}>{submitting ? 'Creating...' : 'Create Account'}</Button>
-                  <p className="text-xs text-center text-gray-400">Already have an account? <button type="button" onClick={()=>setTab('login')} className="text-red-400 hover:text-red-300 underline-offset-2 hover:underline">Log in</button></p>
-                </form>
-              </TabsContent>
-            </Tabs>
-            )}
-          </div>
-          {/* Right / Feature Panel (hidden on small screens) */}
-            <div className="hidden md:flex w-[240px] xl:w-[260px] flex-col justify-between bg-[#191b21] border-l border-gray-800/60 p-6 relative overflow-hidden">
-              <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/20 rounded-full blur-3xl" />
-              <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-600/40 to-transparent" />
-              <div>
-                {/* Pricing / Tagline */}
-                <div className="mb-8">
-                  <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-br from-red-600/25 via-red-500/10 to-transparent rounded-lg blur-sm opacity-70 group-hover:opacity-100 transition" />
-                    <div className="relative rounded-lg border border-red-600/40 bg-[#201e22]/70 backdrop-blur-sm px-3 py-3 mt-3 text-center shadow-inner shadow-red-900/30">
-                      <p className="text-[10px] tracking-[0.25em] font-semibold uppercase text-red-300/90 mb-1">Endless Nightmares for only</p>
-                      <p className="text-xl font-extrabold leading-none text-white drop-shadow-sm">$7.99 <span className="text-[11px] font-medium text-gray-300">/mo</span></p>
+
+                  <h3 className="text-[22px] font-bold text-white leading-tight tracking-tight mb-2">
+                    Unlock the full horror catalog
+                  </h3>
+                  <p className="text-[13px] text-zinc-400 leading-relaxed mb-5">
+                    Exclusive shows, after-hours episodes, and the complete audiobook library &mdash; on every device.
+                  </p>
+
+                  {/* Price tile */}
+                  <div className="relative rounded-xl border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-white/[0.01] p-4 mb-6 overflow-hidden">
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(220,38,38,0.18),transparent_60%)]" />
+                    <div className="relative flex items-baseline gap-1.5">
+                      <span className="text-[28px] font-extrabold text-white leading-none tracking-tight">$7.99</span>
+                      <span className="text-xs text-zinc-400 font-medium">/mo</span>
                     </div>
+                    <p className="relative text-[11px] text-zinc-500 mt-1.5">
+                      7-day free trial &middot; cancel anytime
+                    </p>
                   </div>
-                  {/*<p className="mt-3 text-[11px] text-gray-400 leading-relaxed">*/}
-                  {/*  Unlock chilling exclusives, ad-free binges, offline downloads and a growing vault of members‑only shows. Cancel anytime.*/}
-                  {/*</p>*/}
+
+                  {/* Feature list */}
+                  <ul className="space-y-2.5">
+                    {FEATURES.map(({ icon: Icon, label }) => (
+                      <li key={label} className="flex items-start gap-2.5 text-[12.5px] text-zinc-300 leading-snug">
+                        <span className="mt-0.5 w-5 h-5 rounded-md bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-3 h-3 text-red-400" />
+                        </span>
+                        <span>{label}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-red-400 mb-4">Member Perks</h3>
-                <ul className="space-y-3">
-                  {FEATURES.map(f => (
-                    <li key={f} className="flex items-start gap-3 text-sm text-gray-300">
-                      <span className="mt-0.5 text-red-500"><Check className="w-4 h-4" /></span>{f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="mt-8 text-[11px] text-gray-500 leading-relaxed">
-                By continuing you agree to our <span className="text-gray-300">Terms</span> & <span className="text-gray-300">Privacy Policy</span>.
-              </div>
+
+                {/* Footer of aside */}
+                <div className="relative px-7 xl:px-8 py-4 border-t border-white/[0.05] bg-black/30">
+                  <div className="flex items-center gap-1.5 text-[10.5px] text-zinc-500">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Secure checkout &middot; Cancel anytime</span>
+                  </div>
+                </div>
+              </aside>
             </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Legal modals — rendered as siblings so they layer above the auth modal */}
+      <TermsOfServiceModal open={showTerms} onOpenChange={setShowTerms} />
+      <PrivacyPolicyModal open={showPrivacy} onOpenChange={setShowPrivacy} />
+    </>
   );
 }
 

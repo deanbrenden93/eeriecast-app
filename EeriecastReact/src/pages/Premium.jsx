@@ -615,10 +615,17 @@ export default function Premium() {
 
   const handleStartTrial = useCallback(async () => {
     if (!isAuthenticated) {
-      openAuth('register', handleStartTrial, 'Create an account to start your free trial.');
+      // Pass a stable thunk (not handleStartTrial itself) so the post-auth
+      // callback doesn't run against the stale closure where isAuthenticated
+      // is still false — which would otherwise just re-open the auth modal.
+      openAuth(
+        'register',
+        () => setShowPayment(true),
+        'Create an account to start your free trial.'
+      );
       return;
     }
-    
+
     // Check if user is already premium to avoid opening the modal
     // EXCEPT if they are on a legacy trial, in which case we want to let them subscribe
     if (isPremium && !isOnLegacyTrial) {

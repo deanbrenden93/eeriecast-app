@@ -686,8 +686,8 @@ export default function Discover() {
     const filtered = podcasts.filter(p => {
       if (!selKey) return true;
       if (selKey === 'audiobook' || selKey === 'audiobooks') return isAudiobook(p);
-      if (selKey === 'free') return !p.is_exclusive;
-      if (selKey === 'members-only' || selKey === 'members only' || selKey === 'members_only') return p.is_exclusive;
+      if (selKey === 'free') return !p.is_exclusive && !isAudiobook(p);
+      if (selKey === 'members-only' || selKey === 'members only' || selKey === 'members_only') return p.is_exclusive || isAudiobook(p);
       return hasCategory(p, selKey);
     });
     const heading = (selectedCategory?.label || selKey || 'All').toString();
@@ -851,11 +851,14 @@ export default function Discover() {
       case "Podcasts":
         return renderShowList(podcasts.filter(p => !isAudiobook(p)), "All Podcasts", "No podcasts found.");
       case "Members-Only": {
-        const membersOnly = podcasts.filter(p => p.is_exclusive);
+        // Audiobooks live behind the member paywall alongside exclusive shows.
+        const membersOnly = podcasts.filter(p => p.is_exclusive || isAudiobook(p));
         return renderShowList(membersOnly, "Members-Only", "No members-only content found.");
       }
       case "Free": {
-        const freeContent = podcasts.filter(p => !p.is_exclusive);
+        // The Free tab is strictly for freely-listenable podcasts (no
+        // exclusive shows and no audiobooks, which are members-only).
+        const freeContent = podcasts.filter(p => !p.is_exclusive && !isAudiobook(p));
         return renderShowList(freeContent, "Free Content", "No free content found.");
       }
       case "Categories":

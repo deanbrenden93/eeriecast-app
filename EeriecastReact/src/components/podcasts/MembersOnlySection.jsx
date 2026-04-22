@@ -4,7 +4,7 @@ import { Star, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { useRef } from "react";
 import PropTypes from 'prop-types';
 
-export default function MembersOnlySection({ podcasts, onPodcastPlay }) {
+export default function MembersOnlySection({ podcasts, onPodcastPlay, subtext }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
 
@@ -98,7 +98,15 @@ export default function MembersOnlySection({ podcasts, onPodcastPlay }) {
                 <h3 className="text-white/90 font-semibold text-sm line-clamp-2 leading-tight group-hover:text-amber-400 transition-colors duration-300">
                   {podcast.title}
                 </h3>
-                <p className="text-zinc-500 text-xs leading-tight">{podcast.author}</p>
+                {(() => {
+                  const sub = typeof subtext === 'function' ? subtext(podcast) : subtext;
+                  if (sub) {
+                    return <p className="text-zinc-500 text-xs leading-tight truncate">{sub}</p>;
+                  }
+                  return podcast.author ? (
+                    <p className="text-zinc-500 text-xs leading-tight truncate">{podcast.author}</p>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>
@@ -111,4 +119,5 @@ export default function MembersOnlySection({ podcasts, onPodcastPlay }) {
 MembersOnlySection.propTypes = {
   podcasts: PropTypes.arrayOf(PropTypes.object),
   onPodcastPlay: PropTypes.func,
+  subtext: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
 };

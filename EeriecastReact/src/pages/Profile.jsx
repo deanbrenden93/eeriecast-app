@@ -17,8 +17,14 @@ import {
   ChevronRight,
   Play,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
+import {
+  getTrialLabel,
+  formatTrialDaysRemaining,
+  computeTrialDaysRemaining,
+} from "@/utils/trial";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 
@@ -61,11 +67,10 @@ export default function Profile() {
     user,
     isPremium,
     favoriteEpisodeIds,
-    followedPodcastIds,
-    isOnLegacyTrial,
-    legacyTrialEnds,
-    legacyTrialDaysRemaining,
-    legacyPlanType,
+    isOnTrial,
+    trialType,
+    trialEnds,
+    trialDaysRemaining,
   } = useUser();
   const { loadAndPlay } = useAudioPlayerContext();
 
@@ -246,17 +251,29 @@ export default function Profile() {
               <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 flex-wrap">
                 <span
                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                    isPremium
+                    isOnTrial
+                      ? "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"
+                      : isPremium
                       ? "bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"
                       : "bg-white/5 text-gray-400 ring-1 ring-white/10"
                   }`}
                 >
-                  {isPremium && <Crown className="w-3 h-3" />}
-                  {isPremium ? "Premium Member" : "Free Account"}
+                  {isOnTrial ? (
+                    <Sparkles className="w-3 h-3" />
+                  ) : isPremium ? (
+                    <Crown className="w-3 h-3" />
+                  ) : null}
+                  {isOnTrial
+                    ? getTrialLabel(trialType) || "Free Trial"
+                    : isPremium
+                    ? "Premium Member"
+                    : "Free Account"}
                 </span>
-                {isOnLegacyTrial && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30">
-                    Free Trial • {legacyTrialDaysRemaining} days left
+                {isOnTrial && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-300 ring-1 ring-blue-500/20">
+                    {formatTrialDaysRemaining(
+                      computeTrialDaysRemaining(trialEnds, trialDaysRemaining)
+                    )}
                   </span>
                 )}
                 {memberSince && (
@@ -271,6 +288,13 @@ export default function Profile() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 space-y-6">
+        {/* ── Active free-trial callout ── */}
+        {isOnTrial && <TrialCallout
+          trialType={trialType}
+          trialEnds={trialEnds}
+          trialDaysRemaining={trialDaysRemaining}
+        />}
+
         {/* ── Listening stats ── */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
@@ -509,6 +533,30 @@ function RecentEpisodeRow({ episode, onPlay }) {
         </span>
       )}
     </div>
+  );
+}
+
+function TrialCallout({ trialType, trialEnds, trialDaysRemaining }) {
+  const label = getTrialLabel(trialType) || "Free Trial";
+  const daysLeft = computeTrialDaysRemaining(trialEnds, trialDaysRemaining);
+
+  return (
+    <Link
+      to={createPageUrl("Billing")}
+      className="flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.07] px-4 py-3 hover:bg-blue-500/[0.10] transition-colors group"
+    >
+      <Sparkles className="w-4 h-4 text-blue-300 flex-shrink-0" />
+      <p className="text-[13px] text-blue-100 leading-snug flex-1 min-w-0">
+        <span className="font-semibold text-white">
+          {formatTrialDaysRemaining(daysLeft)}
+        </span>
+        <span className="text-blue-200/80">
+          {" "}of your{" "}
+          <span className="text-blue-100 font-medium">{label}</span>
+        </span>
+      </p>
+      <ChevronRight className="w-4 h-4 text-blue-300/70 group-hover:text-blue-200 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+    </Link>
   );
 }
 

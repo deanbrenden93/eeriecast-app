@@ -1,31 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
-  Volume2,
   Play,
   Bell,
   Shield,
   Info,
   ChevronRight,
-  Headphones,
   Gauge,
   ListEnd,
   BookmarkCheck,
   Trash2,
-  Maximize,
-  FlaskConical,
-  Home,
-  RefreshCw,
-  Crown,
   ShieldAlert,
 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useSettings } from '@/hooks/use-settings';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
@@ -34,6 +20,8 @@ import { User as UserAPI, UserLibrary } from '@/api/entities';
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useToast } from '@/components/ui/use-toast';
+import TermsOfServiceModal from '@/components/legal/TermsOfServiceModal';
+import PrivacyPolicyModal from '@/components/legal/PrivacyPolicyModal';
 
 /* ─── Reusable components ──────────────────────────────────────────── */
 
@@ -109,9 +97,10 @@ const PlaybackSpeedControl = ({ speed, setSpeed }) => {
 export default function Settings() {
   const { settings, updateSetting } = useSettings();
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
-  const { user, setUser, isAuthenticated, isPremium, userAge, refreshUser } = useUser();
-  const [togglingPremium, setTogglingPremium] = useState(false);
+  const { user, userAge, refreshUser } = useUser();
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const location = useLocation();
   const { toast } = useToast();
 
@@ -178,54 +167,6 @@ export default function Settings() {
 
       {/* Content */}
       <div className="max-w-2xl mx-auto px-6 pb-32">
-
-        {/* Audio Quality */}
-        <SettingsCard
-          icon={Volume2}
-          title="Audio Quality"
-          description="Controls quality for streaming and downloads"
-        >
-          <div className="space-y-5">
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-2">
-                <Headphones className="w-3.5 h-3.5" />
-                Streaming Quality
-              </label>
-              <Select
-                value={settings.streamingQuality}
-                onValueChange={value => updateSetting('streamingQuality', value)}
-              >
-                <SelectTrigger className="w-full bg-black/40 border-white/[0.08] hover:border-white/[0.15] transition-colors text-zinc-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="320kbps">High Quality (320kbps)</SelectItem>
-                  <SelectItem value="128kbps">Standard Quality (128kbps)</SelectItem>
-                  <SelectItem value="64kbps">Low Quality (64kbps)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-2">
-                <Headphones className="w-3.5 h-3.5" />
-                Download Quality
-              </label>
-              <Select
-                value={settings.downloadQuality}
-                onValueChange={value => updateSetting('downloadQuality', value)}
-              >
-                <SelectTrigger className="w-full bg-black/40 border-white/[0.08] hover:border-white/[0.15] transition-colors text-zinc-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="320kbps">High Quality (320kbps)</SelectItem>
-                  <SelectItem value="128kbps">Standard Quality (128kbps)</SelectItem>
-                  <SelectItem value="64kbps">Low Quality (64kbps)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </SettingsCard>
 
         {/* Playback */}
         <SettingsCard
@@ -310,74 +251,6 @@ export default function Settings() {
           )}
         </SettingsCard>
 
-        {/* Testing */}
-        <SettingsCard
-          icon={FlaskConical}
-          title="Testing"
-          description="Developer and testing tools"
-        >
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="outline"
-              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
-              onClick={() => {
-                const el = document.documentElement;
-                if (!document.fullscreenElement) {
-                  (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el);
-                } else {
-                  (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)?.call(document);
-                }
-              }}
-            >
-              <Maximize className="w-4 h-4 mr-2" />
-              Fullscreen
-            </Button>
-            <Button
-              variant="outline"
-              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
-              onClick={() => {
-                sessionStorage.removeItem('eeriecast_splash_shown');
-                window.location.href = createPageUrl('Home');
-              }}
-            >
-              <Home className="w-4 h-4 mr-2" />
-              Landing Screen
-            </Button>
-            <Button
-              variant="outline"
-              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15] transition-all"
-              onClick={() => window.location.reload()}
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
-            {isAuthenticated && (
-              <Button
-                variant="outline"
-                className={`transition-all ${
-                  isPremium
-                    ? 'border-amber-400/20 text-amber-400 hover:bg-amber-400/10 hover:border-amber-400/30'
-                    : 'border-white/[0.08] text-zinc-300 hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15]'
-                }`}
-                disabled={togglingPremium}
-                onClick={async () => {
-                  setTogglingPremium(true);
-                  try {
-                    const updated = await UserAPI.updateMe({ is_premium: !isPremium });
-                    setUser(prev => ({ ...prev, ...updated }));
-                  } catch (err) {
-                    console.error('Failed to toggle premium:', err);
-                  }
-                  setTogglingPremium(false);
-                }}
-              >
-                <Crown className="w-4 h-4 mr-2" />
-                {togglingPremium ? 'Updating…' : isPremium ? 'Make Free User' : 'Make Premium'}
-              </Button>
-            )}
-          </div>
-        </SettingsCard>
-
         {/* About */}
         <SettingsCard icon={Info} title="About">
           <div className="space-y-3">
@@ -386,18 +259,24 @@ export default function Settings() {
               <span className="text-zinc-300 font-mono text-xs bg-white/[0.04] px-2.5 py-1 rounded-md">1.0.0</span>
             </div>
             <div className="border-t border-white/[0.04] pt-3">
-              <p className="text-xs text-zinc-600 mb-3">&copy; 2026 Eeriecast. All rights reserved.</p>
+              <p className="text-xs text-zinc-600 mb-3">&copy; 2026 Eeriecast, LLC. All rights reserved.</p>
               <div className="flex flex-wrap gap-x-5 gap-y-2">
-                {['Terms of Service', 'Privacy Policy'].map(link => (
-                  <a
-                    key={link}
-                    href="#"
-                    className="text-sm text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 group"
-                  >
-                    {link}
-                    <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
-                  </a>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => setShowTerms(true)}
+                  className="text-sm text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 group"
+                >
+                  Terms of Service
+                  <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrivacy(true)}
+                  className="text-sm text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 group"
+                >
+                  Privacy Policy
+                  <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                </button>
                 <Link
                   to={createPageUrl('Help')}
                   className="text-sm text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 group"
@@ -411,6 +290,8 @@ export default function Settings() {
         </SettingsCard>
       </div>
 
+      <TermsOfServiceModal open={showTerms} onOpenChange={setShowTerms} />
+      <PrivacyPolicyModal open={showPrivacy} onOpenChange={setShowPrivacy} />
     </div>
   );
 }

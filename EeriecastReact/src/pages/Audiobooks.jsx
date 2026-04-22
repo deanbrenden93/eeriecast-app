@@ -16,9 +16,10 @@ const selectTriggerClass = "h-8 w-auto min-w-[7rem] gap-1.5 rounded-full border-
 const selectContentClass = "border-white/[0.08] bg-[#18181f] shadow-xl shadow-black/40 rounded-lg";
 const selectItemClass = "text-xs text-zinc-400 focus:bg-white/[0.06] focus:text-white rounded-md cursor-pointer";
 
+// Comics are in-progress — the tab is intentionally hidden for launch.
+// Re-enable by adding: { id: "comics", label: "Comics", icon: Image }
 const TABS = [
   { id: "audiobooks", label: "Audiobooks", icon: BookOpen },
-  { id: "comics", label: "Comics", icon: Image },
 ];
 
 // ─── Comics Tab ──────────────────────────────────────────────────────────────
@@ -214,7 +215,7 @@ export default function Audiobooks() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-4xl md:text-5xl font-bold text-white mb-1">Books</h1>
-        <p className="text-zinc-500 text-lg">Original horror novels and comics</p>
+        <p className="text-zinc-500 text-lg">Original horror novels and audiobooks</p>
       </div>
 
       {/* Tabs */}

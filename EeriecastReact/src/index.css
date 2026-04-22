@@ -1071,3 +1071,31 @@ html.ereader-active .layout-bottom-nav {
   background: linear-gradient(135deg, #ffffff, #fafafa);
 }
 
+/* ═══════════════════════════════════════════════════════
+   Hide native browser password reveal / clear buttons so we
+   don't double up with our own show-password toggle.
+   - Edge / IE:   ::-ms-reveal, ::-ms-clear
+   - Chromium:    ::-webkit-credentials-auto-fill-button and friends
+                  (mobile Chrome on Android occasionally overlays its own
+                  password manager eye; these selectors neutralise it)
+   - Safari iOS:  ::-webkit-textfield-decoration-container /
+                  ::-webkit-credentials-auto-fill-button
+   Scoped to <input type="password"> so regular inputs keep their native UX.
+   ═══════════════════════════════════════════════════════ */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-strong-password-auto-fill-button,
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-caps-lock-indicator {
+  visibility: hidden !important;
+  display: none !important;
+  pointer-events: none !important;
+  position: absolute;
+  right: 0;
+}
+

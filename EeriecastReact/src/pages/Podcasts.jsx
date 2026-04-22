@@ -12,6 +12,28 @@ const MEMBERS_ONLY_OVERRIDES = new Set([10, 4]); // After Hours, Manmade Monster
 function applyExclusiveOverrides(list) {
   return list.map(p => (p && MEMBERS_ONLY_OVERRIDES.has(p.id) && !p.is_exclusive) ? { ...p, is_exclusive: true } : p);
 }
+
+// Total runtime for an audiobook row card ("12h 42m" / "42m").
+// `total_duration` is stored in minutes on the Podcast model.
+function formatAudiobookRuntime(p) {
+  const m = Number(p?.total_duration);
+  if (!Number.isFinite(m) || m <= 0) {
+    const n = p?.episodes_count ?? p?.episode_count ?? 0;
+    return n > 0 ? `${n} chapter${n === 1 ? '' : 's'}` : '';
+  }
+  const hours = Math.floor(m / 60);
+  const mins = m % 60;
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins}m`;
+}
+
+// Episode count subtitle for a members-only show card.
+function formatEpisodeCount(p) {
+  const n = p?.episode_count ?? p?.episodes_count ?? p?.total_episodes ?? 0;
+  if (!Number.isFinite(Number(n)) || Number(n) <= 0) return '';
+  return `${n} episode${n === 1 ? '' : 's'}`;
+}
 import { Crown } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import PodcastModal from "../components/podcasts/PodcastModal";
@@ -21,6 +43,7 @@ import PodcastRow from "../components/podcasts/PodcastRow";
 import NewReleasesRow from "../components/podcasts/NewReleasesRow";
 import KeepListeningSection from "../components/podcasts/KeepListeningSection";
 import MembersOnlySection from "../components/podcasts/MembersOnlySection";
+import MembersOnlyEpisodesRow from "../components/podcasts/MembersOnlyEpisodesRow";
 import FeaturedCreatorsSection from "../components/podcasts/FeaturedCreatorsSection";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -314,15 +337,19 @@ export default function Podcasts() {
             isCompact={true}
             showAudiobookPill={true}
             viewAllTo={createPageUrl('Audiobooks')}
-            subtext={(p) => {
-              const n = p?.episodes_count ?? p?.episode_count ?? 0;
-              return n > 0 ? `${n} Chapter${n === 1 ? '' : 's'}` : '';
-            }}
+            subtext={(p) => formatAudiobookRuntime(p)}
           />
         </div>
       )}
 
-      {/* Members Only */}
+      {/* Members-Only Episodes — randomized mix of samples + gated content */}
+      {!isLoading && (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <MembersOnlyEpisodesRow onAddToPlaylist={openAddToPlaylist} />
+        </div>
+      )}
+
+      {/* Members Only Shows */}
       {isLoading ? (
         <div className="w-full px-2.5 lg:px-10 py-3">
           <LoadingSkeleton height="h-[300px]" />
@@ -332,6 +359,7 @@ export default function Podcasts() {
           <MembersOnlySection
             podcasts={podcasts.filter(p => p.is_exclusive)}
             onPodcastPlay={handlePodcastPlay}
+            subtext={(p) => formatEpisodeCount(p)}
           />
         </div>
       )}

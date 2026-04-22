@@ -16,12 +16,18 @@ import {
   ArrowRight,
   CreditCard as CardIcon,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { useUser } from "@/context/UserContext";
 import { djangoClient } from "@/api/djangoClient";
+import {
+  getTrialLabel,
+  formatTrialDaysRemaining,
+  computeTrialDaysRemaining,
+} from "@/utils/trial";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +42,16 @@ import {
 
 export default function Billing() {
   const navigate = useNavigate();
-  const { user, isPremium, fetchUser, isOnLegacyTrial: contextTrial } = useUser();
+  const {
+    user,
+    isPremium,
+    fetchUser,
+    isOnLegacyTrial: contextTrial,
+    isOnTrial,
+    trialType,
+    trialEnds: contextTrialEnds,
+    trialDaysRemaining,
+  } = useUser();
   const [loading, setLoading] = useState(true);
   const [billingData, setBillingData] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -101,8 +116,26 @@ export default function Billing() {
 
   const activeSub = billingData?.active_subscription;
   const isLegacyTrial = !activeSub && (billingData?.is_on_legacy_trial || contextTrial);
+  // A 'trialing' Stripe subscription (the normal 7-day trial).
+  const isStripeTrial = activeSub?.status === "trialing";
+  // True whenever the member is on any trial (standard or legacy).
+  const onAnyTrial = isOnTrial || isStripeTrial || isLegacyTrial;
   const status = activeSub?.status || (isLegacyTrial ? "trialing" : (isPremium ? "active" : "none"));
-  const trialEnds = billingData?.legacy_trial_ends || user?.free_trial_ends;
+  const legacyTrialEnds = billingData?.legacy_trial_ends || user?.free_trial_ends;
+  // Unified trial end date: prefer Stripe current_period_end during 'trialing',
+  // then the unified `trial_ends` from the user object, then the legacy date.
+  const unifiedTrialEnds =
+    (isStripeTrial ? activeSub?.current_period_end : null) ||
+    contextTrialEnds ||
+    legacyTrialEnds ||
+    null;
+  const trialLabel = getTrialLabel(trialType) || (onAnyTrial ? "Free Trial" : null);
+  // Prefer computing days-left from the real end date so the UI stays correct
+  // even if the cached user payload hasn't caught up with a freshly-created
+  // Stripe trial. Falls back to the value reported by the backend.
+  const effectiveTrialDays = onAnyTrial
+    ? computeTrialDaysRemaining(unifiedTrialEnds, trialDaysRemaining)
+    : 0;
   const paymentMethod = billingData?.payment_method || (activeSub?.card_brand ? {
     brand: activeSub.card_brand,
     last4: activeSub.card_last4,
@@ -150,6 +183,31 @@ export default function Billing() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Free Trial heads-up (slim banner — detailed state lives on the Current Plan card) */}
+            {onAnyTrial && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.07] px-4 py-3"
+              >
+                <Sparkles className="w-4 h-4 text-blue-300 flex-shrink-0" />
+                <p className="text-[13px] text-blue-100 leading-snug">
+                  <span className="font-semibold text-white">
+                    {formatTrialDaysRemaining(effectiveTrialDays)}
+                  </span>
+                  <span className="text-blue-200/80">
+                    {" "}of your{" "}
+                    <span className="text-blue-100 font-medium">
+                      {trialLabel || "Free Trial"}
+                    </span>
+                    {trialType === "standard" && (
+                      <>. You&apos;ll be charged automatically unless you cancel.</>
+                    )}
+                  </span>
+                </p>
+              </motion.div>
+            )}
+
             {/* Subscription Status Card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -158,9 +216,14 @@ export default function Billing() {
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-lg font-semibold">Current Plan</h3>
-                    {isPremium && (
+                    {onAnyTrial ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 text-[10px] font-bold uppercase tracking-wider border border-blue-500/25">
+                        <Sparkles className="w-3 h-3" />
+                        {trialLabel || "Free Trial"}
+                      </span>
+                    ) : isPremium && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold uppercase tracking-wider border border-amber-500/20">
                         <Crown className="w-3 h-3" />
                         Premium
@@ -168,7 +231,9 @@ export default function Billing() {
                     )}
                   </div>
                   <p className="text-zinc-400 text-sm">
-                    {activeSub?.plan_nickname || (isLegacyTrial ? "Legacy Free Trial" : (isPremium ? "Monthly Subscription" : "Free Plan"))}
+                    {onAnyTrial
+                      ? (trialLabel || "Free Trial")
+                      : (activeSub?.plan_nickname || (isPremium ? "Monthly Subscription" : "Free Plan"))}
                   </p>
                 </div>
                 <div className="text-left sm:text-right">
@@ -178,14 +243,20 @@ export default function Billing() {
                     status === 'past_due' ? 'bg-red-500/10 text-red-400' :
                     'bg-white/5 text-zinc-500'
                   }`}>
-                    {(status === 'trialing' || isLegacyTrial) && <Clock className="w-3.5 h-3.5" />}
-                    {status === 'active' && !isLegacyTrial && <CheckCircle2 className="w-3.5 h-3.5" />}
+                    {(status === 'trialing' || onAnyTrial) && <Clock className="w-3.5 h-3.5" />}
+                    {status === 'active' && !onAnyTrial && <CheckCircle2 className="w-3.5 h-3.5" />}
                     {status === 'past_due' && <AlertCircle className="w-3.5 h-3.5" />}
-                    <span className="capitalize">{isLegacyTrial ? "Free Trial" : status}</span>
+                    <span>
+                      {onAnyTrial
+                        ? formatTrialDaysRemaining(effectiveTrialDays)
+                        : (<span className="capitalize">{status}</span>)}
+                    </span>
                   </div>
-                  {(activeSub?.current_period_end || (isLegacyTrial && trialEnds)) && (
+                  {(activeSub?.current_period_end || unifiedTrialEnds) && (
                     <p className="text-[11px] text-zinc-500 mt-2">
-                      {(activeSub?.cancel_at_period_end || isLegacyTrial) ? "Ends on" : "Renews on"} {formatDate(activeSub?.current_period_end || trialEnds)}
+                      {onAnyTrial
+                        ? `Trial ends on ${formatDate(unifiedTrialEnds || activeSub?.current_period_end)}`
+                        : `${activeSub?.cancel_at_period_end ? "Ends on" : "Renews on"} ${formatDate(activeSub?.current_period_end)}`}
                     </p>
                   )}
                 </div>

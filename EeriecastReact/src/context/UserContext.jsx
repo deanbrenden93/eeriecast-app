@@ -488,6 +488,13 @@ const UserProvider = ({ children }) => {
     return user?.memberful_plan_type || null;
   }, [user]);
 
+  // Unified trial information: covers both the standard 7-day Stripe trial
+  // and legacy (imported) trials. Prefers Stripe trial when both are present.
+  const isOnTrial = useMemo(() => !!user?.is_on_trial, [user]);
+  const trialType = useMemo(() => user?.trial_type || null, [user]);
+  const trialEnds = useMemo(() => user?.trial_ends || null, [user]);
+  const trialDaysRemaining = useMemo(() => user?.trial_days_remaining || 0, [user]);
+
   // Derived: user's age in whole years (null if DOB unavailable)
   const userAge = useMemo(() => {
     const dob = user?.date_of_birth;
@@ -678,6 +685,11 @@ const UserProvider = ({ children }) => {
         legacyTrialEnds,
         legacyTrialDaysRemaining,
         legacyPlanType,
+        // unified trial (standard 7-day Stripe OR legacy imported)
+        isOnTrial,
+        trialType,
+        trialEnds,
+        trialDaysRemaining,
         // favorites
         favoriteEpisodeIds,
         favoritePodcastIds,

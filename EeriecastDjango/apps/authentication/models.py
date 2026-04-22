@@ -93,3 +93,75 @@ class User(AbstractUser):
         expires_at = self.free_trial_ends or self.subscription_expires
         delta = expires_at - timezone.now()
         return max(0, delta.days)
+
+    def _active_stripe_trial(self):
+        """
+        Return the active 'trialing' Stripe subscription for this user (if any),
+        preferring the one with the latest current_period_end.
+        """
+        try:
+            from apps.billing.models import Subscription
+        except Exception:
+            return None
+        now = timezone.now()
+        qs = Subscription.objects.filter(user=self, status='trialing')
+        latest = None
+        for sub in qs:
+            if sub.current_period_end is None or sub.current_period_end > now:
+                if latest is None or (
+                    sub.current_period_end and
+                    (latest.current_period_end is None or sub.current_period_end > latest.current_period_end)
+                ):
+                    latest = sub
+        return latest
+
+    def trial_info(self) -> dict:
+        """
+        Return a unified description of the user's current free trial, if any.
+
+        If the user is on an active Stripe 'trialing' subscription (the standard
+        7-day free trial), that takes precedence. Otherwise, if the user is on
+        an active legacy free trial (imported Memberful members), that is
+        reported. Otherwise, ``is_on_trial`` is False.
+
+        The returned dict has the shape:
+            {
+                'is_on_trial': bool,
+                'trial_type': 'standard' | 'legacy_monthly' | 'legacy_yearly' | None,
+                'trial_ends': datetime | None,
+                'trial_days_remaining': int,
+            }
+        """
+        stripe_trial = self._active_stripe_trial()
+        if stripe_trial is not None:
+            ends = stripe_trial.current_period_end
+            days = 0
+            if ends is not None:
+                delta = ends - timezone.now()
+                days = max(0, delta.days)
+            return {
+                'is_on_trial': True,
+                'trial_type': 'standard',
+                'trial_ends': ends,
+                'trial_days_remaining': days,
+            }
+
+        if self.is_on_legacy_trial():
+            plan = (self.memberful_plan_type or '').lower()
+            if plan in ('yearly', 'annual'):
+                trial_type = 'legacy_yearly'
+            else:
+                trial_type = 'legacy_monthly'
+            return {
+                'is_on_trial': True,
+                'trial_type': trial_type,
+                'trial_ends': self.free_trial_ends or self.subscription_expires,
+                'trial_days_remaining': self.legacy_trial_days_remaining(),
+            }
+
+        return {
+            'is_on_trial': False,
+            'trial_type': None,
+            'trial_ends': None,
+            'trial_days_remaining': 0,
+        }

@@ -5,7 +5,7 @@ import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import PropTypes from 'prop-types';
 
-export default function PodcastRow({ title, podcasts: podcastList = [], onPodcastPlay, showPlayIcon = false, showAudiobookPill = false, viewAllTo }) {
+export default function PodcastRow({ title, podcasts: podcastList = [], onPodcastPlay, showPlayIcon = false, showAudiobookPill = false, viewAllTo, subtext }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
 
@@ -107,9 +107,15 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
                 <h3 className="text-white/90 font-semibold text-sm line-clamp-2 leading-tight group-hover:text-red-400 transition-colors duration-300">
                   {podcast.title}
                 </h3>
-                <p className="text-zinc-500 text-xs leading-tight">
-                  {podcast.author}
-                </p>
+                {(() => {
+                  const sub = typeof subtext === 'function' ? subtext(podcast) : subtext;
+                  if (sub) {
+                    return <p className="text-zinc-500 text-xs leading-tight truncate">{sub}</p>;
+                  }
+                  return podcast.author ? (
+                    <p className="text-zinc-500 text-xs leading-tight truncate">{podcast.author}</p>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>
@@ -126,4 +132,5 @@ PodcastRow.propTypes = {
   showPlayIcon: PropTypes.bool,
   showAudiobookPill: PropTypes.bool,
   viewAllTo: PropTypes.string,
+  subtext: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
 };

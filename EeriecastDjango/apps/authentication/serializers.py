@@ -7,6 +7,10 @@ class UserSerializer(serializers.ModelSerializer):
     shop_discount_code = serializers.SerializerMethodField()
     is_on_legacy_trial = serializers.SerializerMethodField()
     legacy_trial_days_remaining = serializers.SerializerMethodField()
+    is_on_trial = serializers.SerializerMethodField()
+    trial_type = serializers.SerializerMethodField()
+    trial_ends = serializers.SerializerMethodField()
+    trial_days_remaining = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -15,9 +19,11 @@ class UserSerializer(serializers.ModelSerializer):
                  'stripe_customer_id', 'minutes_listened',
                  'subscription_expires', 'date_of_birth', 'allow_mature_content',
                  'onboarding_completed', 'date_joined', 'created_at', 'shop_discount_code',
-                 'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining']
+                 'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining',
+                 'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining']
         read_only_fields = ['id', 'date_joined', 'created_at', 'is_imported_from_memberful', 'memberful_plan_type',
-                           'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining']
+                           'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining',
+                           'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining']
 
     def get_shop_discount_code(self, obj):
         request = self.context.get('request')
@@ -32,6 +38,30 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_legacy_trial_days_remaining(self, obj):
         return obj.legacy_trial_days_remaining()
+
+    def _trial_info(self, obj):
+        if not hasattr(obj, 'trial_info'):
+            return None
+        if '_cached_trial_info' not in self.__dict__ or self.__dict__.get('_cached_trial_info_id') != obj.id:
+            self.__dict__['_cached_trial_info'] = obj.trial_info()
+            self.__dict__['_cached_trial_info_id'] = obj.id
+        return self.__dict__['_cached_trial_info']
+
+    def get_is_on_trial(self, obj):
+        info = self._trial_info(obj)
+        return bool(info.get('is_on_trial')) if info else False
+
+    def get_trial_type(self, obj):
+        info = self._trial_info(obj)
+        return info.get('trial_type') if info else None
+
+    def get_trial_ends(self, obj):
+        info = self._trial_info(obj)
+        return info.get('trial_ends') if info else None
+
+    def get_trial_days_remaining(self, obj):
+        info = self._trial_info(obj)
+        return info.get('trial_days_remaining') if info else 0
 
 # Added lightweight list serializer used by UserViewSet list endpoint
 class SimpleUserSerializer(serializers.ModelSerializer):
