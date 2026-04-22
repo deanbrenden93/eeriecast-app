@@ -184,29 +184,33 @@ export default function Billing() {
         ) : (
           <div className="space-y-6">
             {/* Free Trial heads-up (slim banner — detailed state lives on the Current Plan card) */}
-            {onAnyTrial && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.07] px-4 py-3"
-              >
-                <Sparkles className="w-4 h-4 text-blue-300 flex-shrink-0" />
-                <p className="text-[13px] text-blue-100 leading-snug">
-                  <span className="font-semibold text-white">
-                    {formatTrialDaysRemaining(effectiveTrialDays)}
-                  </span>
-                  <span className="text-blue-200/80">
-                    {" "}of your{" "}
-                    <span className="text-blue-100 font-medium">
-                      {trialLabel || "Free Trial"}
+            {onAnyTrial && (() => {
+              const resolvedTrialLabel = trialLabel || "Free Trial";
+              const [leadStrong, leadRest] = effectiveTrialDays <= 0
+                ? [`Your ${resolvedTrialLabel} ends today`, null]
+                : effectiveTrialDays === 1
+                  ? ["1 day left", <> in your <span className="text-blue-100 font-medium">{resolvedTrialLabel}</span></>]
+                  : [`${effectiveTrialDays} days left`, <> in your <span className="text-blue-100 font-medium">{resolvedTrialLabel}</span></>];
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.07] px-4 py-3"
+                >
+                  <Sparkles className="w-4 h-4 text-blue-300 flex-shrink-0" />
+                  <p className="text-[13px] text-blue-100 leading-snug">
+                    <span className="font-semibold text-white">{leadStrong}</span>
+                    <span className="text-blue-200/80">
+                      {leadRest}
+                      {trialType === "standard" && (
+                        <>. You&apos;ll be charged automatically unless you cancel.</>
+                      )}
+                      {trialType !== "standard" && "."}
                     </span>
-                    {trialType === "standard" && (
-                      <>. You&apos;ll be charged automatically unless you cancel.</>
-                    )}
-                  </span>
-                </p>
-              </motion.div>
-            )}
+                  </p>
+                </motion.div>
+              );
+            })()}
 
             {/* Subscription Status Card */}
             <motion.div

@@ -89,7 +89,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
     isOnLegacyTrial,
     legacyTrialEnds,
     legacyTrialDaysRemaining,
-    legacyPlanType
+    hasPaymentMethod
   } = useUser();
   const { cartCount } = useCart();
   const prevAuthRef = useRef(isAuthenticated);
@@ -498,13 +498,13 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         "relative w-full pt-16 pb-16 max-[1000px]:pb-20",
         hasPlayer && "pb-32 max-[1000px]:pb-48"
       )}>
-        {/* Legacy Trial Banner */}
+        {/* Legacy Trial Banner — thin single-line heads-up */}
         {isOnLegacyTrial && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3">
             <LegacyTrialBanner
               daysRemaining={legacyTrialDaysRemaining}
               trialEnds={legacyTrialEnds}
-              planType={legacyPlanType}
+              hasPaymentMethod={hasPaymentMethod}
             />
           </div>
         )}

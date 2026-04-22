@@ -1,23 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Sparkles, Clock, Crown } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { X, Sparkles } from 'lucide-react';
+import { computeTrialDaysRemaining } from '@/utils/trial';
 
 /**
- * Banner to inform legacy Memberful users about their free trial period
- * Shows different urgency levels based on days remaining
+ * Thin, minimal top-of-page banner for users on a legacy free trial.
+ *
+ * The displayed day count is always recomputed from ``trialEnds`` (via the
+ * same helper the Billing and Profile pages use), so the banner, the trial
+ * reminder modal, the Billing page slim banner and the Profile badge never
+ * disagree on "N days left" vs "ends today".
+ *
+ * Styling is deliberately a single line so it adds roughly one row of
+ * vertical space to every page instead of the previous 80–100px card.
  */
 export default function LegacyTrialBanner({
   daysRemaining,
   trialEnds,
-  planType = 'monthly',
+  hasPaymentMethod = false,
   onDismiss
 }) {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
 
-  // Check if user has dismissed this reminder today
   useEffect(() => {
     const dismissedDate = localStorage.getItem('legacy_trial_banner_dismissed');
     const today = new Date().toDateString();
@@ -25,6 +30,11 @@ export default function LegacyTrialBanner({
       setDismissed(true);
     }
   }, []);
+
+  const effectiveDays = useMemo(
+    () => computeTrialDaysRemaining(trialEnds, daysRemaining),
+    [trialEnds, daysRemaining]
+  );
 
   const handleDismiss = () => {
     const today = new Date().toDateString();
@@ -37,99 +47,60 @@ export default function LegacyTrialBanner({
     navigate('/premium');
   };
 
-  if (dismissed || daysRemaining < 0) return null;
+  if (dismissed) return null;
 
-  // Determine urgency level and styling
-  let urgency = 'info';
-  let icon = <Sparkles className="h-5 w-5" />;
-  let bgColor = 'bg-blue-500/10';
-  let borderColor = 'border-blue-500/20';
-  let textColor = 'text-blue-100';
-  let buttonVariant = 'outline';
+  const urgent = effectiveDays <= 3;
+  const warning = !urgent && effectiveDays <= 7;
 
-  if (daysRemaining <= 3) {
-    urgency = 'urgent';
-    icon = <Clock className="h-5 w-5 animate-pulse" />;
-    bgColor = 'bg-red-500/10';
-    borderColor = 'border-red-500/30';
-    textColor = 'text-red-100';
-    buttonVariant = 'default';
-  } else if (daysRemaining <= 7) {
-    urgency = 'warning';
-    icon = <Crown className="h-5 w-5" />;
-    bgColor = 'bg-orange-500/10';
-    borderColor = 'border-orange-500/20';
-    textColor = 'text-orange-100';
-    buttonVariant = 'default';
-  }
+  const tone = urgent
+    ? 'border-red-500/30 bg-red-500/[0.08] text-red-100'
+    : warning
+      ? 'border-amber-500/25 bg-amber-500/[0.07] text-amber-100'
+      : 'border-blue-500/25 bg-blue-500/[0.07] text-blue-100';
 
-  const getMessage = () => {
-    if (daysRemaining === 0) {
-      return 'Your free trial expires today!';
-    } else if (daysRemaining === 1) {
-      return 'Your free trial expires tomorrow!';
-    } else if (daysRemaining <= 3) {
-      return `Only ${daysRemaining} days left in your free trial!`;
-    } else if (daysRemaining <= 30) {
-      return `Your free trial expires in ${daysRemaining} days`;
-    } else {
-      const planTypeText = planType === 'yearly' ? 'year' : 'month';
-      return `Welcome! Enjoy your free ${planTypeText} to try the new platform`;
-    }
-  };
+  const accent = urgent
+    ? 'text-red-300'
+    : warning
+      ? 'text-amber-300'
+      : 'text-blue-300';
 
-  const getSubMessage = () => {
-    if (daysRemaining <= 3) {
-      return 'Subscribe now to keep your premium access';
-    } else if (daysRemaining <= 7) {
-      return 'Choose a plan to continue enjoying premium content';
-    } else {
-      return 'No automatic charges - you choose when to subscribe';
-    }
-  };
+  // Keep the copy short — detailed state lives on the Billing page.
+  const [leadStrong, leadRest] =
+    effectiveDays <= 0
+      ? ['Your free trial ends today', '']
+      : effectiveDays === 1
+        ? ['1 day left', ' in your free trial']
+        : [`${effectiveDays} days left`, ' in your free trial'];
+  const tail = hasPaymentMethod ? '. You\u2019ll renew automatically.' : '.';
+  const ctaLabel = hasPaymentMethod ? 'Manage plan' : 'Choose a plan';
 
   return (
-    <div className={`relative ${bgColor} border ${borderColor} rounded-lg p-4 mb-4 shadow-lg`}>
-      <div className="flex items-start gap-4">
-        <div className={`${textColor} mt-0.5`}>
-          {icon}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <h3 className={`font-semibold ${textColor} text-base`}>
-                {getMessage()}
-              </h3>
-              <p className="text-sm text-gray-300 mt-1">
-                {getSubMessage()}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button
-                variant={buttonVariant}
-                size="sm"
-                onClick={handleViewPlans}
-                className="whitespace-nowrap"
-              >
-                <Crown className="h-4 w-4 mr-2" />
-                Choose Your Plan
-              </Button>
-
-              {daysRemaining > 7 && (
-                <button
-                  onClick={handleDismiss}
-                  className="text-gray-400 hover:text-gray-200 transition-colors p-1"
-                  aria-label="Dismiss banner"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+    <div
+      className={`flex items-center gap-3 rounded-xl border ${tone} px-4 py-2`}
+      role="status"
+    >
+      <Sparkles className={`w-4 h-4 flex-shrink-0 ${accent}`} />
+      <p className="flex-1 text-[13px] leading-snug truncate">
+        <span className="font-semibold text-white">{leadStrong}</span>
+        <span className="opacity-80">
+          {leadRest}{tail}
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={handleViewPlans}
+        className={`text-[12px] font-semibold whitespace-nowrap hover:underline ${accent}`}
+      >
+        {ctaLabel}
+      </button>
+      <button
+        type="button"
+        onClick={handleDismiss}
+        className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 -mr-1"
+        aria-label="Dismiss banner"
+      >
+        <X className="w-4 h-4" />
+      </button>
     </div>
   );
 }

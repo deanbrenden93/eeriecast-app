@@ -14,6 +14,7 @@ import ErrorBoundary from '@/components/ErrorBoundary.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
 import OnboardingFlow, { isOnboardingDone } from '@/components/OnboardingFlow.jsx';
 import LegacyTrialReminderModal from '@/components/auth/LegacyTrialReminderModal.jsx';
+import { computeTrialDaysRemaining } from '@/utils/trial.js';
 import { djangoClient } from '@/api/djangoClient.js';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient.js';
@@ -66,7 +67,7 @@ function App() {
     isOnLegacyTrial,
     legacyTrialEnds,
     legacyTrialDaysRemaining,
-    legacyPlanType
+    hasPaymentMethod
   } = useUser();
 
   useEffect(() => {
@@ -91,42 +92,38 @@ function App() {
     setOnboardingVariant(null);
   }, []);
 
-  // Legacy trial reminder modal
+  // Legacy trial reminder modal.
+  //
+  // We only nag users in the final 3 days of the trial AND only if they have
+  // NOT yet attached a payment method. If a card is on file they'll be
+  // charged automatically when the trial ends, so there's no benefit to
+  // interrupting them with a modal.
   const [showLegacyTrialModal, setShowLegacyTrialModal] = useState(false);
-  const [hasShownFirstLoginModal, setHasShownFirstLoginModal] = useState(false);
+
+  // Compute days from the end date so the modal uses the exact same value as
+  // the banner and Billing page (avoids "banner says 2 days, modal says ends
+  // today" style mismatches caused by floor vs ceil rounding).
+  const effectiveLegacyDays = computeTrialDaysRemaining(
+    legacyTrialEnds,
+    legacyTrialDaysRemaining
+  );
 
   useEffect(() => {
-    // Show modal for legacy trial users at strategic times
     if (!isAuthenticated || !isOnLegacyTrial || userLoading) return;
+    // User already has a card — they'll renew automatically, leave them alone.
+    if (hasPaymentMethod) return;
+    // Only surface the modal in the final stretch of the trial.
+    if (effectiveLegacyDays > 3) return;
 
-    const modalShownKey = `legacy_trial_modal_shown_${user?.id}`;
-    const firstLoginShown = localStorage.getItem(`${modalShownKey}_first_login`);
+    const dayKey = `legacy_trial_modal_shown_${user?.id}_${new Date().toDateString()}`;
+    if (sessionStorage.getItem(dayKey)) return;
 
-    // Show on first login after import
-    if (!firstLoginShown && !hasShownFirstLoginModal) {
-      const timer = setTimeout(() => {
-        setShowLegacyTrialModal(true);
-        setHasShownFirstLoginModal(true);
-        localStorage.setItem(`${modalShownKey}_first_login`, 'true');
-      }, 2000); // Delay to let page load
-      return () => clearTimeout(timer);
-    }
-
-    // Show reminders based on days remaining
-    const reminderShownToday = sessionStorage.getItem(`${modalShownKey}_${new Date().toDateString()}`);
-    if (!reminderShownToday) {
-      if (legacyTrialDaysRemaining <= 1 ||
-          legacyTrialDaysRemaining === 3 ||
-          legacyTrialDaysRemaining === 7 ||
-          legacyTrialDaysRemaining === 30) {
-        const timer = setTimeout(() => {
-          setShowLegacyTrialModal(true);
-          sessionStorage.setItem(`${modalShownKey}_${new Date().toDateString()}`, 'true');
-        }, 5000);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isAuthenticated, isOnLegacyTrial, legacyTrialDaysRemaining, user?.id, userLoading, hasShownFirstLoginModal]);
+    const timer = setTimeout(() => {
+      setShowLegacyTrialModal(true);
+      sessionStorage.setItem(dayKey, 'true');
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, isOnLegacyTrial, userLoading, hasPaymentMethod, effectiveLegacyDays, user?.id]);
 
   return (
     <ErrorBoundary>
@@ -158,15 +155,14 @@ function App() {
               />
             )}
           </AnimatePresence>
-          {/* Legacy trial reminder modal */}
-          {isOnLegacyTrial && (
+          {/* Legacy trial reminder modal — only shown in the last 3 days
+              of the trial for users without a payment method on file. */}
+          {isOnLegacyTrial && !hasPaymentMethod && (
             <LegacyTrialReminderModal
               isOpen={showLegacyTrialModal}
               onClose={() => setShowLegacyTrialModal(false)}
               daysRemaining={legacyTrialDaysRemaining}
               trialEnds={legacyTrialEnds}
-              planType={legacyPlanType}
-              isFirstLogin={!hasShownFirstLoginModal && !localStorage.getItem(`legacy_trial_modal_shown_${user?.id}_first_login`)}
             />
           )}
           </CartProvider>

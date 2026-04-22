@@ -136,11 +136,15 @@ export default function Settings() {
   const location = useLocation();
   const { toast } = useToast();
 
-  // Logged-in users only see the toggle after DOB-confirmed 18+. Guests
-  // always see it, and flipping it on triggers a self-attestation modal.
+  // Show the toggle for everyone EXCEPT logged-in users whose DOB proves
+  // they're under 18. If the DOB is missing (or they're a guest) we fall
+  // back to the same self-attestation modal the guest flow uses.
   const canShowMatureToggle = isAuthenticated
-    ? (userAge !== null && userAge >= 18)
+    ? !(userAge !== null && userAge < 18)
     : true;
+  // For logged-in users without a DOB on file, we require the same 18+
+  // self-attestation as guests before turning the flag on.
+  const needsAttestation = isAuthenticated && userAge === null;
   const matureChecked = isAuthenticated
     ? !!user?.allow_mature_content
     : !!guestAllowMature;
@@ -306,6 +310,12 @@ export default function Settings() {
                     }
                     return;
                   }
+                  // Logged-in user with no DOB on file: require the same
+                  // self-attestation we ask guests for before flipping on.
+                  if (val && needsAttestation) {
+                    setShowMatureConfirm(true);
+                    return;
+                  }
                   try {
                     await UserAPI.updateMe({ allow_mature_content: val });
                     await refreshUser();
@@ -362,13 +372,28 @@ export default function Settings() {
 
       {showMatureConfirm && (
         <MatureAgeConfirmModal
-          onConfirm={() => {
-            setGuestAllowMature(true);
-            setShowMatureConfirm(false);
-            toast({
-              title: 'Mature content enabled',
-              description: 'Mature shows are now visible across the app.',
-            });
+          onConfirm={async () => {
+            try {
+              if (isAuthenticated) {
+                await UserAPI.updateMe({ allow_mature_content: true });
+                await refreshUser();
+              } else {
+                setGuestAllowMature(true);
+              }
+              setShowMatureConfirm(false);
+              toast({
+                title: 'Mature content enabled',
+                description: 'Mature shows are now visible across the app.',
+              });
+            } catch (err) {
+              console.error('Failed to update mature content setting:', err);
+              setShowMatureConfirm(false);
+              toast({
+                title: 'Error',
+                description: 'Could not enable mature content. Please try again.',
+                variant: 'destructive',
+              });
+            }
           }}
           onCancel={() => setShowMatureConfirm(false)}
         />

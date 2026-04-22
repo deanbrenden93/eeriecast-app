@@ -11,6 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
     trial_type = serializers.SerializerMethodField()
     trial_ends = serializers.SerializerMethodField()
     trial_days_remaining = serializers.SerializerMethodField()
+    has_payment_method = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -20,10 +21,10 @@ class UserSerializer(serializers.ModelSerializer):
                  'subscription_expires', 'date_of_birth', 'allow_mature_content',
                  'onboarding_completed', 'date_joined', 'created_at', 'shop_discount_code',
                  'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining',
-                 'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining']
+                 'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining', 'has_payment_method']
         read_only_fields = ['id', 'date_joined', 'created_at', 'is_imported_from_memberful', 'memberful_plan_type',
                            'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining',
-                           'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining']
+                           'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining', 'has_payment_method']
 
     def get_shop_discount_code(self, obj):
         request = self.context.get('request')
@@ -62,6 +63,14 @@ class UserSerializer(serializers.ModelSerializer):
     def get_trial_days_remaining(self, obj):
         info = self._trial_info(obj)
         return info.get('trial_days_remaining') if info else 0
+
+    def get_has_payment_method(self, obj):
+        if hasattr(obj, 'has_payment_method'):
+            try:
+                return bool(obj.has_payment_method())
+            except Exception:
+                return False
+        return False
 
 # Added lightweight list serializer used by UserViewSet list endpoint
 class SimpleUserSerializer(serializers.ModelSerializer):

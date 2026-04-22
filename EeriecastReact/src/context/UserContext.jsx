@@ -513,6 +513,11 @@ const UserProvider = ({ children }) => {
     return user?.memberful_plan_type || null;
   }, [user]);
 
+  // True if the user has a card/payment method on file (derived from their
+  // local Subscription record; kept in sync by Stripe webhooks). Used to
+  // suppress "trial ending" reminders for users who will auto-renew anyway.
+  const hasPaymentMethod = useMemo(() => !!user?.has_payment_method, [user]);
+
   // Unified trial information: covers both the standard 7-day Stripe trial
   // and legacy (imported) trials. Prefers Stripe trial when both are present.
   const isOnTrial = useMemo(() => !!user?.is_on_trial, [user]);
@@ -553,12 +558,16 @@ const UserProvider = ({ children }) => {
   }, []);
 
   // Only users whose age confirms 18+ AND have enabled mature content can
-  // view it. For logged-in users that's DOB + `allow_mature_content`. For
-  // guests we rely on the localStorage opt-in (gated behind a confirm modal).
+  // view it. Guests rely on the localStorage opt-in (gated behind a confirm
+  // modal in Settings). Logged-in users qualify if EITHER their DOB proves
+  // they're 18+, OR their DOB is missing but they've explicitly toggled
+  // ``allow_mature_content`` on (which also goes through a self-attestation
+  // modal in Settings). A DOB on file that says < 18 always blocks access.
   const canViewMature = useMemo(() => {
     if (!user) return guestAllowMature === true;
-    const isAdult = userAge !== null && userAge >= 18;
-    return isAdult && user.allow_mature_content === true;
+    if (user.allow_mature_content !== true) return false;
+    if (userAge === null) return true; // self-attested (DOB unknown)
+    return userAge >= 18;
   }, [user, userAge, guestAllowMature]);
 
   // --- Favorite management helpers (episodes & podcasts) ---
@@ -732,6 +741,7 @@ const UserProvider = ({ children }) => {
         legacyTrialEnds,
         legacyTrialDaysRemaining,
         legacyPlanType,
+        hasPaymentMethod,
         // unified trial (standard 7-day Stripe OR legacy imported)
         isOnTrial,
         trialType,

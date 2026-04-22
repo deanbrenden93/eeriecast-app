@@ -1,6 +1,25 @@
+import math
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+
+
+def _days_remaining_ceil(end_dt) -> int:
+    """Return whole days remaining until ``end_dt``, rounding partial days up.
+
+    Using ceil (rather than ``timedelta.days`` which floors) keeps the number
+    in sync with the frontend ``computeTrialDaysRemaining`` helper so the
+    trial banner, reminder modal, billing page and profile badge all show the
+    exact same value at the exact same moment.
+    """
+    if not end_dt:
+        return 0
+    delta = end_dt - timezone.now()
+    seconds = delta.total_seconds()
+    if seconds <= 0:
+        return 0
+    return int(math.ceil(seconds / 86400.0))
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -91,8 +110,7 @@ class User(AbstractUser):
         if not self.is_on_legacy_trial():
             return 0
         expires_at = self.free_trial_ends or self.subscription_expires
-        delta = expires_at - timezone.now()
-        return max(0, delta.days)
+        return _days_remaining_ceil(expires_at)
 
     def _active_stripe_trial(self):
         """
@@ -135,15 +153,11 @@ class User(AbstractUser):
         stripe_trial = self._active_stripe_trial()
         if stripe_trial is not None:
             ends = stripe_trial.current_period_end
-            days = 0
-            if ends is not None:
-                delta = ends - timezone.now()
-                days = max(0, delta.days)
             return {
                 'is_on_trial': True,
                 'trial_type': 'standard',
                 'trial_ends': ends,
-                'trial_days_remaining': days,
+                'trial_days_remaining': _days_remaining_ceil(ends),
             }
 
         if self.is_on_legacy_trial():
@@ -165,3 +179,20 @@ class User(AbstractUser):
             'trial_ends': None,
             'trial_days_remaining': 0,
         }
+
+    def has_payment_method(self) -> bool:
+        """
+        Return True if the user has a payment method on file.
+
+        We check the locally cached ``card_last4`` on any of the user's
+        ``Subscription`` records (kept in sync via Stripe webhooks and at
+        checkout). This is cheap enough to run on every ``/users/me/`` call
+        and avoids hitting the Stripe API.
+        """
+        try:
+            from apps.billing.models import Subscription
+        except Exception:
+            return False
+        return Subscription.objects.filter(user=self).exclude(
+            card_last4__isnull=True
+        ).exclude(card_last4='').exists()
