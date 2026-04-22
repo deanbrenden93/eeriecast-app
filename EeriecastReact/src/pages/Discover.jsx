@@ -7,7 +7,7 @@ import { qk } from "@/lib/queryClient";
 import ShowCard from "../components/discover/ShowCard";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
-import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower, filterMatureEpisodes } from "@/lib/utils";
+import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from '@/context/UserContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
@@ -230,7 +230,7 @@ export default function Discover() {
   })();
 
   const [activeTab, setActiveTab] = useState(queryTab || "Recommended");
-  const { podcasts: rawPodcasts, isLoading, getById, maturePodcastIds, softRefreshIfStale } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading, getById, softRefreshIfStale } = usePodcasts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -244,7 +244,7 @@ export default function Discover() {
   const [episodeFilters, setEpisodeFilters] = useState({ show: "all", category: "all", sort: "newest", access: "all" });
   const [showFilters, setShowFilters] = useState({ category: "all" });
 
-  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated, canViewMature } = useUser();
+  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -274,17 +274,7 @@ export default function Discover() {
     },
   });
 
-  // The backend "Mature" category is meaningless to users who can't view
-  // mature content — those shows are filtered out upstream by PodcastContext,
-  // so the detail view would always be empty. Hide the tile to match.
-  const categories = useMemo(() => {
-    if (canViewMature) return categoriesData;
-    return categoriesData.filter((c) => {
-      const slug = (c?.slug || '').toLowerCase();
-      const name = (c?.name || '').toLowerCase();
-      return slug !== 'mature' && name !== 'mature';
-    });
-  }, [categoriesData, canViewMature]);
+  const categories = categoriesData;
 
   // Keep the podcast list fresh when the user returns to this page. Runs on
   // mount and whenever the tab regains focus. Categories have their own
@@ -345,10 +335,7 @@ export default function Discover() {
     return pages.flatMap((p) => (Array.isArray(p) ? p : (p?.results || [])));
   }, [episodePages]);
 
-  const fetchedEpisodes = useMemo(
-    () => filterMatureEpisodes(rawFetchedEpisodes, canViewMature, maturePodcastIds),
-    [rawFetchedEpisodes, canViewMature, maturePodcastIds]
-  );
+  const fetchedEpisodes = rawFetchedEpisodes;
 
   const totalEpisodeCount = episodePages?.pages?.[0]?.count ?? rawFetchedEpisodes.length;
   const allEpisodesFetched = !hasNextPage && !isFetchingNextPage;

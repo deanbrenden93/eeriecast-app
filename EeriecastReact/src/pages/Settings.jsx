@@ -292,14 +292,14 @@ export default function Settings() {
               {clearingHistory ? 'Clearing...' : 'Clear Listening History'}
             </Button>
           </div>
-          {/* Logged-in users: gated by DOB. Guests: always shown, turning it
-              on prompts them to confirm they're 18+. */}
+          {/* Logged-in users: gated by age. Guests: always shown, turning
+              it on prompts a 18+ self-attestation. */}
           {canShowMatureToggle && (
             <div id="mature-content">
               <SettingsToggle
                 icon={ShieldAlert}
-                label="Mature Content"
-                description="Enable playback of shows marked as Mature (18+ only)"
+                label="Allow Shows with Explicit Language"
+                description="Some shows contain language viewers may not find suitable for younger audiences. Enabling this toggle will allow shows marked explicit to be played."
                 checked={matureChecked}
                 onCheckedChange={async (val) => {
                   if (!isAuthenticated) {
@@ -320,7 +320,7 @@ export default function Settings() {
                     await UserAPI.updateMe({ allow_mature_content: val });
                     await refreshUser();
                   } catch (err) {
-                    console.error('Failed to update mature content setting:', err);
+                    console.error('Failed to update explicit language setting:', err);
                   }
                 }}
               />
@@ -382,15 +382,15 @@ export default function Settings() {
               }
               setShowMatureConfirm(false);
               toast({
-                title: 'Mature content enabled',
-                description: 'Mature shows are now visible across the app.',
+                title: 'Explicit language enabled',
+                description: 'Shows with strong language will now play without interruption.',
               });
             } catch (err) {
-              console.error('Failed to update mature content setting:', err);
+              console.error('Failed to update explicit language setting:', err);
               setShowMatureConfirm(false);
               toast({
                 title: 'Error',
-                description: 'Could not enable mature content. Please try again.',
+                description: 'Could not update setting. Please try again.',
                 variant: 'destructive',
               });
             }
@@ -441,10 +441,10 @@ function MatureAgeConfirmModal({ onConfirm, onCancel }) {
             </h2>
           </div>
           <p className="text-sm text-zinc-400 leading-relaxed mb-2">
-            Mature shows may contain graphic violence, strong language, and other content intended for adult audiences.
+            Some shows contain language not suitable for younger audiences.
           </p>
           <p className="text-sm text-zinc-500 leading-relaxed mb-6">
-            By continuing, you confirm that you are at least 18 years old. You can turn this off at any time in Settings.
+            By continuing, you confirm that you are at least 18 years old. You can turn this off any time in Settings.
           </p>
           <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
             <Button

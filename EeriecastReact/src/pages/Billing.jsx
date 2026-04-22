@@ -47,6 +47,7 @@ export default function Billing() {
     isPremium,
     fetchUser,
     isOnLegacyTrial: contextTrial,
+    legacyTrialDaysRemaining,
     isOnTrial,
     trialType,
     trialEnds: contextTrialEnds,
@@ -122,19 +123,24 @@ export default function Billing() {
   const onAnyTrial = isOnTrial || isStripeTrial || isLegacyTrial;
   const status = activeSub?.status || (isLegacyTrial ? "trialing" : (isPremium ? "active" : "none"));
   const legacyTrialEnds = billingData?.legacy_trial_ends || user?.free_trial_ends;
-  // Unified trial end date: prefer Stripe current_period_end during 'trialing',
-  // then the unified `trial_ends` from the user object, then the legacy date.
-  const unifiedTrialEnds =
-    (isStripeTrial ? activeSub?.current_period_end : null) ||
-    contextTrialEnds ||
-    legacyTrialEnds ||
-    null;
+  // Unified trial end date. For legacy trials we explicitly pick the same
+  // date the top-of-page banner uses (legacy_trial_ends / free_trial_ends)
+  // so the "N days left" number on this screen can never drift from the
+  // banner — previously the banner would read `free_trial_ends` while this
+  // screen could fall back to `subscription_expires`, producing two
+  // different numbers for the exact same trial.
+  const unifiedTrialEnds = isStripeTrial
+    ? activeSub?.current_period_end
+    : (isLegacyTrial ? (legacyTrialEnds || contextTrialEnds) : (contextTrialEnds || legacyTrialEnds || null));
   const trialLabel = getTrialLabel(trialType) || (onAnyTrial ? "Free Trial" : null);
-  // Prefer computing days-left from the real end date so the UI stays correct
-  // even if the cached user payload hasn't caught up with a freshly-created
-  // Stripe trial. Falls back to the value reported by the backend.
+  // Prefer computing days-left from the real end date. Falls back to the
+  // days-remaining value reported by the backend — again, picking the
+  // legacy fallback for legacy trials so both surfaces stay aligned.
+  const trialDaysFallback = isLegacyTrial
+    ? (legacyTrialDaysRemaining || trialDaysRemaining)
+    : trialDaysRemaining;
   const effectiveTrialDays = onAnyTrial
-    ? computeTrialDaysRemaining(unifiedTrialEnds, trialDaysRemaining)
+    ? computeTrialDaysRemaining(unifiedTrialEnds, trialDaysFallback)
     : 0;
   const paymentMethod = billingData?.payment_method || (activeSub?.card_brand ? {
     brand: activeSub.card_brand,

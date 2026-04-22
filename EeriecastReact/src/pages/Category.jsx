@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Podcast, Episode, UserLibrary } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
-import { hasCategory, isAudiobook, filterMaturePodcasts, getEpisodeAudioUrl } from "@/lib/utils";
+import { hasCategory, isAudiobook, getEpisodeAudioUrl } from "@/lib/utils";
 import { createPageUrl } from "@/utils";
 import { useUser } from "@/context/UserContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -12,7 +12,7 @@ export default function CategoryPage() {
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const categoryParam = (params.get("category") || "").toLowerCase();
-  const { canViewMature, isPremium } = useUser();
+  const { isPremium } = useUser();
   const { loadAndPlay } = useAudioPlayerContext();
 
   const [allPodcasts, setAllPodcasts] = useState([]);
@@ -23,11 +23,11 @@ export default function CategoryPage() {
       setIsLoading(true);
       const resp = await Podcast.list("-created_date");
       const list = Array.isArray(resp) ? resp : (resp?.results || []);
-      setAllPodcasts(filterMaturePodcasts(list, canViewMature));
+      setAllPodcasts(list);
       setIsLoading(false);
     };
     load();
-  }, [canViewMature]);
+  }, []);
 
   const filtered = useMemo(() => {
     const sel = categoryParam;

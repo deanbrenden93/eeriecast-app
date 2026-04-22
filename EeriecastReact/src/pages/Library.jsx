@@ -15,8 +15,6 @@ import PlaylistRenameModal from "../components/library/PlaylistRenameModal";
 import PlaylistDeleteModal from "../components/library/PlaylistDeleteModal";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
-import { usePodcasts } from "@/context/PodcastContext.jsx";
-import { filterMaturePodcasts } from "@/lib/utils";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useNavigate } from "react-router-dom";
@@ -53,8 +51,7 @@ export default function Library() {
   const [historyEpisodes, setHistoryEpisodes] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
-  const { isAuthenticated, isPremium, favoritePodcasts, favoriteEpisodes, favoritesLoading, favoriteEpisodeIds, canViewMature } = useUser();
-  const { maturePodcastIds } = usePodcasts();
+  const { isAuthenticated, isPremium, favoritePodcasts, favoriteEpisodes, favoritesLoading, favoriteEpisodeIds } = useUser();
   const { playlists, isLoadingPlaylists, addPlaylist, updatePlaylist, removePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const navigate = useNavigate();
@@ -79,7 +76,7 @@ export default function Library() {
       try {
         const resp = await Podcast.list("-created_date");
         const allPodcasts = Array.isArray(resp) ? resp : (resp?.results || []);
-        setPodcasts(filterMaturePodcasts(allPodcasts, canViewMature));
+        setPodcasts(allPodcasts);
       } catch (e) {
         if (typeof console !== 'undefined') console.debug('Failed to load podcasts for library', e);
       } finally {
@@ -118,20 +115,16 @@ export default function Library() {
         seen.add(id);
         unique.push(ep);
       }
-      const visible = canViewMature || !maturePodcastIds.size
-        ? unique
-        : unique.filter(ep => {
-            const pid = ep.podcast?.id ?? ep.podcast_id ?? (typeof ep.podcast === 'number' ? ep.podcast : null);
-            return !maturePodcastIds.has(pid);
-          });
-      setHistoryEpisodes(visible);
+      // Explicit-language shows remain visible in history. Playback is
+      // gated elsewhere via the explicit-language modal.
+      setHistoryEpisodes(unique);
     } catch (e) {
       if (typeof console !== 'undefined') console.debug('Failed to load history', e);
       setHistoryEpisodes([]);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [canViewMature, maturePodcastIds]);
+  }, []);
 
   // Load history on mount
   useEffect(() => { loadHistory(); }, [loadHistory]);

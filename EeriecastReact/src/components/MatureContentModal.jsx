@@ -1,22 +1,74 @@
+import { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { ShieldAlert, X } from 'lucide-react';
+import { ShieldAlert, X, Lock } from 'lucide-react';
 import { useUser } from '@/context/UserContext';
 import { User as UserAPI } from '@/api/entities';
 
 export default function MatureContentModal({ isOpen, onClose, onContinue }) {
-  const { user, userAge, refreshUser } = useUser();
-  const enabled = !!user?.allow_mature_content;
-  const canToggle = userAge !== null && userAge >= 18;
+  const {
+    user,
+    userAge,
+    isAuthenticated,
+    refreshUser,
+    guestAllowMature,
+    setGuestAllowMature,
+  } = useUser();
+
+  // Matches the Settings / Profile rules so this modal behaves identically
+  // to those surfaces:
+  //   • logged-in + DOB ≥ 18        → flips `allow_mature_content` directly
+  //   • logged-in + no DOB on file  → self-attestation required first
+  //   • guest                       → self-attestation required first
+  //   • logged-in + DOB < 18        → toggle is locked
+  const underEighteen = isAuthenticated && userAge !== null && userAge < 18;
+  const needsAttestation =
+    (!isAuthenticated) ||
+    (isAuthenticated && userAge === null);
+
+  const enabled = isAuthenticated
+    ? !!user?.allow_mature_content
+    : !!guestAllowMature;
+
+  const [attesting, setAttesting] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Reset the nested attestation view whenever the modal re-opens, so
+    // dismiss + re-entry starts from the main toggle instead of a stale
+    // confirmation screen.
+    if (!isOpen) setAttesting(false);
+  }, [isOpen]);
+
+  const setEnabled = async (next) => {
+    setBusy(true);
+    try {
+      if (isAuthenticated) {
+        await UserAPI.updateMe({ allow_mature_content: next });
+        await refreshUser();
+      } else {
+        setGuestAllowMature(next);
+      }
+    } catch (err) {
+      console.error('Failed to update explicit language preference:', err);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleToggle = async () => {
-    if (!canToggle || !user) return;
-    try {
-      await UserAPI.updateMe({ allow_mature_content: !enabled });
-      await refreshUser();
-    } catch (err) {
-      console.error('Failed to update mature content preference:', err);
+    if (underEighteen || busy) return;
+    const next = !enabled;
+    if (next && needsAttestation) {
+      setAttesting(true);
+      return;
     }
+    await setEnabled(next);
+  };
+
+  const handleAttestConfirm = async () => {
+    await setEnabled(true);
+    setAttesting(false);
   };
 
   return (
@@ -46,34 +98,75 @@ export default function MatureContentModal({ isOpen, onClose, onContinue }) {
 
           {/* Heading */}
           <h2 className="text-xl font-bold tracking-tight text-white mb-1">
-            WARNING: Mature Content
+            Heads-up: Explicit Language
           </h2>
 
           <div className="w-12 h-px bg-gradient-to-r from-transparent via-red-500/50 to-transparent my-4" />
 
           {/* Body */}
           <p className="text-sm text-zinc-400 leading-relaxed mb-2">
-            The content you are trying to play requires the user to be 18+ years of age
-            or older and may contain offensive language, visceral depictions, and
-            controversial topics.
+            Some shows contain language not suitable for younger audiences.
+            To keep listening, allow explicit-language shows on your account below.
           </p>
 
-          <p className="text-sm text-zinc-300 leading-relaxed font-semibold italic mb-6">
-            To enable listening to Mature content, please toggle the option below.
+          <p className="text-xs text-zinc-500 leading-relaxed mb-6">
+            You can turn this off any time from your profile or settings.
           </p>
 
-          {/* Inline toggle */}
-          {canToggle ? (
+          {/* Inline toggle — summarized version of the Settings/Profile
+              toggle. Same wiring: guests + users without a DOB pass through
+              an 18+ attestation sub-view, everyone else toggles directly. */}
+          {underEighteen ? (
+            <div className="w-full rounded-xl border border-red-900/30 bg-red-950/20 px-4 py-3 flex items-center gap-3 text-xs text-red-400/80">
+              <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="text-left leading-snug">
+                Explicit-language shows aren&apos;t available on accounts under 18.
+              </span>
+            </div>
+          ) : attesting ? (
+            <div className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-4 flex flex-col gap-3 text-left">
+              <div className="flex items-start gap-3">
+                <Lock className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  Confirm you are <span className="font-semibold text-white">18 years or older</span> to enable
+                  explicit-language shows on this account.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAttesting(false)}
+                  className="flex-1 rounded-lg border border-white/[0.08] text-zinc-300 hover:bg-white/[0.04] hover:text-white text-xs py-2 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAttestConfirm}
+                  disabled={busy}
+                  className="flex-1 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs py-2 font-semibold"
+                >
+                  I am 18+
+                </button>
+              </div>
+            </div>
+          ) : (
             <button
               type="button"
               onClick={handleToggle}
-              className="w-full flex items-center justify-between gap-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 transition-colors hover:bg-white/[0.05]"
+              disabled={busy}
+              className="w-full flex items-center justify-between gap-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3.5 transition-colors hover:bg-white/[0.05] disabled:opacity-60 disabled:cursor-not-allowed"
+              aria-pressed={enabled}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <ShieldAlert className="w-4 h-4 text-zinc-500 flex-shrink-0" />
-                <div className="text-left">
-                  <span className="text-sm font-medium text-zinc-200">Mature Content</span>
-                  <p className="text-[11px] text-zinc-600 mt-0.5">I confirm I am 18 years or older</p>
+                <div className="text-left min-w-0">
+                  <span className="text-sm font-medium text-zinc-200 block">
+                    Allow Shows with Explicit Language
+                  </span>
+                  <p className="text-[11px] text-zinc-600 mt-0.5 leading-snug">
+                    Required to play shows marked explicit.
+                  </p>
                 </div>
               </div>
               <div
@@ -88,15 +181,11 @@ export default function MatureContentModal({ isOpen, onClose, onContinue }) {
                 />
               </div>
             </button>
-          ) : (
-            <div className="w-full rounded-xl border border-red-900/30 bg-red-950/20 px-4 py-3 text-xs text-red-400/80">
-              Mature content is unavailable for users under 18.
-            </div>
           )}
 
           {/* Confirm / Cancel */}
           <div className="w-full mt-4 flex flex-col gap-2">
-            {enabled && (
+            {enabled && !attesting && !underEighteen && (
               <button
                 type="button"
                 onClick={onContinue}
@@ -108,9 +197,9 @@ export default function MatureContentModal({ isOpen, onClose, onContinue }) {
             <button
               type="button"
               onClick={onClose}
-              className={`text-xs text-zinc-600 hover:text-zinc-400 transition-colors ${enabled ? '' : 'mt-2'}`}
+              className={`text-xs text-zinc-600 hover:text-zinc-400 transition-colors ${enabled && !attesting && !underEighteen ? '' : 'mt-2'}`}
             >
-              {enabled ? 'Dismiss' : 'Cancel'}
+              {enabled && !attesting && !underEighteen ? 'Dismiss' : 'Cancel'}
             </button>
           </div>
         </div>

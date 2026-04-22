@@ -247,19 +247,17 @@ function GoldParticles() {
 export default function FeaturedHero({ onPlay }) {
   const navigate = useNavigate();
   const { podcasts } = usePodcasts();
-  const { canViewMature, isPremium } = useUser() || {};
+  const { isPremium } = useUser() || {};
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  /* Resolve slide podcasts from the API data — strict slug match only. Also:
-     - drops slides tagged as mature when the viewer can't see mature content,
-       otherwise the text/CTAs render even though the resolved podcast was
-       filtered out, effectively advertising a hidden show.
-     - drops membership-promo slides for users who are already paid members,
-       so premium subscribers never see "become a member" CTAs. */
+  /* Resolve slide podcasts from the API data — strict slug match only.
+     Slides advertising shows with explicit language remain in rotation:
+     the gating now lives on the show page itself (via the explicit
+     language modal). Membership-promo slides are dropped for premium
+     subscribers so they never see "become a member" CTAs. */
   const slides = useMemo(() => {
     let source = HERO_SLIDES;
-    if (!canViewMature) source = source.filter((s) => !s.mature);
     if (isPremium) source = source.filter((s) => s.type !== 'promo');
     return source.map((slide) => {
       if (slide.type === 'promo') return { ...slide, podcast: null };
@@ -267,7 +265,7 @@ export default function FeaturedHero({ onPlay }) {
       const found = podcasts.find((p) => p.slug === slide.slug);
       return { ...slide, podcast: found || null };
     });
-  }, [podcasts, canViewMature, isPremium]);
+  }, [podcasts, isPremium]);
 
   // Clamp active index when the slide set shrinks (e.g. mature toggled off).
   useEffect(() => {

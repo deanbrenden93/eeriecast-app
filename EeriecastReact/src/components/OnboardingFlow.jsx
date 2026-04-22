@@ -10,7 +10,7 @@ import {
 import { usePodcasts } from '@/context/PodcastContext';
 import { useUser } from '@/context/UserContext';
 import { useSettings } from '@/hooks/use-settings';
-import { isAudiobook, isMaturePodcast, getPodcastCategorySet } from '@/lib/utils';
+import { isAudiobook, getPodcastCategorySet } from '@/lib/utils';
 import { UserLibrary } from '@/api/entities';
 import { PaymentFormModal } from '@/pages/Premium';
 import { createPageUrl } from '@/utils';
@@ -179,15 +179,14 @@ function FollowShowsStep({ onContinue, onSkip }) {
   }, [user?.allow_mature_content, isAdult]);
 
   const shows = useMemo(() => {
+    // Explicit-language shows stay in the onboarding list regardless of
+    // the toggle — the playback/show-page gate catches them downstream.
     let list = applyExclusiveOverrides(rawPodcasts || []).filter(p => !isAudiobook(p));
-    if (!matureOn) {
-      list = list.filter(p => !isMaturePodcast(p));
-    }
     if (!isPremium) {
       list = list.filter(p => !p.is_exclusive);
     }
     return list;
-  }, [rawPodcasts, matureOn, isPremium]);
+  }, [rawPodcasts, isPremium]);
 
   const grouped = useMemo(() => {
     const metaCategories = new Set(['members', 'members only', 'members-only', 'exclusive', 'podcast']);
@@ -297,7 +296,7 @@ function FollowShowsStep({ onContinue, onSkip }) {
             className="mt-4 mx-auto flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 transition-colors hover:bg-white/[0.04]"
           >
             <ShieldAlert className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
-            <span className="text-xs text-zinc-400">Mature Content</span>
+            <span className="text-xs text-zinc-400">Explicit Language</span>
             <div
               className={`relative w-8 h-[16px] rounded-full transition-all duration-300 flex-shrink-0 ${
                 matureOn ? 'bg-red-600' : 'bg-zinc-700'

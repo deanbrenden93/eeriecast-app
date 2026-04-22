@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { UserLibrary } from "@/api/entities";
+import { User as UserAPI, UserLibrary } from "@/api/entities";
 import { useUser } from "@/context/UserContext";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { createPageUrl } from "@/utils";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Crown,
   Headphones,
@@ -18,6 +19,7 @@ import {
   Play,
   Lock,
   Sparkles,
+  ShieldAlert,
 } from "lucide-react";
 import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
 import {
@@ -71,11 +73,48 @@ export default function Profile() {
     trialType,
     trialEnds,
     trialDaysRemaining,
+    userAge,
+    isAuthenticated,
+    refreshUser,
   } = useUser();
   const { loadAndPlay } = useAudioPlayerContext();
+  const { toast } = useToast();
 
   // ── Change password modal ──
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showExplicitConfirm, setShowExplicitConfirm] = useState(false);
+
+  // Explicit-language toggle is available to everyone except logged-in
+  // users whose date_of_birth places them under 18. Logged-in users with
+  // no DOB on file must pass a one-time self-attestation (same flow as
+  // guests) before turning it on.
+  const canShowExplicitToggle = isAuthenticated
+    ? !(userAge !== null && userAge < 18)
+    : false;
+  const needsExplicitAttestation = isAuthenticated && userAge === null;
+  const explicitChecked = !!user?.allow_mature_content;
+
+  const setExplicitServerSide = async (next) => {
+    try {
+      await UserAPI.updateMe({ allow_mature_content: next });
+      await refreshUser();
+    } catch (err) {
+      console.error('Failed to update explicit language preference:', err);
+      toast({
+        title: 'Unable to update setting',
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleExplicitToggle = async (next) => {
+    if (next && needsExplicitAttestation) {
+      setShowExplicitConfirm(true);
+      return;
+    }
+    await setExplicitServerSide(next);
+  };
 
   // ── History (local fetch) ──
   const [historyEpisodes, setHistoryEpisodes] = useState([]);
@@ -397,6 +436,42 @@ export default function Profile() {
           </section>
         )}
 
+        {/* ── Explicit language toggle ── */}
+        {canShowExplicitToggle && (
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
+              Content
+            </h2>
+            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => handleExplicitToggle(!explicitChecked)}
+                className="w-full flex items-center gap-4 px-4 py-4 text-left hover:bg-white/[0.03] transition-colors"
+                aria-pressed={explicitChecked}
+              >
+                <ShieldAlert className="w-5 h-5 text-red-500/80 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-100">Allow Shows with Explicit Language</p>
+                  <p className="text-[11px] text-zinc-500 leading-snug mt-0.5">
+                    Some shows contain language viewers may not find suitable for younger audiences. Enabling this toggle will allow shows marked explicit to be played.
+                  </p>
+                </div>
+                <div
+                  className={`relative w-9 h-[18px] rounded-full transition-all duration-300 flex-shrink-0 ${
+                    explicitChecked ? "bg-red-600" : "bg-zinc-700"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-[3px] w-3 h-3 rounded-full bg-white transition-all duration-300 ${
+                      explicitChecked ? "left-[21px]" : "left-[3px]"
+                    }`}
+                  />
+                </div>
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* ── Quick links ── */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
@@ -451,6 +526,85 @@ export default function Profile() {
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
       />
+
+      {/* Explicit-language self-attestation (only for logged-in users
+          without a DOB on file). Mirrors the guest flow in Settings. */}
+      {showExplicitConfirm && (
+        <ExplicitAttestationModal
+          onConfirm={async () => {
+            await setExplicitServerSide(true);
+            setShowExplicitConfirm(false);
+            toast({
+              title: 'Explicit language enabled',
+              description: 'You can turn this off any time from your profile.',
+            });
+          }}
+          onCancel={() => setShowExplicitConfirm(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ExplicitAttestationModal({ onConfirm, onCancel }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[5000] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="profile-explicit-title"
+    >
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#141018] to-[#0c0b11] shadow-2xl overflow-hidden">
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-red-600/10 border border-red-600/20 flex items-center justify-center flex-shrink-0">
+              <Lock className="w-5 h-5 text-red-500" />
+            </div>
+            <h2 id="profile-explicit-title" className="text-lg font-semibold text-zinc-100">
+              Enable explicit language?
+            </h2>
+          </div>
+          <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+            Some shows contain language not suitable for younger audiences.
+            Confirm you&apos;d like to allow them on your account. You can turn
+            this off any time.
+          </p>
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 rounded-lg border border-white/[0.08] text-zinc-300 hover:bg-white/[0.04] hover:text-white text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium"
+            >
+              Enable
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

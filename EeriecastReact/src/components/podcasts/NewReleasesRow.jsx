@@ -47,9 +47,9 @@ export default function NewReleasesRow({
 }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
-  const { podcasts, getById, maturePodcastIds } = usePodcasts();
+  const { podcasts, getById } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
-  const { episodeProgressMap, isAuthenticated, canViewMature } = useUser() || {};
+  const { episodeProgressMap, isAuthenticated } = useUser() || {};
 
   const fetchLimit = Math.max(40, maxItems * 2);
 
@@ -99,9 +99,6 @@ export default function NewReleasesRow({
           return !audiobookIds.has(podId);
         })
         .map(enrichOne);
-      if (!canViewMature && maturePodcastIds.size > 0) {
-        out = out.filter((ep) => !maturePodcastIds.has(ep.podcast_id));
-      }
       if (categoryFilter) {
         const lower = categoryFilter.toLowerCase();
         out = out.filter((ep) => {
@@ -123,7 +120,7 @@ export default function NewReleasesRow({
       primary = [...primary, ...extras];
     }
     return primary.slice(0, maxItems);
-  }, [primaryRaw, backfillRaw, podcasts, getById, categoryFilter, canViewMature, maturePodcastIds, maxItems, needsBackfillFeed]);
+  }, [primaryRaw, backfillRaw, podcasts, getById, categoryFilter, maxItems, needsBackfillFeed]);
 
   // We treat "loading" as "no data yet". Once the cache has data, the row
   // renders immediately on subsequent mounts (no skeleton flicker).

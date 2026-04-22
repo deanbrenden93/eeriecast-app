@@ -1,15 +1,11 @@
-import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
 import { Category } from "@/api/entities";
 import { Loader2 } from "lucide-react";
 import { getCategoryStyle } from "@/lib/categoryStyles";
-import { useUser } from "@/context/UserContext.jsx";
 
 export default function CategoryExplorer() {
-  const { canViewMature } = useUser() || {};
-
   // Shares the ['categories', 'list'] cache with Discover, so navigating
   // between pages doesn't trigger a second fetch or a loading flash.
   const { data: categoriesData = [], isLoading } = useQuery({
@@ -20,17 +16,7 @@ export default function CategoryExplorer() {
     },
   });
 
-  // "Mature" is an admin grouping, not a browseable category for free /
-  // mature-gated users — mature shows are filtered out upstream so the tile
-  // would always open to an empty list.
-  const categories = useMemo(() => {
-    if (canViewMature) return categoriesData;
-    return categoriesData.filter((c) => {
-      const slug = (c?.slug || '').toLowerCase();
-      const name = (c?.name || '').toLowerCase();
-      return slug !== 'mature' && name !== 'mature';
-    });
-  }, [categoriesData, canViewMature]);
+  const categories = categoriesData;
 
   if (isLoading) {
     return (

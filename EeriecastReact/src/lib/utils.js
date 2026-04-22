@@ -86,32 +86,21 @@ export function isMaturePodcast(podcast) {
 }
 
 /**
- * Filter out mature podcasts when the viewer isn't allowed to see them.
- * Pass canViewMature = true to skip filtering (adult authenticated user).
+ * Shows/episodes with the "mature" category (now surfaced as "explicit
+ * language" in the UI) stay visible across browsing surfaces regardless
+ * of the viewer's toggle state. Playback and show pages perform their
+ * own gate via the explicit-language modal. These helpers intentionally
+ * pass through the list so callers can keep their existing signatures
+ * without changing every call site.
  */
-export function filterMaturePodcasts(list, canViewMature) {
-  if (canViewMature) return list;
-  return (list || []).filter(p => !isMaturePodcast(p));
+// eslint-disable-next-line no-unused-vars
+export function filterMaturePodcasts(list, _canViewMature) {
+  return list || [];
 }
 
-/**
- * Filter out episodes whose parent podcast is mature.
- * `maturePodcastIds` is a Set<number> of known mature podcast IDs (preferred).
- * Falls back to resolving via `getPodcast` lookup or embedded podcast data.
- */
-export function filterMatureEpisodes(episodes, canViewMature, maturePodcastIds, getPodcast) {
-  if (canViewMature) return episodes;
-  return (episodes || []).filter(ep => {
-    const podId = ep.podcast_id || (typeof ep.podcast === 'number' ? ep.podcast : ep.podcast?.id);
-    if (maturePodcastIds && maturePodcastIds.size > 0 && podId) {
-      return !maturePodcastIds.has(podId);
-    }
-    const pod = ep.podcast_data
-      || (ep.podcast && typeof ep.podcast === 'object' ? ep.podcast : null)
-      || (getPodcast ? getPodcast(podId) : null);
-    if (!pod) return true;
-    return !isMaturePodcast(pod);
-  });
+// eslint-disable-next-line no-unused-vars
+export function filterMatureEpisodes(episodes, _canViewMature, _maturePodcastIds, _getPodcast) {
+  return episodes || [];
 }
 
 /** Prefer ad-free audio, fallback to ad-supported, then default. */

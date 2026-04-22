@@ -498,15 +498,13 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         "relative w-full pt-16 pb-16 max-[1000px]:pb-20",
         hasPlayer && "pb-32 max-[1000px]:pb-48"
       )}>
-        {/* Legacy Trial Banner — thin single-line heads-up */}
+        {/* Legacy Trial Banner — full-bleed strip directly below the header */}
         {isOnLegacyTrial && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-3">
-            <LegacyTrialBanner
-              daysRemaining={legacyTrialDaysRemaining}
-              trialEnds={legacyTrialEnds}
-              hasPaymentMethod={hasPaymentMethod}
-            />
-          </div>
+          <LegacyTrialBanner
+            daysRemaining={legacyTrialDaysRemaining}
+            trialEnds={legacyTrialEnds}
+            hasPaymentMethod={hasPaymentMethod}
+          />
         )}
         {children}
       </main>

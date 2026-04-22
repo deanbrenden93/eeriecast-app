@@ -85,13 +85,12 @@ export default function MembersOnlyEpisodesRow({
 }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
-  const { podcasts, ensureDetail, maturePodcastIds } = usePodcasts();
+  const { podcasts, ensureDetail } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
   const {
     episodeProgressMap,
     isAuthenticated,
     isPremium,
-    canViewMature,
   } = useUser() || {};
 
   // Exclusive (members-only) shows only — audiobooks have their own row
@@ -102,10 +101,9 @@ export default function MembersOnlyEpisodesRow({
         if (!p) return false;
         if (!p.is_exclusive) return false;
         if (isAudiobook(p)) return false;
-        if (!canViewMature && maturePodcastIds?.has(p.id)) return false;
         return true;
       }),
-    [podcasts, canViewMature, maturePodcastIds]
+    [podcasts]
   );
 
   // Fetch full details (episodes included) for every exclusive show. Each

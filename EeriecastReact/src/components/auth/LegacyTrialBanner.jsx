@@ -74,33 +74,38 @@ export default function LegacyTrialBanner({
   const tail = hasPaymentMethod ? '. You\u2019ll renew automatically.' : '.';
   const ctaLabel = hasPaymentMethod ? 'Manage plan' : 'Choose a plan';
 
+  // Edge-to-edge strip. The outer <div> fills the viewport width; the
+  // inner wrapper keeps the banner text and CTA aligned with the rest of
+  // the page content (same max-w-7xl + horizontal padding the header uses).
   return (
     <div
-      className={`flex items-center gap-3 rounded-xl border ${tone} px-4 py-2`}
+      className={`w-full border-y ${tone}`}
       role="status"
     >
-      <Sparkles className={`w-4 h-4 flex-shrink-0 ${accent}`} />
-      <p className="flex-1 text-[13px] leading-snug truncate">
-        <span className="font-semibold text-white">{leadStrong}</span>
-        <span className="opacity-80">
-          {leadRest}{tail}
-        </span>
-      </p>
-      <button
-        type="button"
-        onClick={handleViewPlans}
-        className={`text-[12px] font-semibold whitespace-nowrap hover:underline ${accent}`}
-      >
-        {ctaLabel}
-      </button>
-      <button
-        type="button"
-        onClick={handleDismiss}
-        className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 -mr-1"
-        aria-label="Dismiss banner"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center gap-3">
+        <Sparkles className={`w-4 h-4 flex-shrink-0 ${accent}`} />
+        <p className="flex-1 text-[13px] leading-snug truncate">
+          <span className="font-semibold text-white">{leadStrong}</span>
+          <span className="opacity-80">
+            {leadRest}{tail}
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={handleViewPlans}
+          className={`text-[12px] font-semibold whitespace-nowrap hover:underline ${accent}`}
+        >
+          {ctaLabel}
+        </button>
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 -mr-1"
+          aria-label="Dismiss banner"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

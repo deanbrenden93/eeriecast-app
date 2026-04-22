@@ -134,15 +134,16 @@ export default function TermsOfServiceModal({ open, onOpenChange }) {
         </p>
       </LegalSection>
 
-      <LegalSection number="7" title="Mature Content">
+      <LegalSection number="7" title="Explicit Language">
         <p>
           Eeriecast publishes horror content that may include depictions of
           violence, the supernatural, psychological distress, and other themes
-          intended for mature audiences. Shows marked &ldquo;Mature&rdquo; are hidden by
-          default and can only be unlocked by users who (a) have verified they
-          are 18 or older and (b) have enabled mature content in Settings. You
-          acknowledge that you access such content voluntarily and at your own
-          discretion.
+          intended for older audiences. Some shows contain language not suitable
+          for younger audiences and require you to enable &ldquo;Explicit
+          Language&rdquo; on your account (from Settings or your Profile) before
+          they will play. Enabling this setting requires you to confirm that
+          you are at least 18 years old. You acknowledge that you access such
+          content voluntarily and at your own discretion.
         </p>
       </LegalSection>
 

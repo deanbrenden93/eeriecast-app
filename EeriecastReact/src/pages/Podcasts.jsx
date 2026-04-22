@@ -57,7 +57,7 @@ import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 
 export default function Podcasts() {
-  const { podcasts: rawPodcasts, isLoading, maturePodcastIds } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading } = usePodcasts();
   const podcasts = useMemo(() => applyExclusiveOverrides(rawPodcasts), [rawPodcasts]);
   const queryClient = useQueryClient();
   const [selectedPodcast, setSelectedPodcast] = useState(null);
@@ -82,7 +82,7 @@ export default function Podcasts() {
     setPlaybackQueue,
   } = useAudioPlayerContext();
 
-  const { isPremium, isAuthenticated, canViewMature } = useUser();
+  const { isPremium, isAuthenticated } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
 
@@ -127,10 +127,7 @@ export default function Podcasts() {
     enabled: isAuthenticated,
   });
 
-  const keepListeningItems = useMemo(() => {
-    if (canViewMature || !maturePodcastIds.size) return keepListeningRaw;
-    return keepListeningRaw.filter((it) => !maturePodcastIds.has(it.podcast?.id));
-  }, [keepListeningRaw, canViewMature, maturePodcastIds]);
+  const keepListeningItems = useMemo(() => keepListeningRaw, [keepListeningRaw]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Search as SearchIcon, Play, BookOpen, Headphones, ChevronRight } from "lucide-react";
-import { isAudiobook, getPodcastCategoriesLower, isMaturePodcast } from "@/lib/utils";
+import { isAudiobook, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
@@ -95,13 +95,13 @@ export default function Search() {
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [activeTab, setActiveTab] = useState("All Content");
-  const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById, maturePodcastIds } = usePodcasts();
+  const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById } = usePodcasts();
   const [showResults, setShowResults] = useState([]);
   const [episodeResults, setEpisodeResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const { isAuthenticated, isPremium, canViewMature } = useUser();
+  const { isAuthenticated, isPremium } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -141,7 +141,6 @@ export default function Search() {
         podcastResults = podcastResults.filter(p => p.is_exclusive);
       }
 
-      if (!canViewMature) podcastResults = podcastResults.filter(p => !isMaturePodcast(p));
       if (stale()) return;
       setShowResults(podcastResults);
 
@@ -242,13 +241,6 @@ export default function Search() {
         if (activeTab === "Members Only") {
           filteredEpisodes = filteredEpisodes.filter(ep => ep.is_premium);
         }
-        if (!canViewMature && maturePodcastIds.size > 0) {
-          filteredEpisodes = filteredEpisodes.filter(ep => {
-            const podId = ep.podcast_id || (typeof ep.podcast === 'number' ? ep.podcast : ep.podcast?.id);
-            return !maturePodcastIds.has(podId);
-          });
-        }
-
         if (stale()) return;
         setEpisodeResults(filteredEpisodes);
       } else {
@@ -260,7 +252,7 @@ export default function Search() {
     } finally {
       if (!stale()) setIsLoading(false);
     }
-  }, [contextPodcasts, activeTab, getById, canViewMature, maturePodcastIds]);
+  }, [contextPodcasts, activeTab, getById]);
 
   // Debounced trigger: waits 300ms after last keystroke before firing API calls
   useEffect(() => {

@@ -21,6 +21,7 @@ import { AnimatePresence } from 'framer-motion';
 import EReader from '@/components/podcasts/EReader';
 import { findBookForShow } from '@/data/books';
 import { getShowDescription } from '@/data/show-descriptions';
+import MatureContentModal from '@/components/MatureContentModal';
 
 function useQuery() {
   const { search } = useLocation();
@@ -64,10 +65,6 @@ export default function Episodes() {
       try {
         const detail = await ensureDetail(idParam);
         if (canceled) return;
-        if (detail && isMaturePodcast(detail) && !canViewMature) {
-          navigate(createPageUrl('Podcasts'), { replace: true });
-          return;
-        }
         setShow(detail);
         const list = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
         setEpisodes(list);
@@ -77,7 +74,14 @@ export default function Episodes() {
     }
     load();
     return () => { canceled = true; };
-  }, [idParam, ensureDetail, canViewMature, navigate]);
+  }, [idParam, ensureDetail]);
+
+  // Explicit-language gate: shows with the "mature" category are browsable
+  // but are hidden behind a one-time confirm modal when you reach the show
+  // page. The modal's toggle flips `allow_mature_content` on the user so
+  // future visits pass through without interruption.
+  const showIsMature = !!show && isMaturePodcast(show);
+  const showMatureGate = showIsMature && !canViewMature;
 
   useEffect(() => {
     if (show && isAudiobook(show)) {
@@ -751,6 +755,15 @@ export default function Episodes() {
           />
         )}
       </AnimatePresence>
+
+      {/* Explicit-language gate for this show. Shown once per visit until
+          the listener opts in via the modal's toggle (which persists on
+          their account). Dismissing the modal sends them back a page. */}
+      <MatureContentModal
+        isOpen={showMatureGate}
+        onClose={() => navigate(-1)}
+        onContinue={() => { /* toggle-on updates canViewMature which unmounts the modal */ }}
+      />
 
     </div>
   );

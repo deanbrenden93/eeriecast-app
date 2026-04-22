@@ -30,9 +30,9 @@ export default function PrivacyPolicyModal({ open, onOpenChange }) {
         <LegalSubheading>Information You Provide</LegalSubheading>
         <LegalList>
           <li>
-            <strong>Account details:</strong> username, email address, password
-            (stored as a one-way hash), and date of birth (used to verify age
-            for mature content).
+            <strong>Account details:</strong> email address, password (stored
+            as a one-way hash), and your birth year (used to verify age for
+            shows with explicit language).
           </li>
           <li>
             <strong>Profile details:</strong> display name, avatar, and optional
@@ -190,8 +190,8 @@ export default function PrivacyPolicyModal({ open, onOpenChange }) {
             brenden@eeriecast.com
           </a>{' '}
           and we will delete it. Certain content within the Service is further
-          restricted to users 18 and older (see Mature Content in our Terms of
-          Service).
+          restricted to users 18 and older (see Explicit Language in our Terms
+          of Service).
         </p>
       </LegalSection>
 
