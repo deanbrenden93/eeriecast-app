@@ -1,6 +1,7 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
+import { useQueries } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
 import {
   ChevronLeft,
@@ -21,6 +22,7 @@ import {
 import { canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
+import { qk } from "@/lib/queryClient";
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -70,8 +72,9 @@ function shuffleInPlace(list, seed = 1) {
  *   - "Members" → episode is gated (clicking it routes to /Premium, no menu)
  *
  * Free / gated logic mirrors the show-page behavior:
- *   • Non-audiobook exclusive show: only the admin-assigned free_sample_episode
- *     is a Sample; everything else is Members.
+ *   • Non-audiobook exclusive show: the oldest
+ *     FREE_MEMBERS_ONLY_SAMPLE_COUNT episodes are Samples; everything
+ *     else is Members.
  *   • Audiobook: the first FREE_LISTEN_CHAPTER_LIMIT chapters (oldest first)
  *     are Samples; the rest are Members.
  */
@@ -91,9 +94,6 @@ export default function MembersOnlyEpisodesRow({
     canViewMature,
   } = useUser() || {};
 
-  const [detailByShow, setDetailByShow] = useState({});
-  const [loading, setLoading] = useState(true);
-
   // Exclusive (members-only) shows only — audiobooks have their own row
   // and their chapter-based gating would muddy this "episodes" feed.
   const exclusiveShows = useMemo(
@@ -108,30 +108,36 @@ export default function MembersOnlyEpisodesRow({
     [podcasts, canViewMature, maturePodcastIds]
   );
 
-  // Fetch full details (episodes included) for every exclusive show
-  useEffect(() => {
-    if (exclusiveShows.length === 0) return;
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      const results = await Promise.all(
-        exclusiveShows.map((p) => ensureDetail(p.id).catch(() => null))
-      );
-      if (cancelled) return;
-      const map = {};
-      results.forEach((detail, idx) => {
-        const id = exclusiveShows[idx].id;
-        if (detail) map[id] = detail;
-      });
-      setDetailByShow(map);
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [exclusiveShows, ensureDetail]);
+  // Fetch full details (episodes included) for every exclusive show. Each
+  // show-detail lives in its own React Query cache entry, so remounting this
+  // row on navigation reads straight from cache — no loading flash.
+  const detailQueries = useQueries({
+    queries: exclusiveShows.map((p) => ({
+      queryKey: qk.podcast.detail(p.id),
+      queryFn: () => ensureDetail(p.id),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const detailByShow = useMemo(() => {
+    const map = {};
+    detailQueries.forEach((q, idx) => {
+      const show = exclusiveShows[idx];
+      if (show && q.data) map[show.id] = q.data;
+    });
+    return map;
+  }, [detailQueries, exclusiveShows]);
+
+  const hasAnyDetail = detailQueries.some((q) => !!q.data);
+  const anyLoading = detailQueries.some((q) => q.isLoading);
+  // Only treat this row as loading if nothing has landed yet. Once any detail
+  // is cached we render the row immediately on future mounts.
+  const loading = anyLoading && !hasAnyDetail;
 
   // Build classified (sample / members) episode pool.
-  // For exclusive shows: a single admin-assigned free_sample_episode is the
-  // Sample; every other episode is Members-only.
+  // For exclusive shows: the oldest FREE_MEMBERS_ONLY_SAMPLE_COUNT episodes
+  // are Samples; every other episode is Members-only. Pass the full detail
+  // (which has `episodes`) so canAccessExclusiveEpisode can compute samples.
   const classified = useMemo(() => {
     const items = [];
     for (const show of exclusiveShows) {
@@ -139,7 +145,7 @@ export default function MembersOnlyEpisodesRow({
       const episodes = Array.isArray(detail?.episodes) ? detail.episodes : [];
       if (episodes.length === 0) continue;
       for (const ep of episodes) {
-        const unlocked = canAccessExclusiveEpisode(ep, show, false);
+        const unlocked = canAccessExclusiveEpisode(ep, detail || show, false);
         items.push({ ep, show, isSample: unlocked });
       }
     }

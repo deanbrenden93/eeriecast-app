@@ -84,7 +84,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password', 'first_name', 'last_name', 'date_of_birth']
+        # `allow_mature_content` is opt-in at signup: the frontend computes
+        # age from date_of_birth and sets this to True for 18+ users so the
+        # mature catalog is visible by default without a trip to Settings.
+        fields = ['username', 'email', 'password', 'first_name', 'last_name',
+                  'date_of_birth', 'allow_mature_content']
 
     def validate_email(self, value):
         email = value.lower().strip()

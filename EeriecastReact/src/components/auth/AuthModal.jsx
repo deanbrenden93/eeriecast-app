@@ -32,6 +32,49 @@ const FEATURES = [
   { icon: Sparkles,   label: 'Cross-device sync, follows, favorites, playlists' },
 ];
 
+// Defined at module scope so its component identity is stable across renders.
+// If this were nested inside AuthModal, every keystroke would re-declare the
+// component, React would unmount the old <Input/> and mount a fresh one, and
+// focus would jump back to the modal container after a single character.
+function PasswordField({ id, value, onChange, show, onToggleShow, autoComplete, label }) {
+  return (
+    <div>
+      <label htmlFor={id} className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">
+        {label}
+      </label>
+      <div className="relative group">
+        <Input
+          id={id}
+          type={show ? 'text' : 'password'}
+          required
+          autoComplete={autoComplete}
+          value={value}
+          onChange={onChange}
+          className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg pr-11 transition-colors text-sm"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onToggleShow}
+          aria-label={show ? 'Hide password' : 'Show password'}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-white/[0.04]"
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+PasswordField.propTypes = {
+  id: PropTypes.string.isRequired,
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  show: PropTypes.bool.isRequired,
+  onToggleShow: PropTypes.func.isRequired,
+  autoComplete: PropTypes.string,
+  label: PropTypes.string.isRequired,
+};
+
 export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { login, register, error, isAuthenticated, loading } = useUser();
   const { afterLoginAction, subtitle } = useAuthModal();
@@ -111,7 +154,26 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
       setSubmitting(false);
       return;
     }
-    const result = await register(registerForm);
+    // Auto-opt new 18+ users into mature content so the catalog is visible
+    // out of the gate. Still a soft opt-in: they can flip it off in Settings
+    // or during onboarding. Under-18 users remain gated regardless.
+    const computeAge = (iso) => {
+      try {
+        const birth = new Date(iso);
+        if (Number.isNaN(birth.getTime())) return null;
+        const now = new Date();
+        let age = now.getFullYear() - birth.getFullYear();
+        const monthDiff = now.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age--;
+        return age;
+      } catch { return null; }
+    };
+    const age = computeAge(registerForm.date_of_birth);
+    const payload = {
+      ...registerForm,
+      allow_mature_content: age !== null && age >= 18,
+    };
+    const result = await register(payload);
     if (!result || result.success === false) {
       if (result?.code === 'imported_user_welcome') {
         setImportedUserEmail(result.email || registerForm.email);
@@ -141,44 +203,6 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     || (isLogin
       ? 'Log in to continue your eerie listening journey.'
       : 'Sign up for members-only features like favorites, history, playlists, follows and downloads.');
-
-  // Reusable password input with our own show-password toggle.
-  const PasswordField = ({ id, value, onChange, show, onToggleShow, autoComplete, label }) => (
-    <div>
-      <label htmlFor={id} className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">
-        {label}
-      </label>
-      <div className="relative group">
-        <Input
-          id={id}
-          type={show ? 'text' : 'password'}
-          required
-          autoComplete={autoComplete}
-          value={value}
-          onChange={onChange}
-          className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg pr-11 transition-colors text-sm"
-        />
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={onToggleShow}
-          aria-label={show ? 'Hide password' : 'Show password'}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-white/[0.04]"
-        >
-          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
-  );
-  PasswordField.propTypes = {
-    id: PropTypes.string.isRequired,
-    value: PropTypes.string.isRequired,
-    onChange: PropTypes.func.isRequired,
-    show: PropTypes.bool.isRequired,
-    onToggleShow: PropTypes.func.isRequired,
-    autoComplete: PropTypes.string,
-    label: PropTypes.string.isRequired,
-  };
 
   return (
     <>

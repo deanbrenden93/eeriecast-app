@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart, Loader2, Share2 } from 'lucide-react';
+import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart, Loader2, Share2, Sparkles } from 'lucide-react';
 import { sharePodcast } from '@/lib/share';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
@@ -11,7 +11,7 @@ import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import { getPodcastCategoriesLower, isAudiobook, getEpisodeAudioUrl, isMaturePodcast } from '@/lib/utils';
-import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT } from '@/lib/freeTier';
+import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT, getExclusiveSampleEpisodeIds } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { getShowColors } from '@/lib/showColors';
@@ -135,14 +135,30 @@ export default function Episodes() {
     return episodeOrder.findIndex(e => e.id === ep.id);
   };
 
-  // The admin-assigned free sample episode for members-only shows
-  const freeSampleEpisodeId = isExclusive
-    ? (show?.free_sample_episode?.id ?? show?.free_sample_episode ?? null)
-    : null;
+  // For members-only (non-audiobook) shows, the oldest N episodes are
+  // free samples for non-premium users.
+  const sampleEpisodeIds = useMemo(() => {
+    if (!isExclusive || isBook) return new Set();
+    return getExclusiveSampleEpisodeIds({ ...show, episodes, is_exclusive: true });
+  }, [show, episodes, isExclusive, isBook]);
+
+  // For audiobooks, the first FREE_LISTEN_CHAPTER_LIMIT chapters (oldest first)
+  // are free samples for non-premium users. Same presentation pattern as
+  // members-only shows, but chapter-keyed.
+  const audiobookSampleIds = useMemo(() => {
+    if (!isBook || isPremium || episodeOrder.length === 0) return new Set();
+    const ids = new Set();
+    const limit = Math.min(episodeOrder.length, FREE_LISTEN_CHAPTER_LIMIT);
+    for (let i = 0; i < limit; i++) {
+      const id = episodeOrder[i]?.id;
+      if (id != null) ids.add(id);
+    }
+    return ids;
+  }, [isBook, isPremium, episodeOrder]);
 
   // Set of episode IDs that are locked behind the free-tier limit
   // Audiobooks: first N chapters (oldest) are free — takes priority over exclusive
-  // Exclusive shows (non-audiobook): only the admin-assigned free_sample_episode is free
+  // Exclusive shows (non-audiobook): oldest N episodes are free samples; the rest are locked
   const lockedEpisodeIds = useMemo(() => {
     if (isPremium) return new Set();
     const locked = new Set();
@@ -152,15 +168,15 @@ export default function Episodes() {
         if (episodeOrder[i]?.id) locked.add(episodeOrder[i].id);
       }
     } else if (isExclusive && episodes.length) {
-      // Exclusive shows: lock all episodes except the admin-assigned free sample
+      // Exclusive shows: lock every episode that isn't a sample
       for (const ep of episodes) {
-        if (ep?.id != null && ep.id != freeSampleEpisodeId) {
+        if (ep?.id != null && !sampleEpisodeIds.has(ep.id)) {
           locked.add(ep.id);
         }
       }
     }
     return locked;
-  }, [isPremium, episodes, episodeOrder, isExclusive, isBook, freeSampleEpisodeId]);
+  }, [isPremium, episodes, episodeOrder, isExclusive, isBook, sampleEpisodeIds]);
 
   const doPlay = async (ep) => {
     if (!ep) return;
@@ -310,6 +326,38 @@ export default function Episodes() {
     else if (sortOrder === 'Oldest') arr.sort((a, b) => getDate(a) - getDate(b));
     return arr;
   }, [episodes, sortOrder]);
+
+  // For free users on gated content, split the list into a dedicated samples
+  // section (shown above) + the main (locked) list below. Paid members always
+  // see a single, unified list. Covers two cases with the same UI pattern:
+  //   • Members-only non-audiobook show → oldest N episodes are samples
+  //   • Audiobook                       → oldest N chapters are samples
+  const showSampleSection = isExclusive && !isBook && !isPremium && sampleEpisodeIds.size > 0;
+  const showAudiobookSampleSection = isBook && !isPremium && audiobookSampleIds.size > 0;
+  const anySampleSection = showSampleSection || showAudiobookSampleSection;
+
+  const sampleEpisodes = useMemo(() => {
+    if (!showSampleSection) return [];
+    const getDate = (e) => new Date(e.created_date || e.published_at || e.release_date || 0).getTime();
+    return episodes
+      .filter((ep) => sampleEpisodeIds.has(ep?.id))
+      .sort((a, b) => getDate(a) - getDate(b));
+  }, [episodes, sampleEpisodeIds, showSampleSection]);
+
+  const sampleChapters = useMemo(() => {
+    if (!showAudiobookSampleSection) return [];
+    return episodeOrder.filter((ep) => audiobookSampleIds.has(ep?.id));
+  }, [episodeOrder, audiobookSampleIds, showAudiobookSampleSection]);
+
+  const mainEpisodes = useMemo(() => {
+    if (showSampleSection) {
+      return sortedEpisodes.filter((ep) => !sampleEpisodeIds.has(ep?.id));
+    }
+    if (showAudiobookSampleSection) {
+      return sortedEpisodes.filter((ep) => !audiobookSampleIds.has(ep?.id));
+    }
+    return sortedEpisodes;
+  }, [sortedEpisodes, sampleEpisodeIds, audiobookSampleIds, showSampleSection, showAudiobookSampleSection]);
 
   // TODO [PRE-LAUNCH]: Categories are defined in the backend but not assigned to any podcast.
   // Assign categories to each podcast via Django admin before launch so these pills populate.
@@ -496,7 +544,7 @@ export default function Episodes() {
                     background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
                     boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
                   }}
-                  onClick={isBook ? doPlayAudiobook : () => doPlay(sortedEpisodes[0])}
+                  onClick={isBook ? doPlayAudiobook : () => doPlay(showSampleSection ? (sampleEpisodes[0] || sortedEpisodes[0]) : sortedEpisodes[0])}
                 >
                   <Play className="w-4 h-4 fill-white" />
                   {isBook
@@ -567,10 +615,97 @@ export default function Episodes() {
           EPISODES LIST
           ═══════════════════════════════════════════════════════ */}
       <div className="px-4 lg:px-10 pt-6 pb-28 md:pt-8 md:pb-8">
+
+        {/* Sample section — free users on members-only shows OR audiobooks.
+            Single block of JSX that adapts its copy/labels to the content type. */}
+        {anySampleSection && (
+          (() => {
+            const isAudiobookSample = showAudiobookSampleSection;
+            const items = isAudiobookSample ? sampleChapters : sampleEpisodes;
+            if (items.length === 0) return null;
+            const unit = isAudiobookSample ? 'chapter' : 'episode';
+            const headline = isAudiobookSample ? 'Sample Chapters' : 'Sample Episodes';
+            const subtext = isAudiobookSample
+              ? `Listen to the first ${items.length} chapter${items.length === 1 ? '' : 's'} for free — a preview of the full audiobook.`
+              : `Listen to the first ${items.length} ${unit}${items.length === 1 ? '' : 's'} for free — a taste of what members get.`;
+            const ctaLabel = isAudiobookSample ? 'Unlock full audiobook' : 'Unlock all episodes';
+            return (
+              <section className="mb-8 md:mb-10">
+                <div
+                  className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 md:p-6"
+                  style={{
+                    backgroundImage: `linear-gradient(135deg, ${showColors.hero.primary}12 0%, transparent 60%)`,
+                  }}
+                >
+                  {/* subtle accent glow */}
+                  <div
+                    className="pointer-events-none absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl opacity-30"
+                    style={{ background: showColors.hero.primary }}
+                  />
+
+                  <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center justify-center w-10 h-10 rounded-xl"
+                        style={{
+                          background: `linear-gradient(135deg, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                          boxShadow: `0 6px 16px -6px ${showColors.hero.shadow || 'transparent'}`,
+                        }}
+                      >
+                        <Sparkles className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg md:text-xl font-bold flex items-center gap-2">
+                          {headline}
+                          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">
+                            Free
+                          </span>
+                        </h3>
+                        <p className="text-xs md:text-sm text-zinc-400 mt-0.5">
+                          {subtext}
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={goToPremium}
+                      className="self-start sm:self-auto px-4 py-2 rounded-full text-xs font-semibold text-white shadow-md transition-all duration-300 hover:scale-[1.02] hover:brightness-110"
+                      style={{
+                        background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                      }}
+                    >
+                      <Crown className="w-3.5 h-3.5 mr-1.5" />
+                      {ctaLabel}
+                    </Button>
+                  </div>
+
+                  <div className="relative">
+                    <EpisodesTable
+                      episodes={items}
+                      show={show}
+                      onPlay={doPlay}
+                      onAddToPlaylist={handleOpenAddToPlaylist}
+                      lockedEpisodeIds={new Set()}
+                      accentColor={showColors.row}
+                    />
+                  </div>
+                </div>
+              </section>
+            );
+          })()
+        )}
+
         <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 md:gap-0 mb-5 md:mb-7">
-          <h2 className="text-2xl md:text-3xl font-bold">{isBook ? 'Chapters' : 'Episodes'}</h2>
+          <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2.5">
+            {isBook
+              ? (showAudiobookSampleSection ? 'Members-Only Chapters' : 'Chapters')
+              : (showSampleSection ? 'Members-Only Episodes' : 'Episodes')}
+            {anySampleSection && (
+              <Crown className="w-5 h-5 text-amber-300/80" />
+            )}
+          </h2>
           <div className="flex flex-wrap gap-1.5">
-            {['Newest', 'Oldest', 'Popular'].map(order => (
+            {['Newest', 'Oldest'].map(order => (
               <Button
                 key={order}
                 variant="ghost"
@@ -587,7 +722,7 @@ export default function Episodes() {
           </div>
         </div>
 
-        <EpisodesTable episodes={sortedEpisodes} show={show} onPlay={doPlay} onAddToPlaylist={handleOpenAddToPlaylist} lockedEpisodeIds={lockedEpisodeIds} accentColor={showColors.row} freeSampleEpisodeId={freeSampleEpisodeId} />
+        <EpisodesTable episodes={mainEpisodes} show={show} onPlay={doPlay} onAddToPlaylist={handleOpenAddToPlaylist} lockedEpisodeIds={lockedEpisodeIds} accentColor={showColors.row} />
       </div>
 
       <AddToPlaylistModal

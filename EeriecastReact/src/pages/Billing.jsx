@@ -16,7 +16,7 @@ import {
   ArrowRight,
   CreditCard as CardIcon,
   Trash2,
-  RefreshCw,
+  Pencil,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -320,9 +320,10 @@ export default function Billing() {
                     <button 
                       onClick={() => setShowUpdateCard(true)}
                       className="p-2 text-zinc-500 hover:text-white transition-colors"
-                      title="Update Card"
+                      title="Edit card"
+                      aria-label="Edit card"
                     >
-                      <RefreshCw className="w-4 h-4" />
+                      <Pencil className="w-4 h-4" />
                     </button>
                   </div>
                 ) : isPremium ? (

@@ -174,14 +174,8 @@ export default function CreatorEpisodes() {
   const sortedEpisodes = (Array.isArray(episodes) ? [...episodes] : []).sort((a, b) => {
     const dateA = new Date(a?.created_date || a?.published_at || a?.release_date || 0);
     const dateB = new Date(b?.created_date || b?.published_at || b?.release_date || 0);
-    if (sortOrder === 'Newest') {
-      return dateB - dateA;
-    }
-    if (sortOrder === 'Oldest') {
-      return dateA - dateB;
-    }
-    // 'Popular' sorting logic would need view counts, etc. Mocking for now.
-    return 0;
+    if (sortOrder === 'Oldest') return dateA - dateB;
+    return dateB - dateA;
   });
 
   if (isLoading) {
@@ -248,7 +242,7 @@ export default function CreatorEpisodes() {
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <h2 className="text-2xl md:text-3xl font-bold">Episodes</h2>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {['Newest', 'Oldest', 'Popular'].map(order => (
+            {['Newest', 'Oldest'].map(order => (
               <Button
                 key={order}
                 variant="ghost"

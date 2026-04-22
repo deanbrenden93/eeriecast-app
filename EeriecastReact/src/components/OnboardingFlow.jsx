@@ -164,25 +164,30 @@ function applyExclusiveOverrides(list) {
 // ---------------------------------------------------------------------------
 function FollowShowsStep({ onContinue, onSkip }) {
   const { podcasts: rawPodcasts } = usePodcasts();
-  const { user, userAge, canViewMature, isPremium, followedPodcastIds, refreshFollowings, refreshUser } = useUser();
+  const { user, userAge, isPremium, followedPodcastIds, refreshFollowings, refreshUser } = useUser();
 
   const [localFollowed, setLocalFollowed] = useState(new Set());
   const [loadingIds, setLoadingIds] = useState(new Set());
 
+  // Local mirror of the mature toggle so flipping it re-filters the show
+  // list instantly, without waiting for the API round-trip + refreshUser()
+  // to propagate through context. Stays in sync with the server value.
+  const isAdult = userAge !== null && userAge >= 18;
+  const [matureOn, setMatureOn] = useState(!!user?.allow_mature_content && isAdult);
   useEffect(() => {
-    if (followedPodcastIds) setLocalFollowed(new Set(followedPodcastIds));
-  }, [followedPodcastIds]);
+    setMatureOn(!!user?.allow_mature_content && isAdult);
+  }, [user?.allow_mature_content, isAdult]);
 
   const shows = useMemo(() => {
     let list = applyExclusiveOverrides(rawPodcasts || []).filter(p => !isAudiobook(p));
-    if (!canViewMature) {
+    if (!matureOn) {
       list = list.filter(p => !isMaturePodcast(p));
     }
     if (!isPremium) {
       list = list.filter(p => !p.is_exclusive);
     }
     return list;
-  }, [rawPodcasts, canViewMature, isPremium]);
+  }, [rawPodcasts, matureOn, isPremium]);
 
   const grouped = useMemo(() => {
     const metaCategories = new Set(['members', 'members only', 'members-only', 'exclusive', 'podcast']);
@@ -271,19 +276,22 @@ function FollowShowsStep({ onContinue, onSkip }) {
           Discover something new or follow shows you love
         </motion.p>
 
-        {userAge !== null && userAge >= 18 && (
+        {isAdult && (
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
             type="button"
             onClick={async () => {
+              const next = !matureOn;
+              setMatureOn(next);
               try {
                 const { User: UserAPI } = await import('@/api/entities');
-                await UserAPI.updateMe({ allow_mature_content: !user?.allow_mature_content });
+                await UserAPI.updateMe({ allow_mature_content: next });
                 await refreshUser();
               } catch (err) {
                 console.error('Failed to update mature content:', err);
+                setMatureOn(!next);
               }
             }}
             className="mt-4 mx-auto flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 transition-colors hover:bg-white/[0.04]"
@@ -292,12 +300,12 @@ function FollowShowsStep({ onContinue, onSkip }) {
             <span className="text-xs text-zinc-400">Mature Content</span>
             <div
               className={`relative w-8 h-[16px] rounded-full transition-all duration-300 flex-shrink-0 ${
-                user?.allow_mature_content ? 'bg-red-600' : 'bg-zinc-700'
+                matureOn ? 'bg-red-600' : 'bg-zinc-700'
               }`}
             >
               <div
                 className={`absolute top-[2px] w-3 h-3 rounded-full bg-white transition-all duration-300 ${
-                  user?.allow_mature_content ? 'left-[18px]' : 'left-[2px]'
+                  matureOn ? 'left-[18px]' : 'left-[2px]'
                 }`}
               />
             </div>

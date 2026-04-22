@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
 import { isAudiobook, hasCategory } from "@/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { qk } from "@/lib/queryClient";
 
 // TODO [PRE-LAUNCH]: These frontend overrides for is_exclusive must be migrated to the
 // Django backend (set is_exclusive=True on podcast IDs 10 & 4 in the admin panel) and
@@ -57,7 +59,7 @@ import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 export default function Podcasts() {
   const { podcasts: rawPodcasts, isLoading, maturePodcastIds } = usePodcasts();
   const podcasts = useMemo(() => applyExclusiveOverrides(rawPodcasts), [rawPodcasts]);
-  const [keepListeningItems, setKeepListeningItems] = useState([]); // { podcast, episode, progress (0-100) }
+  const queryClient = useQueryClient();
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
 
@@ -97,38 +99,38 @@ export default function Podcasts() {
 
   // Keep Listening: fetch the 20 most recent history entries — same data
   // source as the Library → History tab, just capped and styled for the home screen.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await UserLibrary.getHistory(20);
-        if (cancelled) return;
-        const raw = Array.isArray(resp) ? resp : (resp?.results || []);
-        const seen = new Set();
-        const items = [];
-        for (const entry of raw) {
-          const ep = entry?.episode_detail;
-          if (!ep?.id || seen.has(ep.id)) continue;
-          seen.add(ep.id);
-          const podcastData = ep.podcast && typeof ep.podcast === 'object' ? ep.podcast : null;
-          const progressSec = Math.max(0, Number(entry.progress || 0));
-          const dur = Math.max(0, Number(entry.duration || ep.duration || 0));
-          const pct = entry.percent_complete ?? (dur > 0 ? Math.min(100, (progressSec / dur) * 100) : 0);
-          items.push({
-            podcast: podcastData || { id: ep.podcast_id || ep.podcast, title: ep.podcast_title || '' },
-            episode: ep,
-            progress: pct,
-            resumeData: { progress: progressSec },
-          });
-        }
-        const visible = canViewMature || !maturePodcastIds.size ? items : items.filter(it => !maturePodcastIds.has(it.podcast?.id));
-        if (!cancelled) setKeepListeningItems(visible);
-      } catch {
-        if (!cancelled) setKeepListeningItems([]);
+  // Cached via React Query so navigating away and back doesn't flash skeletons.
+  const { data: keepListeningRaw = [] } = useQuery({
+    queryKey: qk.library.history(20),
+    queryFn: async () => {
+      const resp = await UserLibrary.getHistory(20);
+      const raw = Array.isArray(resp) ? resp : (resp?.results || []);
+      const seen = new Set();
+      const items = [];
+      for (const entry of raw) {
+        const ep = entry?.episode_detail;
+        if (!ep?.id || seen.has(ep.id)) continue;
+        seen.add(ep.id);
+        const podcastData = ep.podcast && typeof ep.podcast === 'object' ? ep.podcast : null;
+        const progressSec = Math.max(0, Number(entry.progress || 0));
+        const dur = Math.max(0, Number(entry.duration || ep.duration || 0));
+        const pct = entry.percent_complete ?? (dur > 0 ? Math.min(100, (progressSec / dur) * 100) : 0);
+        items.push({
+          podcast: podcastData || { id: ep.podcast_id || ep.podcast, title: ep.podcast_title || '' },
+          episode: ep,
+          progress: pct,
+          resumeData: { progress: progressSec },
+        });
       }
-    })();
-    return () => { cancelled = true; };
-  }, [canViewMature, maturePodcastIds]);
+      return items;
+    },
+    enabled: isAuthenticated,
+  });
+
+  const keepListeningItems = useMemo(() => {
+    if (canViewMature || !maturePodcastIds.size) return keepListeningRaw;
+    return keepListeningRaw.filter((it) => !maturePodcastIds.has(it.podcast?.id));
+  }, [keepListeningRaw, canViewMature, maturePodcastIds]);
 
   const visiblePodcasts = useMemo(() => {
     const items = podcasts;
@@ -181,11 +183,12 @@ export default function Podcasts() {
       const recentlyPlayedIds = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
       const newIds = [podcast.id, ...recentlyPlayedIds.filter(id => id !== podcast.id)].slice(0, 10);
       localStorage.setItem('recentlyPlayed', JSON.stringify(newIds));
-      // Add this episode to the keep listening items immediately
-      setKeepListeningItems(prev => {
+      // Optimistically prepend this episode to the Keep Listening cache so
+      // the card appears instantly and persists across navigation.
+      queryClient.setQueryData(qk.library.history(20), (prev) => {
         const newItem = { podcast, episode: ep, progress: 0, resumeData: resume };
-        const filtered = prev.filter(item => item.episode?.id !== ep.id);
-        return [newItem, ...filtered];
+        const list = Array.isArray(prev) ? prev.filter((item) => item.episode?.id !== ep.id) : [];
+        return [newItem, ...list];
       });
     } catch (err) {
       console.error('Failed to start playback:', err);

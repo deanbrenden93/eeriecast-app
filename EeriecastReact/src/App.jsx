@@ -15,6 +15,8 @@ import SplashScreen from '@/components/SplashScreen.jsx';
 import OnboardingFlow, { isOnboardingDone } from '@/components/OnboardingFlow.jsx';
 import LegacyTrialReminderModal from '@/components/auth/LegacyTrialReminderModal.jsx';
 import { djangoClient } from '@/api/djangoClient.js';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/lib/queryClient.js';
 
 function GlobalAuthModal() {
   const { open, closeAuth, defaultTab, afterLoginAction, setAfterLoginAction } = useAuthModal();
@@ -128,6 +130,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
     <AuthModalProvider>
       <Router>
         <AudioPlayerProvider>
@@ -170,6 +173,7 @@ function App() {
         </AudioPlayerProvider>
       </Router>
     </AuthModalProvider>
+    </QueryClientProvider>
     </ErrorBoundary>
   )
 }

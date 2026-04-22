@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
 import { Podcast, UserLibrary, Category, Episode } from "@/api/entities";
+import { qk } from "@/lib/queryClient";
 import ShowCard from "../components/discover/ShowCard";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
@@ -231,18 +233,8 @@ export default function Discover() {
   const { podcasts: rawPodcasts, isLoading, getById, maturePodcastIds, softRefreshIfStale } = usePodcasts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [isCategoriesLoading, setIsCategoriesLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const goToPremium = () => navigate(createPageUrl('Premium'));
-
-  // Episode data for episode-based tabs (progressively loaded)
-  const [fetchedEpisodes, setFetchedEpisodes] = useState([]);
-  const [episodesLoading, setEpisodesLoading] = useState(true);
-  const [allEpisodesFetched, setAllEpisodesFetched] = useState(false);
-  const [totalEpisodeCount, setTotalEpisodeCount] = useState(0);
-  const [listeningHistory, setListeningHistory] = useState([]);
-  const fetchCancelledRef = useRef(false);
 
   // Display pagination — render 20 at a time
   const DISPLAY_PAGE_SIZE = 20;
@@ -270,31 +262,35 @@ export default function Discover() {
     return map;
   }, [podcasts]);
 
-  /* ─── data loading ─── */
+  /* ─── data loading (TanStack Query) ─── */
 
-  const fetchCategories = useCallback(async ({ showSpinner = true } = {}) => {
-    try {
-      if (showSpinner) setIsCategoriesLoading(true);
+  // Categories — cached app-wide. Revalidates on focus by default, so edits
+  // made in the backend admin surface within a minute of returning to the tab.
+  const { data: categoriesData = [], isLoading: isCategoriesLoading } = useQuery({
+    queryKey: ['categories', 'list'],
+    queryFn: async () => {
       const resp = await Category.list();
-      setCategories(Array.isArray(resp) ? resp : (resp?.results || []));
-    } catch {
-      setCategories([]);
-    } finally {
-      if (showSpinner) setIsCategoriesLoading(false);
-    }
-  }, []);
+      return Array.isArray(resp) ? resp : (resp?.results || []);
+    },
+  });
 
-  useEffect(() => { fetchCategories({ showSpinner: true }); }, [fetchCategories]);
+  // The backend "Mature" category is meaningless to users who can't view
+  // mature content — those shows are filtered out upstream by PodcastContext,
+  // so the detail view would always be empty. Hide the tile to match.
+  const categories = useMemo(() => {
+    if (canViewMature) return categoriesData;
+    return categoriesData.filter((c) => {
+      const slug = (c?.slug || '').toLowerCase();
+      const name = (c?.name || '').toLowerCase();
+      return slug !== 'mature' && name !== 'mature';
+    });
+  }, [categoriesData, canViewMature]);
 
-  // Keep the category + podcast lists fresh when the user returns to this
-  // page (e.g. after editing categories in the backend admin). Soft refresh
-  // means no spinners, no flicker — the UI just updates in place the next
-  // time React re-renders. Runs on mount and whenever the tab regains focus.
+  // Keep the podcast list fresh when the user returns to this page. Runs on
+  // mount and whenever the tab regains focus. Categories have their own
+  // cache-driven refetch (refetchOnWindowFocus is on by default).
   useEffect(() => {
-    const refresh = () => {
-      softRefreshIfStale(60_000);
-      fetchCategories({ showSpinner: false });
-    };
+    const refresh = () => { softRefreshIfStale(60_000); };
     refresh();
     const onFocus = () => {
       if (document.visibilityState === 'visible') refresh();
@@ -305,60 +301,81 @@ export default function Discover() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
     };
-  }, [softRefreshIfStale, fetchCategories]);
+  }, [softRefreshIfStale]);
 
-  // Progressively fetch ALL episodes in background (page_size=100 batches)
+  // Progressively fetch ALL episodes in background. Each page is a separate
+  // cache entry so revisiting the Discover page is instant. A background
+  // effect below keeps pulling the next page until everything is loaded.
+  const API_PAGE_SIZE = 100;
+  const {
+    data: episodePages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isEpisodesInitialLoading,
+  } = useInfiniteQuery({
+    queryKey: qk.episodes.allPaginated({ ordering: '-published_at', pageSize: API_PAGE_SIZE }),
+    queryFn: async ({ pageParam = 1 }) => {
+      const resp = await Episode.filter({ page_size: API_PAGE_SIZE, page: pageParam }, '-published_at');
+      return resp;
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const results = Array.isArray(lastPage) ? lastPage : (lastPage?.results || []);
+      if (results.length < API_PAGE_SIZE) return undefined;
+      const total = lastPage?.count ?? null;
+      if (total != null) {
+        const accumulated = allPages.reduce((sum, p) => {
+          const r = Array.isArray(p) ? p : (p?.results || []);
+          return sum + r.length;
+        }, 0);
+        if (accumulated >= total) return undefined;
+      }
+      return allPages.length + 1;
+    },
+  });
+
+  // Auto-advance pagination in the background until every page is cached.
   useEffect(() => {
-    fetchCancelledRef.current = false;
-    const API_PAGE_SIZE = 100;
-    let page = 1;
-    let accumulated = [];
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-    (async () => {
-      setEpisodesLoading(true);
-      while (!fetchCancelledRef.current) {
-        try {
-          const resp = await Episode.filter({ page_size: API_PAGE_SIZE, page }, '-published_at');
-          if (fetchCancelledRef.current) break;
-          const results = Array.isArray(resp) ? resp : (resp?.results || []);
-          const total = resp?.count ?? 0;
-          if (page === 1) setTotalEpisodeCount(total);
-          if (results.length === 0) break;
+  const rawFetchedEpisodes = useMemo(() => {
+    const pages = episodePages?.pages || [];
+    return pages.flatMap((p) => (Array.isArray(p) ? p : (p?.results || [])));
+  }, [episodePages]);
 
-          accumulated = [...accumulated, ...results];
-          setFetchedEpisodes(filterMatureEpisodes([...accumulated], canViewMature, maturePodcastIds));
+  const fetchedEpisodes = useMemo(
+    () => filterMatureEpisodes(rawFetchedEpisodes, canViewMature, maturePodcastIds),
+    [rawFetchedEpisodes, canViewMature, maturePodcastIds]
+  );
 
-          // After first page, the UI has enough to show — stop blocking
-          if (page === 1) setEpisodesLoading(false);
+  const totalEpisodeCount = episodePages?.pages?.[0]?.count ?? rawFetchedEpisodes.length;
+  const allEpisodesFetched = !hasNextPage && !isFetchingNextPage;
+  // Loading is only true during the initial fetch — background pagination
+  // doesn't block the UI because we already have something to render.
+  const episodesLoading = isEpisodesInitialLoading && rawFetchedEpisodes.length === 0;
 
-          if (accumulated.length >= total || results.length < API_PAGE_SIZE) break;
-          page++;
-        } catch {
-          break;
-        }
-      }
-      if (!fetchCancelledRef.current) {
-        setAllEpisodesFetched(true);
-        setEpisodesLoading(false);
-      }
-    })();
+  // Listening history — cached and only fetched for authenticated users.
+  const { data: listeningHistory = [] } = useQuery({
+    queryKey: ['library', 'history', 'full'],
+    queryFn: async () => {
+      const resp = await UserLibrary.getHistory();
+      return Array.isArray(resp) ? resp : (resp?.results || []);
+    },
+    enabled: isAuthenticated,
+  });
 
-    return () => { fetchCancelledRef.current = true; };
-  }, []);
-
-  // Fetch listening history for recommendations (authenticated users only)
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    (async () => {
-      try {
-        const resp = await UserLibrary.getHistory();
-        const list = Array.isArray(resp) ? resp : (resp?.results || []);
-        setListeningHistory(list);
-      } catch {
-        setListeningHistory([]);
-      }
-    })();
-  }, [isAuthenticated]);
+  // Dedicated trending feed — fetched on demand when the Trending tab opens.
+  // Mirrors the home screen's "Trending Now" row so both surfaces stay in sync.
+  const { data: trendingApiEpisodes = [] } = useQuery({
+    queryKey: qk.episodes.feed('trending-full', { limit: 100, windowHours: 48 }),
+    queryFn: async () => {
+      const resp = await Episode.trending(100, 48);
+      return Array.isArray(resp) ? resp : (resp?.results || []);
+    },
+    enabled: activeTab === "Trending",
+  });
 
   // Reset filters and display count when tab changes
   useEffect(() => {
@@ -516,11 +533,30 @@ export default function Discover() {
 
   /* ─── trending episodes (capped at 100) ─── */
 
+  // Trending: prefer the backend's dedicated `/episodes/trending/` endpoint
+  // (same feed the home screen's "Trending Now" row uses — scored by recent
+  // PlaybackEvent activity, with a server-side fallback to newest when
+  // volume is low). If we haven't loaded it yet, fall back to the newest
+  // non-audiobook episodes so the tab is never empty.
   const trendingEpisodes = useMemo(() => {
-    return [...nonAudiobookEpisodes]
-      .sort((a, b) => (b.play_count || 0) - (a.play_count || 0))
-      .slice(0, 100);
-  }, [nonAudiobookEpisodes]);
+    const audiobookIds = new Set(podcasts.filter(isAudiobook).map(p => p.id));
+    const getPodId = (ep) => (typeof ep.podcast === 'object' ? ep.podcast?.id : (ep.podcast || ep.podcast_id));
+    const filteredApi = (trendingApiEpisodes || []).filter(ep => !audiobookIds.has(getPodId(ep)));
+
+    if (filteredApi.length >= 10) return filteredApi.slice(0, 100);
+
+    // Backfill: merge any API results with newest non-audiobook episodes
+    // (de-duped) so there's always a useful list to display.
+    const existingIds = new Set(filteredApi.map(ep => ep.id));
+    const newestFallback = [...nonAudiobookEpisodes].sort(
+      (a, b) => new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at)
+    );
+    const merged = [
+      ...filteredApi,
+      ...newestFallback.filter(ep => !existingIds.has(ep.id)),
+    ];
+    return merged.slice(0, 100);
+  }, [trendingApiEpisodes, nonAudiobookEpisodes, podcasts]);
 
   /* ─── play handlers ─── */
 
@@ -918,7 +954,13 @@ export default function Discover() {
       case "Newest":
         return renderEpisodeList(nonAudiobookEpisodes, "Latest Episodes", "The most recently published episodes across all shows");
       case "Trending":
-        return renderEpisodeList(trendingEpisodes, "Trending Now", "Episodes with the most listens right now", "No trending episodes at the moment.", 100);
+        return renderEpisodeList(
+          trendingEpisodes,
+          "Trending Now",
+          "Episodes picking up steam — falls back to the newest releases when it's quiet.",
+          "No trending episodes at the moment.",
+          100
+        );
       case "Podcasts":
         return renderShowList(podcasts.filter(p => !isAudiobook(p)), "All Podcasts", "No podcasts found.");
       case "Members-Only": {

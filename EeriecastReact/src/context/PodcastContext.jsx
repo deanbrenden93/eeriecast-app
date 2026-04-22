@@ -42,21 +42,54 @@ export function PodcastProvider({ children }) {
     setById(map);
   }, [podcasts]);
 
+  /**
+   * Fetch every podcast by paginating through all pages. DRF defaults to
+   * page_size=20 server-side, so without this any show past the 20th would
+   * be invisible to the app — category filters would silently miss them.
+   * We request the max page_size (100) and follow pages until we've seen
+   * everything, using the `count` field when available and falling back
+   * to "partial page = done" when it isn't.
+   */
+  const fetchAllPodcasts = useCallback(async () => {
+    const PAGE_SIZE = 100;
+    const first = await PodcastApi.filter({ page_size: PAGE_SIZE, page: 1 }, '-created_date');
+    // Non-paginated response (unlikely, but keep it resilient).
+    if (Array.isArray(first)) return first;
+    const firstResults = first?.results || [];
+    const total = typeof first?.count === 'number' ? first.count : null;
+    const accumulated = [...firstResults];
+    let page = 1;
+    while (
+      (total != null ? accumulated.length < total : firstResults.length === PAGE_SIZE)
+      && accumulated.length > 0
+    ) {
+      page += 1;
+      try {
+        const next = await PodcastApi.filter({ page_size: PAGE_SIZE, page }, '-created_date');
+        const nextResults = Array.isArray(next) ? next : (next?.results || []);
+        if (nextResults.length === 0) break;
+        accumulated.push(...nextResults);
+        if (nextResults.length < PAGE_SIZE) break;
+        if (total != null && accumulated.length >= total) break;
+      } catch {
+        break;
+      }
+    }
+    return accumulated;
+  }, []);
+
   const loadAllOnce = useCallback(async () => {
-    if (fetchedListRef.current) return; // already loaded
+    if (fetchedListRef.current) return;
     setIsLoading(true);
     setError(null);
     try {
-      const [resPodcasts, resCreators] = await Promise.all([
-        PodcastApi.list('-created_date'),
+      const [podcastsArr, resCreators] = await Promise.all([
+        fetchAllPodcasts(),
         Creator.featured(),
       ]);
-
-      const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
       const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
 
-      console.log('PodcastProvider loaded', arr);
-      setAllPodcasts(arr);
+      setAllPodcasts(podcastsArr);
       setFeaturedCreators(creatorsArr);
       fetchedListRef.current = true;
       lastFetchedAtRef.current = Date.now();
@@ -65,7 +98,7 @@ export function PodcastProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchAllPodcasts]);
 
   // Initial load on mount
   useEffect(() => {
@@ -76,24 +109,23 @@ export function PodcastProvider({ children }) {
     setIsLoading(true);
     setError(null);
     try {
-      const [resPodcasts, resCreators] = await Promise.all([
-        PodcastApi.list('-created_date'),
+      const [podcastsArr, resCreators] = await Promise.all([
+        fetchAllPodcasts(),
         Creator.featured(),
       ]);
-      const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
       const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
-      setAllPodcasts(arr);
+      setAllPodcasts(podcastsArr);
       setFeaturedCreators(creatorsArr);
       fetchedListRef.current = true;
       lastFetchedAtRef.current = Date.now();
-      return arr;
+      return podcastsArr;
     } catch (e) {
       setError(e);
       return [];
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchAllPodcasts]);
 
   /**
    * Refetch the podcast list in the background — no loading spinner, no UI
@@ -109,13 +141,12 @@ export function PodcastProvider({ children }) {
     if (inflightSoftRefreshRef.current) return false;
     inflightSoftRefreshRef.current = true;
     try {
-      const [resPodcasts, resCreators] = await Promise.all([
-        PodcastApi.list('-created_date'),
+      const [podcastsArr, resCreators] = await Promise.all([
+        fetchAllPodcasts(),
         Creator.featured(),
       ]);
-      const arr = Array.isArray(resPodcasts) ? resPodcasts : (resPodcasts?.results || []);
       const creatorsArr = Array.isArray(resCreators) ? resCreators : (resCreators?.results || []);
-      setAllPodcasts(arr);
+      setAllPodcasts(podcastsArr);
       setFeaturedCreators(creatorsArr);
       lastFetchedAtRef.current = Date.now();
       return true;
@@ -124,7 +155,7 @@ export function PodcastProvider({ children }) {
     } finally {
       inflightSoftRefreshRef.current = false;
     }
-  }, []);
+  }, [fetchAllPodcasts]);
 
   const getById = useCallback((id) => byId[id], [byId]);
 

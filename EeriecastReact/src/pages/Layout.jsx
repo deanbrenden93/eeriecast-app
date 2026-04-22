@@ -277,6 +277,19 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
                 </AnimatePresence>
               </div>
 
+              {/* Guests don't have a user menu, so expose Settings directly
+                  on large screens — otherwise they have no entry point. */}
+              {!isAuthenticated && (
+                <Link
+                  to={createPageUrl('Settings')}
+                  className="hidden md:inline-flex p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all duration-300"
+                  aria-label="Settings"
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </Link>
+              )}
+
               <div className="relative" ref={userMenuRef}>
                 <button
                   type="button"

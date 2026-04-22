@@ -533,13 +533,33 @@ const UserProvider = ({ children }) => {
     return age;
   }, [user]);
 
-  // Only authenticated users whose DOB confirms 18+ AND have enabled mature content can view it.
-  // Everyone else (not logged in, no DOB, under 18, or opted out) sees mature shows hidden.
+  // Guest (non-logged-in) mature opt-in, persisted in localStorage. We honor
+  // this in the same `canViewMature` gate that logged-in users go through so
+  // every filter across the app stays consistent. The setter is exposed
+  // through context for the Settings page; flipping it on requires the guest
+  // to confirm they're 18+ via a modal there.
+  const GUEST_MATURE_KEY = 'eeriecast_guest_mature_ok';
+  const [guestAllowMature, setGuestAllowMatureState] = useState(() => {
+    try { return localStorage.getItem(GUEST_MATURE_KEY) === '1'; }
+    catch { return false; }
+  });
+  const setGuestAllowMature = useCallback((val) => {
+    const next = !!val;
+    setGuestAllowMatureState(next);
+    try {
+      if (next) localStorage.setItem(GUEST_MATURE_KEY, '1');
+      else localStorage.removeItem(GUEST_MATURE_KEY);
+    } catch { /* storage unavailable — in-memory is fine */ }
+  }, []);
+
+  // Only users whose age confirms 18+ AND have enabled mature content can
+  // view it. For logged-in users that's DOB + `allow_mature_content`. For
+  // guests we rely on the localStorage opt-in (gated behind a confirm modal).
   const canViewMature = useMemo(() => {
-    if (!user) return false;
+    if (!user) return guestAllowMature === true;
     const isAdult = userAge !== null && userAge >= 18;
     return isAdult && user.allow_mature_content === true;
-  }, [user, userAge]);
+  }, [user, userAge, guestAllowMature]);
 
   // --- Favorite management helpers (episodes & podcasts) ---
   // Track inflight operations to avoid duplicate calls per (type,id)
@@ -705,6 +725,8 @@ const UserProvider = ({ children }) => {
         isPremium,
         userAge,
         canViewMature,
+        guestAllowMature,
+        setGuestAllowMature,
         // legacy trial
         isOnLegacyTrial,
         legacyTrialEnds,

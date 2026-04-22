@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Play, ChevronRight, BookOpen, Crown } from "lucide-react";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
+import { useUser } from "@/context/UserContext.jsx";
 
 /* ═══════════════════════════════════════════════════════════════════
    HERO SLIDES CONFIG
@@ -30,6 +31,9 @@ const HERO_SLIDES = [
   },
   {
     slug: 'night-watchers',
+    // Night Watchers is tagged Mature on the backend — flag the slide so we
+    // skip it entirely for users who have mature content turned off.
+    mature: true,
     badge: 'Fan Favorite',
     title: 'Night\nWatchers',
     description:
@@ -243,19 +247,32 @@ function GoldParticles() {
 export default function FeaturedHero({ onPlay }) {
   const navigate = useNavigate();
   const { podcasts } = usePodcasts();
+  const { canViewMature } = useUser() || {};
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  /* Resolve slide podcasts from the API data — strict slug match only */
+  /* Resolve slide podcasts from the API data — strict slug match only. Also
+     drops any slides explicitly tagged as mature when the viewer can't see
+     mature content; otherwise the text/CTAs render even though the resolved
+     podcast was filtered out, effectively advertising a hidden show. */
   const slides = useMemo(() => {
-    return HERO_SLIDES.map((slide) => {
+    const source = canViewMature
+      ? HERO_SLIDES
+      : HERO_SLIDES.filter((s) => !s.mature);
+    return source.map((slide) => {
       if (slide.type === 'promo') return { ...slide, podcast: null };
       if (!podcasts || podcasts.length === 0) return { ...slide, podcast: null };
-      // Strict match: slug must match exactly
       const found = podcasts.find((p) => p.slug === slide.slug);
       return { ...slide, podcast: found || null };
     });
-  }, [podcasts]);
+  }, [podcasts, canViewMature]);
+
+  // Clamp active index when the slide set shrinks (e.g. mature toggled off).
+  useEffect(() => {
+    if (activeIndex >= slides.length && slides.length > 0) {
+      setActiveIndex(0);
+    }
+  }, [slides.length, activeIndex]);
 
   const currentSlide = slides[activeIndex % slides.length] || slides[0];
   const currentPodcast = currentSlide?.podcast;
@@ -302,12 +319,15 @@ export default function FeaturedHero({ onPlay }) {
     setPaused(false);
   }, [slides.length]);
 
-  const heroHeight = 'clamp(360px, 46vh, 460px)';
+  // Use minHeight (not a fixed height) so slides with tall content — long
+  // titles or a wrapping description on narrow-but-short viewports — can
+  // grow past the clamp baseline instead of clipping the badge at the top.
+  const heroMinHeight = 'clamp(360px, 46vh, 460px)';
 
   return (
     <section
-      className="relative w-full overflow-hidden"
-      style={{ height: heroHeight }}
+      className="relative w-full overflow-hidden flex flex-col justify-end"
+      style={{ minHeight: heroMinHeight }}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={handleTouchStart}
@@ -337,8 +357,41 @@ export default function FeaturedHero({ onPlay }) {
           )}
         </AnimatePresence>
 
-        {/* Readability overlays — lighter on mobile so artwork shows through */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#08080e]/95 via-[#08080e]/50 to-transparent sm:via-[#08080e]/65 sm:to-[#08080e]/30" />
+        {/* Crisp full-bleed cover (sm+): promotes the artwork from a
+            right-side thumbnail into the hero's dominant visual, with a
+            slight clockwise tilt. Scale compensates for rotation so the
+            rotated corners never expose the backdrop. */}
+        {coverImage && (
+          <AnimatePresence mode="sync">
+            <motion.div
+              key={`bg-cover-${coverImage}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8 }}
+              className="absolute inset-0 hidden sm:block overflow-hidden pointer-events-none"
+              aria-hidden="true"
+            >
+              <img
+                src={coverImage}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{
+                  transform: 'rotate(2.5deg) scale(1.12)',
+                  transformOrigin: 'center',
+                  filter: 'saturate(1.1) brightness(0.85)',
+                }}
+                draggable={false}
+              />
+            </motion.div>
+          </AnimatePresence>
+        )}
+
+        {/* Readability overlays — lighter on mobile (where the stylized
+            right-side artwork does most of the work). On sm+ the full-bleed
+            cover takes over, so the left half stays deeply dark for text
+            readability while the right bleeds to near-transparent. */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#08080e]/95 via-[#08080e]/50 to-transparent sm:from-[#08080e]/95 sm:via-[#08080e]/70 sm:to-[#08080e]/10" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#08080e] via-transparent to-[#08080e]/40" />
 
         {/* Accent orbs */}
@@ -400,7 +453,7 @@ export default function FeaturedHero({ onPlay }) {
       )}
 
       {/* ── Content ── */}
-      <div className="relative z-10 w-full h-full flex items-end px-5 sm:px-6 lg:px-10 pb-8 sm:pb-10">
+      <div className="relative z-10 w-full px-5 sm:px-6 lg:px-10 pt-6 sm:pt-8 pb-8 sm:pb-10">
         <div className="w-full flex items-end justify-between gap-6 lg:gap-12">
 
           {/* Left: text */}
@@ -423,36 +476,10 @@ export default function FeaturedHero({ onPlay }) {
             )}
           </div>
 
-          {/* Right: crisp artwork (tablet/desktop) */}
-          {coverImage && (
-            <div className="hidden sm:flex flex-shrink-0 items-end pb-1">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={coverImage}
-                  initial={{ opacity: 0, scale: 0.9, y: 14 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.92, y: -10 }}
-                  transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
-                  className="relative"
-                >
-                  {/* Glow */}
-                  <div className="absolute -inset-5 rounded-3xl blur-[40px] opacity-25" style={{ background: accent }} />
-
-                  {/* Art */}
-                  <div
-                    className={`relative overflow-hidden ${currentSlide.isBook ? 'w-40 lg:w-48 rounded-xl' : 'w-44 lg:w-52 rounded-2xl'}`}
-                    style={{
-                      aspectRatio: currentSlide.isBook ? '2 / 3' : '1 / 1',
-                      boxShadow: `0 20px 50px -12px ${accent}44, 0 8px 20px -4px rgba(0,0,0,0.5)`,
-                    }}
-                  >
-                    <img src={coverImage} alt={currentPodcast?.title || ''} className="w-full h-full object-cover" draggable={false} />
-                    <div className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/[0.08]" />
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          )}
+          {/* On sm+ the crisp cover becomes the full-bleed hero background
+              (rendered in the background layer above), so no right-side
+              thumbnail is needed here. Mobile keeps its stylized artwork
+              rendered behind the text in the Mobile Artwork block. */}
         </div>
       </div>
     </section>

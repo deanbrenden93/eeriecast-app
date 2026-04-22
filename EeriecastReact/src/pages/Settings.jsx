@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import {
   Settings as SettingsIcon,
   Play,
@@ -120,15 +121,29 @@ const SkipIntervalControl = ({ value, onChange }) => {
 export default function Settings() {
   const { settings, updateSetting } = useSettings();
   const { playbackRate, setPlaybackRate } = useAudioPlayerContext();
-  const { user, userAge, refreshUser } = useUser();
+  const {
+    user,
+    userAge,
+    refreshUser,
+    isAuthenticated,
+    guestAllowMature,
+    setGuestAllowMature,
+  } = useUser();
   const [clearingHistory, setClearingHistory] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showMatureConfirm, setShowMatureConfirm] = useState(false);
   const location = useLocation();
   const { toast } = useToast();
 
-  // User can see the toggle if they are 18+
-  const canShowMatureToggle = userAge !== null && userAge >= 18;
+  // Logged-in users only see the toggle after DOB-confirmed 18+. Guests
+  // always see it, and flipping it on triggers a self-attestation modal.
+  const canShowMatureToggle = isAuthenticated
+    ? (userAge !== null && userAge >= 18)
+    : true;
+  const matureChecked = isAuthenticated
+    ? !!user?.allow_mature_content
+    : !!guestAllowMature;
 
   const handleClearHistory = async () => {
     if (!window.confirm('Are you sure you want to clear your listening history? This cannot be undone.')) {
@@ -273,15 +288,24 @@ export default function Settings() {
               {clearingHistory ? 'Clearing...' : 'Clear Listening History'}
             </Button>
           </div>
-          {/* Only visible for authenticated users with verified 18+ age */}
+          {/* Logged-in users: gated by DOB. Guests: always shown, turning it
+              on prompts them to confirm they're 18+. */}
           {canShowMatureToggle && (
             <div id="mature-content">
               <SettingsToggle
                 icon={ShieldAlert}
                 label="Mature Content"
                 description="Enable playback of shows marked as Mature (18+ only)"
-                checked={!!user?.allow_mature_content}
+                checked={matureChecked}
                 onCheckedChange={async (val) => {
+                  if (!isAuthenticated) {
+                    if (val) {
+                      setShowMatureConfirm(true);
+                    } else {
+                      setGuestAllowMature(false);
+                    }
+                    return;
+                  }
                   try {
                     await UserAPI.updateMe({ allow_mature_content: val });
                     await refreshUser();
@@ -335,6 +359,90 @@ export default function Settings() {
 
       <TermsOfServiceModal open={showTerms} onOpenChange={setShowTerms} />
       <PrivacyPolicyModal open={showPrivacy} onOpenChange={setShowPrivacy} />
+
+      {showMatureConfirm && (
+        <MatureAgeConfirmModal
+          onConfirm={() => {
+            setGuestAllowMature(true);
+            setShowMatureConfirm(false);
+            toast({
+              title: 'Mature content enabled',
+              description: 'Mature shows are now visible across the app.',
+            });
+          }}
+          onCancel={() => setShowMatureConfirm(false)}
+        />
+      )}
     </div>
   );
 }
+
+/* ─── Age confirmation modal (guest-only) ──────────────────────────── */
+
+function MatureAgeConfirmModal({ onConfirm, onCancel }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[5000] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mature-confirm-title"
+    >
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#141018] to-[#0c0b11] shadow-2xl overflow-hidden">
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-red-600/10 border border-red-600/20 flex items-center justify-center flex-shrink-0">
+              <ShieldAlert className="w-5 h-5 text-red-500" />
+            </div>
+            <h2 id="mature-confirm-title" className="text-lg font-semibold text-zinc-100">
+              Confirm you are 18 or older
+            </h2>
+          </div>
+          <p className="text-sm text-zinc-400 leading-relaxed mb-2">
+            Mature shows may contain graphic violence, strong language, and other content intended for adult audiences.
+          </p>
+          <p className="text-sm text-zinc-500 leading-relaxed mb-6">
+            By continuing, you confirm that you are at least 18 years old. You can turn this off at any time in Settings.
+          </p>
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={onCancel}
+              className="border-white/[0.08] text-zinc-300 hover:bg-white/[0.04] hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={onConfirm}
+              className="bg-red-600 hover:bg-red-500 text-white"
+            >
+              I am 18 or older
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+MatureAgeConfirmModal.propTypes = {
+  onConfirm: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+};

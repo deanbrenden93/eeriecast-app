@@ -1,6 +1,7 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
+import { useQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
 import { Episode as EpisodeApi } from "@/api/entities";
@@ -10,6 +11,7 @@ import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
+import { qk } from "@/lib/queryClient";
 
 function formatDuration(raw) {
   if (!raw && raw !== 0) return null;
@@ -48,107 +50,84 @@ export default function NewReleasesRow({
   const { podcasts, getById, maturePodcastIds } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
   const { episodeProgressMap, isAuthenticated, canViewMature } = useUser() || {};
-  const [episodes, setEpisodes] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  // Build a set of audiobook podcast IDs for filtering
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const fetchLimit = Math.max(40, maxItems * 2);
-        let resp;
-        if (feedType === "trending") {
-          resp = await EpisodeApi.trending(fetchLimit, trendWindowHours);
-        } else if (feedType === "recommended") {
-          resp = await EpisodeApi.recommended(fetchLimit);
-        } else {
-          resp = await EpisodeApi.list(ordering, fetchLimit);
-        }
-        const allEps = Array.isArray(resp) ? resp : (resp?.results || []);
+  const fetchLimit = Math.max(40, maxItems * 2);
 
-        // Filter out audiobook episodes and enrich with podcast data
-        const audiobookIds = new Set(
-          podcasts.filter((p) => isAudiobook(p)).map((p) => p.id)
-        );
+  // Primary feed — cached by feedType+params across the whole app, so all
+  // three rows on the home screen plus Discover pull from the same cache and
+  // only refetch when stale.
+  const { data: primaryRaw = [], isLoading: primaryLoading } = useQuery({
+    queryKey: qk.episodes.feed(feedType, { ordering, trendWindowHours, fetchLimit }),
+    queryFn: async () => {
+      let resp;
+      if (feedType === "trending") resp = await EpisodeApi.trending(fetchLimit, trendWindowHours);
+      else if (feedType === "recommended") resp = await EpisodeApi.recommended(fetchLimit);
+      else resp = await EpisodeApi.list(ordering, fetchLimit);
+      return Array.isArray(resp) ? resp : (resp?.results || []);
+    },
+  });
 
-        let enriched = allEps
-          .filter((ep) => {
-            const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-            return !audiobookIds.has(podId);
-          })
-          .map((ep) => {
-            const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-            const podcastData = getById(podId);
-            return {
-              ...ep,
-              podcast_id: podId,
-              podcast_data: podcastData || (typeof ep.podcast === "object" ? ep.podcast : null),
-              cover_image: ep.cover_image || podcastData?.cover_image || "",
-            };
-          });
+  // Backfill with newest releases when the primary feed is thin. Cached
+  // under a single key so every trending/recommended row shares one request.
+  const needsBackfillFeed = feedType === "trending" || feedType === "recommended";
+  const { data: backfillRaw = [] } = useQuery({
+    queryKey: qk.episodes.feed("latest", { ordering: "-published_at", fetchLimit }),
+    queryFn: async () => {
+      const resp = await EpisodeApi.list("-published_at", fetchLimit);
+      return Array.isArray(resp) ? resp : (resp?.results || []);
+    },
+    enabled: needsBackfillFeed,
+  });
 
-        // Hide episodes from mature podcasts for users who can't view them.
-        if (!canViewMature && maturePodcastIds.size > 0) {
-          enriched = enriched.filter(ep => !maturePodcastIds.has(ep.podcast_id));
-        }
-
-        // Optional category filter
-        if (categoryFilter) {
-          const lower = categoryFilter.toLowerCase();
-          enriched = enriched.filter((ep) => {
-            const pd = ep.podcast_data;
-            if (!pd) return true;
-            const cats = Array.isArray(pd.categories)
-              ? pd.categories.map((c) => (typeof c === "string" ? c : c?.name || "").toLowerCase())
-              : [];
-            return cats.some((c) => c.includes(lower));
-          });
-        }
-
-        // Backfill with newest releases if the primary feed returned too few
-        if (enriched.length < maxItems && (feedType === "trending" || feedType === "recommended")) {
-          try {
-            const backfillResp = await EpisodeApi.list("-published_at", fetchLimit);
-            if (!cancelled) {
-              const backfillEps = Array.isArray(backfillResp) ? backfillResp : (backfillResp?.results || []);
-              const existingIds = new Set(enriched.map(ep => ep.id));
-              const extras = backfillEps
-                .filter(ep => {
-                  const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-                  return !audiobookIds.has(podId) && !existingIds.has(ep.id);
-                })
-                .map(ep => {
-                  const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-                  const podcastData = getById(podId);
-                  return {
-                    ...ep,
-                    podcast_id: podId,
-                    podcast_data: podcastData || (typeof ep.podcast === "object" ? ep.podcast : null),
-                    cover_image: ep.cover_image || podcastData?.cover_image || "",
-                  };
-                });
-              const filtered = (!canViewMature && maturePodcastIds.size > 0)
-                ? extras.filter(ep => !maturePodcastIds.has(ep.podcast_id))
-                : extras;
-              enriched = [...enriched, ...filtered];
-            }
-          } catch { /* backfill is best-effort */ }
-        }
-
-        if (!cancelled) {
-          setEpisodes(enriched.slice(0, maxItems));
-        }
-      } catch (err) {
-        console.error("Failed to load episode feed:", err);
-        if (!cancelled) setEpisodes([]);
-      } finally {
-        if (!cancelled) setLoading(false);
+  // Enrich + filter on the client. Cheap, runs off cached data.
+  const episodes = useMemo(() => {
+    const audiobookIds = new Set(podcasts.filter((p) => isAudiobook(p)).map((p) => p.id));
+    const enrichOne = (ep) => {
+      const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
+      const podcastData = getById(podId);
+      return {
+        ...ep,
+        podcast_id: podId,
+        podcast_data: podcastData || (typeof ep.podcast === "object" ? ep.podcast : null),
+        cover_image: ep.cover_image || podcastData?.cover_image || "",
+      };
+    };
+    const applyFilters = (list) => {
+      let out = list
+        .filter((ep) => {
+          const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
+          return !audiobookIds.has(podId);
+        })
+        .map(enrichOne);
+      if (!canViewMature && maturePodcastIds.size > 0) {
+        out = out.filter((ep) => !maturePodcastIds.has(ep.podcast_id));
       }
-    })();
-    return () => { cancelled = true; };
-  }, [podcasts, getById, categoryFilter, ordering, feedType, trendWindowHours, maxItems, canViewMature, maturePodcastIds]);
+      if (categoryFilter) {
+        const lower = categoryFilter.toLowerCase();
+        out = out.filter((ep) => {
+          const pd = ep.podcast_data;
+          if (!pd) return true;
+          const cats = Array.isArray(pd.categories)
+            ? pd.categories.map((c) => (typeof c === "string" ? c : c?.name || "").toLowerCase())
+            : [];
+          return cats.some((c) => c.includes(lower));
+        });
+      }
+      return out;
+    };
+
+    let primary = applyFilters(primaryRaw);
+    if (primary.length < maxItems && needsBackfillFeed && backfillRaw.length) {
+      const existing = new Set(primary.map((ep) => ep.id));
+      const extras = applyFilters(backfillRaw).filter((ep) => !existing.has(ep.id));
+      primary = [...primary, ...extras];
+    }
+    return primary.slice(0, maxItems);
+  }, [primaryRaw, backfillRaw, podcasts, getById, categoryFilter, canViewMature, maturePodcastIds, maxItems, needsBackfillFeed]);
+
+  // We treat "loading" as "no data yet". Once the cache has data, the row
+  // renders immediately on subsequent mounts (no skeleton flicker).
+  const loading = primaryLoading && episodes.length === 0;
 
   const scroll = (direction) => {
     const { current } = scrollRef;
