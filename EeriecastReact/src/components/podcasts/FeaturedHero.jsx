@@ -247,25 +247,27 @@ function GoldParticles() {
 export default function FeaturedHero({ onPlay }) {
   const navigate = useNavigate();
   const { podcasts } = usePodcasts();
-  const { canViewMature } = useUser() || {};
+  const { canViewMature, isPremium } = useUser() || {};
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  /* Resolve slide podcasts from the API data — strict slug match only. Also
-     drops any slides explicitly tagged as mature when the viewer can't see
-     mature content; otherwise the text/CTAs render even though the resolved
-     podcast was filtered out, effectively advertising a hidden show. */
+  /* Resolve slide podcasts from the API data — strict slug match only. Also:
+     - drops slides tagged as mature when the viewer can't see mature content,
+       otherwise the text/CTAs render even though the resolved podcast was
+       filtered out, effectively advertising a hidden show.
+     - drops membership-promo slides for users who are already paid members,
+       so premium subscribers never see "become a member" CTAs. */
   const slides = useMemo(() => {
-    const source = canViewMature
-      ? HERO_SLIDES
-      : HERO_SLIDES.filter((s) => !s.mature);
+    let source = HERO_SLIDES;
+    if (!canViewMature) source = source.filter((s) => !s.mature);
+    if (isPremium) source = source.filter((s) => s.type !== 'promo');
     return source.map((slide) => {
       if (slide.type === 'promo') return { ...slide, podcast: null };
       if (!podcasts || podcasts.length === 0) return { ...slide, podcast: null };
       const found = podcasts.find((p) => p.slug === slide.slug);
       return { ...slide, podcast: found || null };
     });
-  }, [podcasts, canViewMature]);
+  }, [podcasts, canViewMature, isPremium]);
 
   // Clamp active index when the slide set shrinks (e.g. mature toggled off).
   useEffect(() => {
@@ -357,10 +359,9 @@ export default function FeaturedHero({ onPlay }) {
           )}
         </AnimatePresence>
 
-        {/* Crisp full-bleed cover (sm+): promotes the artwork from a
-            right-side thumbnail into the hero's dominant visual, with a
-            slight clockwise tilt. Scale compensates for rotation so the
-            rotated corners never expose the backdrop. */}
+        {/* Crisp full-bleed cover — the slide's dominant visual across every
+            breakpoint, with a slight clockwise tilt. Scale compensates for
+            rotation so the rotated corners never expose the backdrop. */}
         {coverImage && (
           <AnimatePresence mode="sync">
             <motion.div
@@ -369,7 +370,7 @@ export default function FeaturedHero({ onPlay }) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.8 }}
-              className="absolute inset-0 hidden sm:block overflow-hidden pointer-events-none"
+              className="absolute inset-0 overflow-hidden pointer-events-none"
               aria-hidden="true"
             >
               <img
@@ -387,11 +388,10 @@ export default function FeaturedHero({ onPlay }) {
           </AnimatePresence>
         )}
 
-        {/* Readability overlays — lighter on mobile (where the stylized
-            right-side artwork does most of the work). On sm+ the full-bleed
-            cover takes over, so the left half stays deeply dark for text
-            readability while the right bleeds to near-transparent. */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#08080e]/95 via-[#08080e]/50 to-transparent sm:from-[#08080e]/95 sm:via-[#08080e]/70 sm:to-[#08080e]/10" />
+        {/* Readability overlay — the left half stays deeply dark for text
+            readability over the full-bleed cover, while the right bleeds to
+            near-transparent so the artwork dominates. */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#08080e]/95 via-[#08080e]/70 to-[#08080e]/10" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#08080e] via-transparent to-[#08080e]/40" />
 
         {/* Accent orbs */}
@@ -420,37 +420,6 @@ export default function FeaturedHero({ onPlay }) {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ── Mobile artwork (behind text, stylized) ── */}
-      {coverImage && (
-        <div className="absolute inset-0 z-[1] sm:hidden pointer-events-none">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`mobile-art-${coverImage}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
-              className="absolute inset-0 flex items-center justify-end"
-            >
-              <div
-                className={`relative ${currentSlide.isBook ? 'w-[55%]' : 'w-[60%]'} max-w-[240px] mr-[-8%]`}
-                style={{ aspectRatio: currentSlide.isBook ? '2 / 3' : '1 / 1' }}
-              >
-                {/* Accent glow */}
-                <div className="absolute -inset-6 rounded-3xl blur-[50px] opacity-30" style={{ background: accent }} />
-                <img
-                  src={coverImage}
-                  alt=""
-                  className="w-full h-full object-cover rounded-2xl opacity-[0.45]"
-                  style={{ filter: 'saturate(1.2)', maskImage: 'linear-gradient(to left, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to left, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)' }}
-                  draggable={false}
-                />
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      )}
 
       {/* ── Content ── */}
       <div className="relative z-10 w-full px-5 sm:px-6 lg:px-10 pt-6 sm:pt-8 pb-8 sm:pb-10">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { Heart, X, Plus, Settings2, UserPlus, UserCheck, Share2, GripVertical, Trash2 } from "lucide-react";
@@ -472,8 +472,18 @@ function ExpandableShowNotes({ html }) {
 }
 ExpandableShowNotes.propTypes = { html: PropTypes.string };
 
-/** Drag-sortable row in the Up Next queue drawer. */
-function SortableQueueItem({ id, item, podcast, onPlay }) {
+/**
+ * Drag-sortable row in the Up Next queue drawer.
+ *
+ * Memoized because the parent `ExpandedPlayer` re-renders on every audio
+ * `currentTime` tick (multiple times per second during playback). Without
+ * memoization every queue row also re-renders on each tick, which fights
+ * dnd-kit's transform animation and makes drag feel laggy. With stable
+ * props from the parent (`item`, `podcast`, `onPlay` — a useCallback
+ * receiving `item` + `index` — and a primitive `id`), rows now only
+ * re-render when the drag itself moves them.
+ */
+const SortableQueueItem = memo(function SortableQueueItem({ id, index, item, podcast, onPlay }) {
   const {
     attributes,
     listeners,
@@ -483,15 +493,22 @@ function SortableQueueItem({ id, item, podcast, onPlay }) {
     isDragging,
   } = useSortable({ id });
 
-  const style = {
+  const style = useMemo(() => ({
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : 'auto',
     opacity: isDragging ? 0.85 : 1,
-  };
+    // Promote to its own compositor layer so transforms don't repaint the
+    // entire list; dnd-kit only updates `transform` during a drag.
+    willChange: 'transform',
+  }), [transform, transition, isDragging]);
 
   const ep = item?.episode || item;
   const pd = item?.podcast || podcast;
+
+  const handleClick = useCallback(() => {
+    onPlay?.(item, index);
+  }, [onPlay, item, index]);
 
   return (
     <div
@@ -514,7 +531,7 @@ function SortableQueueItem({ id, item, podcast, onPlay }) {
       </button>
       <button
         type="button"
-        onClick={onPlay}
+        onClick={handleClick}
         className="flex-1 flex items-center gap-4 min-w-0 group text-left"
       >
         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 group-hover:shadow-lg transition-shadow">
@@ -531,12 +548,77 @@ function SortableQueueItem({ id, item, podcast, onPlay }) {
       </button>
     </div>
   );
-}
+});
 SortableQueueItem.propTypes = {
   id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  index: PropTypes.number,
   item: PropTypes.object,
   podcast: PropTypes.object,
   onPlay: PropTypes.func,
+};
+
+/**
+ * Isolated drag-list wrapper. Pulling this out means the DndContext /
+ * SortableContext only re-render when the queue composition actually
+ * changes — not on every `currentTime` tick propagating through the
+ * parent player. ids and the onPlay trampoline are both memoized so row
+ * children hit React.memo's bail-out during playback.
+ */
+const QueueDragList = memo(function QueueDragList({
+  upNext,
+  queue,
+  queueIndex,
+  podcast,
+  sensors,
+  onDragEnd,
+  onPlay,
+}) {
+  const hasAbsoluteIndex = Array.isArray(queue) && queue.length > 0 && queueIndex >= 0;
+  const offset = hasAbsoluteIndex ? queueIndex + 1 : 0;
+
+  const ids = useMemo(
+    () => upNext.map((_, idx) => String(offset + idx)),
+    [upNext, offset],
+  );
+
+  const handleRowPlay = useCallback((item, absoluteIndex) => {
+    onPlay?.(item, hasAbsoluteIndex ? absoluteIndex : undefined);
+  }, [onPlay, hasAbsoluteIndex]);
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div className="space-y-1.5">
+          {upNext.map((item, idx) => {
+            const absoluteIndex = offset + idx;
+            return (
+              <SortableQueueItem
+                key={absoluteIndex}
+                id={String(absoluteIndex)}
+                index={absoluteIndex}
+                item={item}
+                podcast={podcast}
+                onPlay={handleRowPlay}
+              />
+            );
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+});
+QueueDragList.propTypes = {
+  upNext: PropTypes.array.isRequired,
+  queue: PropTypes.array,
+  queueIndex: PropTypes.number,
+  podcast: PropTypes.object,
+  sensors: PropTypes.any,
+  onDragEnd: PropTypes.func.isRequired,
+  onPlay: PropTypes.func.isRequired,
 };
 
 export default function ExpandedPlayer({ 
@@ -626,7 +708,7 @@ export default function ExpandedPlayer({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleQueueDragEnd = (event) => {
+  const handleQueueDragEnd = useCallback((event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     // Item ids use the absolute queue index so we can translate directly.
@@ -634,7 +716,7 @@ export default function ExpandedPlayer({
     const toIdx = Number(over.id);
     if (!Number.isFinite(fromIdx) || !Number.isFinite(toIdx)) return;
     if (typeof reorderQueue === 'function') reorderQueue(fromIdx, toIdx);
-  };
+  }, [reorderQueue]);
 
   // (Header menu state removed — favorite & playlist moved to toolbar)
 
@@ -660,19 +742,18 @@ export default function ExpandedPlayer({
     return { currentItem: { podcast, episode }, upNext: nextList };
   }, [queue, queueIndex, podcast, episode]);
 
-  const handlePlayFromQueue = async (item, indexInQueue) => {
+  const handlePlayFromQueue = useCallback(async (item, indexInQueue) => {
     if (!item) return;
     if (typeof playQueueIndex === 'function' && typeof indexInQueue === 'number') {
       await playQueueIndex(indexInQueue);
       setShowQueue(false);
       return;
     }
-    // Fallback: directly load and play the episode if queue controls not available
     if (typeof loadAndPlay === 'function') {
       await loadAndPlay({ podcast: item.podcast, episode: item.episode, resume: item.resume || { progress: 0 } });
       setShowQueue(false);
     }
-  };
+  }, [playQueueIndex, loadAndPlay]);
 
   const [downloading, setDownloading] = useState(false);
   const handleDownload = async () => {
@@ -1719,34 +1800,17 @@ export default function ExpandedPlayer({
                       <div className="text-white/40 text-sm py-8 text-center bg-white/[0.02] rounded-2xl border border-dashed border-white/5">
                         No upcoming episodes
                       </div>
-                    ) : (() => {
-                      const hasAbsoluteIndex = Array.isArray(queue) && queue.length > 0 && queueIndex >= 0;
-                      const ids = upNext.map((_, idx) => hasAbsoluteIndex ? String(queueIndex + 1 + idx) : String(idx));
-                      return (
-                        <DndContext
-                          sensors={dndSensors}
-                          collisionDetection={closestCenter}
-                          onDragEnd={handleQueueDragEnd}
-                        >
-                          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-1.5">
-                              {upNext.map((item, idx) => {
-                                const absoluteIndex = hasAbsoluteIndex ? (queueIndex + 1 + idx) : idx;
-                                return (
-                                  <SortableQueueItem
-                                    key={absoluteIndex}
-                                    id={String(absoluteIndex)}
-                                    item={item}
-                                    podcast={podcast}
-                                    onPlay={() => handlePlayFromQueue(item, hasAbsoluteIndex ? absoluteIndex : undefined)}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </SortableContext>
-                        </DndContext>
-                      );
-                    })()}
+                    ) : (
+                      <QueueDragList
+                        upNext={upNext}
+                        queue={queue}
+                        queueIndex={queueIndex}
+                        podcast={podcast}
+                        sensors={dndSensors}
+                        onDragEnd={handleQueueDragEnd}
+                        onPlay={handlePlayFromQueue}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
