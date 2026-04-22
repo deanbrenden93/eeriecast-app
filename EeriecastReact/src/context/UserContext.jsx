@@ -289,7 +289,15 @@ const UserProvider = ({ children }) => {
     async (payload) => {
       setError(null);
       try {
-        await UserAPI.register(payload);
+        const response = await UserAPI.register(payload);
+        // Registration endpoint returns access_token and user data - use them directly
+        if (response?.access_token) {
+          djangoClient.setToken(response.access_token);
+          setUser(response.user);
+          setIsAuthenticated(true);
+          return { success: true, user: response.user };
+        }
+        // Fallback: if no token in response, try logging in
         const loginResult = await login({ email: payload.email, password: payload.password });
         return loginResult;
       } catch (err) {
@@ -305,7 +313,7 @@ const UserProvider = ({ children }) => {
         };
       }
     },
-    [fetchUser, login]
+    [login]
   );
 
   const logout = useCallback(async () => {
