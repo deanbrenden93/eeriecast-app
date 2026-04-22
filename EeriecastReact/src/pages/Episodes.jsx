@@ -123,6 +123,9 @@ export default function Episodes() {
   const isBook = show ? isAudiobook(show) : false;
   const isExclusive = !!show?.is_exclusive;
   const showColors = useMemo(() => getShowColors(show, isBook), [show, isBook]);
+  // Whether this audiobook has a matching entry in the ebook catalog.
+  // Drives the "Read Book" vs "Ebook coming soon" CTA in the hero.
+  const hasBook = useMemo(() => (isBook && !!findBookForShow(show)), [isBook, show]);
 
   // Episode order (oldest-first) for audiobooks — needed for free-tier chapter gating
   const episodeOrder = useMemo(() => {
@@ -591,22 +594,39 @@ export default function Episodes() {
                   Share
                 </Button>
 
-                {/* Read Book — audiobooks only */}
+                {/* Read Book / Ebook coming soon — audiobooks only.
+                    If there's no matching entry in the book catalog yet,
+                    swap the CTA for a disabled "Ebook coming soon" state
+                    so the user knows the feature is planned but not
+                    available for this title. */}
                 {isBook && (
-                  <Button
-                    className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-white shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
-                    style={{
-                      background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
-                      boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
-                    }}
-                    onClick={() => {
-                      if (!isAuthenticated) { openAuth('login'); return; }
-                      setShowReader(true);
-                    }}
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    Read Book
-                  </Button>
+                  hasBook ? (
+                    <Button
+                      className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-white shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
+                      style={{
+                        background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                        boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
+                      }}
+                      onClick={() => {
+                        if (!isAuthenticated) { openAuth('login'); return; }
+                        setShowReader(true);
+                      }}
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      Read Book
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      disabled
+                      aria-disabled="true"
+                      title="The ebook for this audiobook isn't available yet."
+                      className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold bg-white/[0.03] border-white/[0.06] text-zinc-500 cursor-not-allowed opacity-80"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      Ebook coming soon
+                    </Button>
+                  )
                 )}
 
               </div>
