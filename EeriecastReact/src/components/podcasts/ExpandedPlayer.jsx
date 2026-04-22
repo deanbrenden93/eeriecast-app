@@ -495,12 +495,20 @@ const SortableQueueItem = memo(function SortableQueueItem({ id, index, item, pod
 
   const style = useMemo(() => ({
     transform: CSS.Transform.toString(transform),
-    transition,
+    // Explicitly kill any transition on the row being dragged — otherwise
+    // Tailwind utility classes on the element can re-introduce a transition
+    // on `transform`, causing the card to lag behind the pointer. Non-
+    // dragging rows still get dnd-kit's smooth slide-to-new-position.
+    transition: isDragging ? 'none' : transition,
     zIndex: isDragging ? 50 : 'auto',
     opacity: isDragging ? 0.85 : 1,
     // Promote to its own compositor layer so transforms don't repaint the
     // entire list; dnd-kit only updates `transform` during a drag.
     willChange: 'transform',
+    // Disable the browser's synthetic 300ms tap-delay highlight that can
+    // otherwise cause a one-frame visual pause when the drag begins.
+    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation',
   }), [transform, transition, isDragging]);
 
   const ep = item?.episode || item;
@@ -514,7 +522,11 @@ const SortableQueueItem = memo(function SortableQueueItem({ id, index, item, pod
     <div
       ref={setNodeRef}
       style={style}
-      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all text-left ${
+      // IMPORTANT: do NOT use `transition-all` here. `transition-all` also
+      // transitions `transform`, which fights dnd-kit's per-frame transform
+      // updates on the dragged row and makes it lag the pointer. Only fade
+      // background-color on hover/drag state changes.
+      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-colors duration-150 text-left ${
         isDragging
           ? 'bg-white/10 shadow-2xl shadow-black/50 ring-1 ring-white/10'
           : 'hover:bg-white/5'
