@@ -6,14 +6,11 @@ import { isAudiobook, hasCategory } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryClient";
 
-// TODO [PRE-LAUNCH]: These frontend overrides for is_exclusive must be migrated to the
-// Django backend (set is_exclusive=True on podcast IDs 10 & 4 in the admin panel) and
-// this client-side workaround removed. The backend currently returns is_exclusive=false
-// for these podcasts despite them being members-only content.
-const MEMBERS_ONLY_OVERRIDES = new Set([10, 4]); // After Hours, Manmade Monsters
-function applyExclusiveOverrides(list) {
-  return list.map(p => (p && MEMBERS_ONLY_OVERRIDES.has(p.id) && !p.is_exclusive) ? { ...p, is_exclusive: true } : p);
-}
+// `is_exclusive` is now sourced exclusively from the backend admin panel.
+// (An earlier workaround hard-coded podcast IDs 10 and 4 as members-only
+// here because the backend was returning the wrong value for them — those
+// overrides have been removed now that the Django admin is the single
+// source of truth.)
 
 // Total runtime for an audiobook row card ("12h 42m" / "42m").
 // `total_duration` is stored in minutes on the Podcast model.
@@ -58,7 +55,7 @@ import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 
 export default function Podcasts() {
   const { podcasts: rawPodcasts, isLoading } = usePodcasts();
-  const podcasts = useMemo(() => applyExclusiveOverrides(rawPodcasts), [rawPodcasts]);
+  const podcasts = rawPodcasts;
   const queryClient = useQueryClient();
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);

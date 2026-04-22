@@ -23,27 +23,11 @@ import { getCategoryStyle, normalizeCategoryKey } from "@/lib/categoryStyles";
 
 /* ─────────────────────────── helpers ─────────────────────────── */
 
-// TODO [PRE-LAUNCH]: These frontend overrides for is_exclusive must be migrated to the
-// Django backend (set is_exclusive=True on podcast IDs 10 & 4 in the admin panel) and
-// this client-side workaround removed. The backend currently returns is_exclusive=false
-// for these podcasts despite them being members-only content.
-// See also: Podcasts.jsx has the same override.
-const MEMBERS_ONLY_OVERRIDES = new Set([
-  10, // Unexplained Encounters AFTER HOURS
-  4,  // Manmade Monsters
-]);
-
-function applyExclusiveOverride(podcast) {
-  if (!podcast) return podcast;
-  if (MEMBERS_ONLY_OVERRIDES.has(podcast.id) && !podcast.is_exclusive) {
-    return { ...podcast, is_exclusive: true };
-  }
-  return podcast;
-}
-
-function applyExclusiveOverrides(list) {
-  return list.map(applyExclusiveOverride);
-}
+// `is_exclusive` is now sourced exclusively from the backend admin panel.
+// (Previously this file hard-coded podcast IDs 10 and 4 as members-only
+// to work around a backend that was returning the wrong value — those
+// overrides have been removed now that the Django admin is the single
+// source of truth.)
 
 const getEpCount = (podcast) => {
   const n = podcast?.episodes_count ?? podcast?.episode_count ?? null;
@@ -251,7 +235,7 @@ export default function Discover() {
   const { toast } = useToast();
 
   // Apply members-only overrides to podcasts
-  const podcasts = useMemo(() => applyExclusiveOverrides(rawPodcasts), [rawPodcasts]);
+  const podcasts = rawPodcasts;
 
   // Build podcast lookup map
   const podcastMap = useMemo(() => {
@@ -656,7 +640,7 @@ export default function Discover() {
   // Enrich an episode with its parent podcast object for EpisodesTable
   const enrichEpisode = useCallback((ep) => {
     if (!ep) return ep;
-    const pod = applyExclusiveOverride(podcastMap[ep.podcast || ep.podcast_id]);
+    const pod = podcastMap[ep.podcast || ep.podcast_id];
     if (pod && (!ep.podcast || typeof ep.podcast !== 'object')) {
       return { ...ep, podcast: pod };
     }

@@ -153,11 +153,10 @@ function WelcomeStep({ isPremium, onContinue }) {
 
 WelcomeStep.propTypes = { isPremium: PropTypes.bool.isRequired, onContinue: PropTypes.func.isRequired };
 
-// Members-only frontend overrides (mirrors Podcasts.jsx / Discover.jsx)
-const MEMBERS_ONLY_OVERRIDES = new Set([10, 4]);
-function applyExclusiveOverrides(list) {
-  return list.map(p => (p && MEMBERS_ONLY_OVERRIDES.has(p.id) && !p.is_exclusive) ? { ...p, is_exclusive: true } : p);
-}
+// `is_exclusive` is sourced exclusively from the backend admin panel.
+// (Previously this file mirrored a hard-coded override from Podcasts.jsx
+// / Discover.jsx for podcast IDs 10 and 4; removed now that the backend
+// is the single source of truth.)
 
 // ---------------------------------------------------------------------------
 // Screen 2 — Follow Shows + Mature Toggle
@@ -181,7 +180,7 @@ function FollowShowsStep({ onContinue, onSkip }) {
   const shows = useMemo(() => {
     // Explicit-language shows stay in the onboarding list regardless of
     // the toggle — the playback/show-page gate catches them downstream.
-    let list = applyExclusiveOverrides(rawPodcasts || []).filter(p => !isAudiobook(p));
+    let list = (rawPodcasts || []).filter(p => !isAudiobook(p));
     if (!isPremium) {
       list = list.filter(p => !p.is_exclusive);
     }

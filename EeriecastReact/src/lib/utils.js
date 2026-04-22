@@ -115,10 +115,43 @@ export function getEpisodeAudioUrl(ep) {
 }
 
 /**
- * Helper to return an array of normalized category strings for free-form usage (search, display, etc.).
+ * Return an array of normalized category strings for display / search.
+ *
+ * Unlike `getPodcastCategorySet` (which intentionally retains both the
+ * slug and the name of each category so `hasCategory()` lookups are
+ * resilient to either form), this helper is aimed at the UI: it prefers
+ * the human-readable `name` over the slug and collapses punctuation
+ * variants so that e.g. `{slug: "talk-show", name: "Talk Show"}` renders
+ * as a single chip instead of two ("Talk-Show" and "Talk Show").
  */
 export function getPodcastCategoriesLower(podcast) {
-  return Array.from(getPodcastCategorySet(podcast));
+  if (!podcast) return [];
+  const out = [];
+  const seen = new Set();
+
+  const add = (val) => {
+    if (!val) return;
+    let display = null;
+    if (typeof val === "string") {
+      display = val.toLowerCase();
+    } else if (typeof val === "object") {
+      display = (val.name || val.slug || "").toLowerCase();
+    }
+    if (!display) return;
+    // Collapse slug/name/whitespace variants (e.g. "talk-show",
+    // "talk_show", "talk show") to a single dedup key so the same
+    // category never renders as two adjacent chips.
+    const key = display.replace(/[\s_-]+/g, " ").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(display);
+  };
+
+  if (Array.isArray(podcast.categories)) {
+    for (const c of podcast.categories) add(c);
+  }
+  if (podcast.category) add(podcast.category);
+  return out;
 }
 
 /** Format a date string to a human-readable format like "Jul 31, 2021". */
