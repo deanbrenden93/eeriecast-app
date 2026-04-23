@@ -800,7 +800,21 @@ export default function Help() {
 
   const handleClose = () => {
     setClosing(true);
-    setTimeout(() => navigate(-1), 350);
+    // `navigate(-1)` would literally hit the browser "back" stack,
+    // which for a direct link (e.g. /submit-a-story shared in
+    // marketing) points at whatever external page the listener was on
+    // before. React Router tracks its own history index on
+    // window.history.state.idx — idx > 0 means we have at least one
+    // prior in-app page to return to; otherwise we fall back to the
+    // app home so the X button never kicks the user off the site.
+    setTimeout(() => {
+      const idx = window.history.state?.idx;
+      if (typeof idx === 'number' && idx > 0) {
+        navigate(-1);
+      } else {
+        navigate('/Podcasts', { replace: true });
+      }
+    }, 350);
   };
 
   const tabs = [

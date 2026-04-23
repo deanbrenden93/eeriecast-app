@@ -47,6 +47,22 @@ export default function Episodes() {
 
   const goToPremium = () => navigate(createPageUrl('Premium'));
 
+  // Safe back: `navigate(-1)` walks the full browser history, which for
+  // a listener who arrived via a shared / deep link points at whatever
+  // external site they were on (search results, a social post, email).
+  // React Router stores an in-app history index on window.history.state
+  // — idx > 0 means there's at least one prior in-app page to return
+  // to; otherwise we fall back to the Podcasts home so the button can
+  // never kick the user off the site.
+  const safeGoBack = () => {
+    const idx = window.history.state?.idx;
+    if (typeof idx === 'number' && idx > 0) {
+      navigate(-1);
+    } else {
+      navigate(createPageUrl('Podcasts'), { replace: true });
+    }
+  };
+
   const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
   const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium, episodeProgressMap, canViewMature } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
@@ -446,7 +462,7 @@ export default function Episodes() {
               with the fixed top header above it. */}
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={safeGoBack}
             aria-label="Go back"
             className="inline-flex items-center gap-1.5 mb-5 md:mb-7 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 text-[13px] font-medium backdrop-blur-sm"
           >
@@ -833,7 +849,7 @@ export default function Episodes() {
           their account). Dismissing the modal sends them back a page. */}
       <MatureContentModal
         isOpen={showMatureGate}
-        onClose={() => navigate(-1)}
+        onClose={safeGoBack}
         onContinue={() => { /* toggle-on updates canViewMature which unmounts the modal */ }}
       />
 
