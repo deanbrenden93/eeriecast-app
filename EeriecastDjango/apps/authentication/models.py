@@ -196,3 +196,34 @@ class User(AbstractUser):
         return Subscription.objects.filter(user=self).exclude(
             card_last4__isnull=True
         ).exclude(card_last4='').exists()
+
+
+class DOBChangeLog(models.Model):
+    """Audit trail for every date-of-birth change made from the profile page.
+
+    Kept so support can investigate potential age-gate abuse (e.g. a user
+    toggling DOB across the 18+ threshold to unlock mature content).
+    ``password_verified`` records whether the change required a password
+    re-authentication. First-time sets (users who skipped DOB at signup and
+    are now populating it for the first time) do NOT require a password, so
+    that flag will be ``False`` for those rows.
+    """
+
+    user = models.ForeignKey(
+        'authentication.User',
+        on_delete=models.CASCADE,
+        related_name='dob_change_logs',
+    )
+    old_value = models.DateField(blank=True, null=True)
+    new_value = models.DateField(blank=True, null=True)
+    password_verified = models.BooleanField(default=False)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at']
+        indexes = [models.Index(fields=['user', '-changed_at'])]
+
+    def __str__(self) -> str:
+        return f"DOBChange(user={self.user_id} {self.old_value} -> {self.new_value})"

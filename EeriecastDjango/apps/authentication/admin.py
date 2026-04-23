@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.conf import settings
 from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin
-from .models import User
+from .models import User, DOBChangeLog
 from .forms import CustomUserChangeForm
 
 @admin.register(User)
@@ -39,3 +39,18 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
             'fields': ('email', 'avatar', 'bio', 'email_verified', 'is_premium', 'is_imported_from_memberful')
         }),
     )
+
+
+@admin.register(DOBChangeLog)
+class DOBChangeLogAdmin(ModelAdmin):
+    list_display = ('user', 'old_value', 'new_value', 'password_verified', 'ip_address', 'changed_at')
+    list_filter = ('password_verified', 'changed_at')
+    search_fields = ('user__email', 'user__username', 'ip_address')
+    readonly_fields = ('user', 'old_value', 'new_value', 'password_verified', 'ip_address', 'user_agent', 'changed_at')
+    ordering = ('-changed_at',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

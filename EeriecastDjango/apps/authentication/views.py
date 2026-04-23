@@ -15,7 +15,7 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from apps.common.utils import strip_non_model_fields
-from .models import User
+from .models import User, DOBChangeLog
 from apps.emails import events as email_events
 from .serializers import (
     UserSerializer,
@@ -26,6 +26,40 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 EMAIL_CHANGE_MAX_AGE_SECONDS = 60 * 60 * 24 * 2
+
+
+def _client_ip_and_ua(request):
+    """Extract client IP and User-Agent from a DRF request for audit logging.
+
+    Honours ``X-Forwarded-For`` (first hop) when present, falling back to
+    ``REMOTE_ADDR``. UA string is truncated to the column limit.
+    """
+    ua = (request.META.get('HTTP_USER_AGENT') or '')[:500]
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    ip = None
+    if xff:
+        ip = xff.split(',')[0].strip() or None
+    if not ip:
+        ip = request.META.get('REMOTE_ADDR') or None
+    return ip, ua
+
+
+def _parse_dob(value):
+    """Parse a DOB input (ISO string or date) into a ``date`` or ``None``."""
+    if value in (None, '', 'null'):
+        return None
+    if hasattr(value, 'year') and hasattr(value, 'month') and hasattr(value, 'day'):
+        return value
+    try:
+        from datetime import date, datetime
+        if isinstance(value, str):
+            return datetime.strptime(value[:10], '%Y-%m-%d').date()
+        if isinstance(value, date):
+            return value
+    except Exception:
+        return None
+    return None
+
 
 # ---------------------------
 # Function-based auth views (kept for backwards compatibility)
@@ -135,6 +169,28 @@ def register_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
     return Response({'message': 'Logged out successfully'})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def verify_password(request):
+    """Confirm the currently authenticated user's password.
+
+    Used as a step-up check before sensitive profile actions (e.g. editing a
+    date of birth that's already on file). Returns ``{ok: true}`` on match,
+    400 otherwise. Does NOT issue or rotate any tokens.
+    """
+    user = request.user
+    if not user or not user.is_authenticated:
+        return Response({'detail': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+    password = request.data.get('password')
+    if not password:
+        return Response({'password': ['This field is required.']}, status=status.HTTP_400_BAD_REQUEST)
+    if not user.has_usable_password():
+        return Response({'detail': 'This account has no password set.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not user.check_password(password):
+        return Response({'password': ['Current password is incorrect.']}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({'ok': True}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -350,7 +406,48 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
                 {'email': ['Use the email change flow to update your email address.']},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return super().update(request, *args, **kwargs)
+
+        user = self.get_object()
+        # Capture the prior DOB BEFORE the serializer runs so we can audit a
+        # change. ``request.data`` may contain ``date_of_birth`` as an ISO
+        # string; the serializer coerces it to a ``date`` on the model.
+        # First-time sets (prior value is None) don't require password
+        # re-auth; subsequent changes MUST have already been password-
+        # verified by the frontend via the verify-password endpoint.
+        prior_dob = getattr(user, 'date_of_birth', None)
+        incoming_has_dob = 'date_of_birth' in request.data
+        incoming_dob = _parse_dob(request.data.get('date_of_birth')) if incoming_has_dob else None
+        dob_is_changing = incoming_has_dob and (incoming_dob != prior_dob)
+
+        # Enforce: if a DOB is already on file, only allow overwriting it
+        # when the request carries a ``dob_password_verified`` flag (set by
+        # the frontend after calling /auth/verify-password/ in the same
+        # session). This is belt-and-suspenders defense against a client
+        # bypassing the UI gate.
+        if dob_is_changing and prior_dob is not None:
+            if not bool(request.data.get('dob_password_verified')):
+                return Response(
+                    {'date_of_birth': ['Password re-verification required to change date of birth.']},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        response = super().update(request, *args, **kwargs)
+
+        if dob_is_changing and response.status_code < 400:
+            ip, ua = _client_ip_and_ua(request)
+            try:
+                DOBChangeLog.objects.create(
+                    user=user,
+                    old_value=prior_dob,
+                    new_value=incoming_dob,
+                    password_verified=bool(request.data.get('dob_password_verified')),
+                    ip_address=ip,
+                    user_agent=ua,
+                )
+            except Exception:
+                logger.exception("Failed to write DOBChangeLog for user %s", user.id)
+
+        return response
 
 # ---------------------------
 # Migrated UserViewSet
@@ -415,11 +512,38 @@ class UserViewSet(viewsets.ModelViewSet):
                 {'email': ['Use the email change flow to update your email address.']},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Mirror the DOB audit / password-gate from UserProfileView so both
+        # update entrypoints enforce the same policy.
+        prior_dob = getattr(user, 'date_of_birth', None)
+        incoming_has_dob = 'date_of_birth' in request.data
+        incoming_dob = _parse_dob(request.data.get('date_of_birth')) if incoming_has_dob else None
+        dob_is_changing = incoming_has_dob and (incoming_dob != prior_dob)
+        if dob_is_changing and prior_dob is not None and not bool(request.data.get('dob_password_verified')):
+            return Response(
+                {'date_of_birth': ['Password re-verification required to change date of birth.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         self.get_serializer(user, data=request.data, partial=True).is_valid(raise_exception=True)
         user_data = strip_non_model_fields(request.data, User)
         for key, value in user_data.items():
             setattr(user, key, value)
         user.save()
+
+        if dob_is_changing:
+            ip, ua = _client_ip_and_ua(request)
+            try:
+                DOBChangeLog.objects.create(
+                    user=user,
+                    old_value=prior_dob,
+                    new_value=incoming_dob,
+                    password_verified=bool(request.data.get('dob_password_verified')),
+                    ip_address=ip,
+                    user_agent=ua,
+                )
+            except Exception:
+                logger.exception("Failed to write DOBChangeLog for user %s", user.id)
 
         new_email = getattr(user, 'email', None)
         if old_email and new_email and old_email != new_email:

@@ -293,6 +293,28 @@ export const User = {
   async logout() {
     return djangoClient.post('/auth/logout/');
   },
+
+  // Step-up password confirmation. Used before sensitive profile edits
+  // (currently only date of birth). Throws on mismatch; returns { ok: true }
+  // on success. Does not mint or rotate any tokens.
+  async verifyPassword(password) {
+    return djangoClient.post('/auth/verify-password/', { password });
+  },
+
+  // Update the authenticated user's date of birth.
+  //
+  // Two modes:
+  //   - First-time set: user has never had a DOB on file. No password needed;
+  //     the backend treats a prior-null value as a first-time set.
+  //   - Change: user already has a DOB. The caller MUST have just confirmed
+  //     the password via `verifyPassword`, and should pass
+  //     `passwordVerified: true` here so the backend allows the change.
+  async updateDateOfBirth(dobIso, { passwordVerified = false } = {}) {
+    return djangoClient.patch('/auth/me/', {
+      date_of_birth: dobIso,
+      dob_password_verified: !!passwordVerified,
+    });
+  },
 };
 
 // Search service

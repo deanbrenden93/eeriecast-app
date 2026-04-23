@@ -23,6 +23,7 @@ import { toast } from '@/components/ui/use-toast';
 import { User } from '@/api/entities';
 import TermsOfServiceModal from '@/components/legal/TermsOfServiceModal';
 import PrivacyPolicyModal from '@/components/legal/PrivacyPolicyModal';
+import DateOfBirthPicker from '@/components/common/DateOfBirthPicker';
 
 const FEATURES = [
   { icon: Headphones, label: 'Ad-free listening across the whole catalog' },
@@ -145,7 +146,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setSubmitting(true);
     setLocalError(null);
     if (!registerForm.date_of_birth) {
-      setLocalError('Date of birth is required');
+      setLocalError('Please enter your full date of birth (month, day, and year).');
       setSubmitting(false);
       return;
     }
@@ -169,6 +170,11 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
       } catch { return null; }
     };
     const age = computeAge(registerForm.date_of_birth);
+    if (age !== null && age < 13) {
+      setLocalError('You must be at least 13 years old to create an account.');
+      setSubmitting(false);
+      return;
+    }
     const payload = {
       ...registerForm,
       allow_mature_content: age !== null && age >= 18,
@@ -474,15 +480,11 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                         </div>
                         <div>
                           <label htmlFor="reg-dob" className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Date of birth</label>
-                          <Input
+                          <DateOfBirthPicker
                             id="reg-dob"
-                            type="date"
-                            required
-                            autoComplete="bday"
                             value={registerForm.date_of_birth}
-                            onChange={e => setRegisterForm(f => ({ ...f, date_of_birth: e.target.value }))}
-                            max={new Date().toISOString().split('T')[0]}
-                            className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm [color-scheme:dark]"
+                            onChange={(iso) => setRegisterForm(f => ({ ...f, date_of_birth: iso || '' }))}
+                            required
                           />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

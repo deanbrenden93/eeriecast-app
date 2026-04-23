@@ -19,6 +19,9 @@ urlpatterns = [
     path('password-reset/request/', views.password_reset_request, name='password-reset-request'),
     path('password-reset/confirm/', views.password_reset_confirm, name='password-reset-confirm'),
 
+    # Step-up re-authentication (used before sensitive profile edits like DOB)
+    path('verify-password/', views.verify_password, name='verify-password'),
+
     # Router endpoints for UserViewSet
     path('', include(router.urls)),
 ]
