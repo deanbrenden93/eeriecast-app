@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Headphones, BookOpen } from "lucide-react";
 import { usePodcasts } from "@/context/PodcastContext";
-import { isAudiobook } from "@/lib/utils";
+import { isAudiobook, isMusic } from "@/lib/utils";
 
 export default function FeaturedCreatorsSection() {
   const scrollRef = useRef(null);
@@ -51,10 +51,14 @@ export default function FeaturedCreatorsSection() {
       >
         {shows.map((podcast) => {
           const book = isAudiobook(podcast);
+          const music = isMusic(podcast);
           const count = podcast.episodes_count ?? podcast.episode_count ?? podcast.total_episodes ?? 0;
-          const countLabel = count > 0
-            ? `${count} ${book ? (count === 1 ? 'Chapter' : 'Chapters') : (count === 1 ? 'Episode' : 'Episodes')}`
-            : null;
+          const unit = book
+            ? (count === 1 ? 'Chapter' : 'Chapters')
+            : music
+              ? (count === 1 ? 'Track' : 'Tracks')
+              : (count === 1 ? 'Episode' : 'Episodes');
+          const countLabel = count > 0 ? `${count} ${unit}` : null;
 
           return (
             <div

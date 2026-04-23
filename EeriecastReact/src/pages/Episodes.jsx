@@ -10,7 +10,7 @@ import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
-import { getPodcastCategoriesLower, isAudiobook, getEpisodeAudioUrl, isMaturePodcast } from '@/lib/utils';
+import { getPodcastCategoriesLower, isAudiobook, isMusic, getEpisodeAudioUrl, isMaturePodcast } from '@/lib/utils';
 import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT, getExclusiveSampleEpisodeIds } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
@@ -138,6 +138,7 @@ export default function Episodes() {
   };
 
   const isBook = show ? isAudiobook(show) : false;
+  const isMusicShow = show ? isMusic(show) : false;
   const isExclusive = !!show?.is_exclusive;
   const showColors = useMemo(() => getShowColors(show, isBook), [show, isBook]);
   // Whether this audiobook has a matching entry in the ebook catalog.
@@ -500,6 +501,11 @@ export default function Episodes() {
                     <BookOpen className="w-3 h-3" />
                     Audiobook
                   </span>
+                ) : isMusicShow ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-fuchsia-400/90 bg-fuchsia-500/10 border border-fuchsia-400/[0.08] px-2.5 py-1 rounded-full">
+                    <Headphones className="w-3 h-3" />
+                    Music
+                  </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-red-400/90 bg-red-500/10 border border-red-400/[0.08] px-2.5 py-1 rounded-full">
                     <Headphones className="w-3 h-3" />
@@ -526,7 +532,12 @@ export default function Episodes() {
                 {totalEpisodes > 0 && (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-400 bg-white/[0.04] backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/[0.04]">
                     {isBook ? <BookOpen className="w-3 h-3" /> : <Headphones className="w-3 h-3" />}
-                    {totalEpisodes} {isBook ? (totalEpisodes === 1 ? 'Chapter' : 'Chapters') : (totalEpisodes === 1 ? 'Episode' : 'Episodes')}
+                    {totalEpisodes}{' '}
+                    {isBook
+                      ? (totalEpisodes === 1 ? 'Chapter' : 'Chapters')
+                      : isMusicShow
+                        ? (totalEpisodes === 1 ? 'Track' : 'Tracks')
+                        : (totalEpisodes === 1 ? 'Episode' : 'Episodes')}
                   </span>
                 )}
                 {formattedDuration && (
@@ -715,12 +726,27 @@ export default function Episodes() {
             const isAudiobookSample = showAudiobookSampleSection;
             const items = isAudiobookSample ? sampleChapters : sampleEpisodes;
             if (items.length === 0) return null;
-            const unit = isAudiobookSample ? 'chapter' : 'episode';
-            const headline = isAudiobookSample ? 'Sample Chapters' : 'Sample Episodes';
+            const unit = isAudiobookSample
+              ? 'chapter'
+              : isMusicShow
+                ? 'track'
+                : 'episode';
+            const headline = isAudiobookSample
+              ? 'Sample Chapters'
+              : isMusicShow
+                ? 'Sample Tracks'
+                : 'Sample Episodes';
+            const plural = (n) => (n === 1 ? '' : 's');
             const subtext = isAudiobookSample
-              ? `Listen to the first ${items.length} chapter${items.length === 1 ? '' : 's'} for free — a preview of the full audiobook.`
-              : `Listen to the first ${items.length} ${unit}${items.length === 1 ? '' : 's'} for free — a taste of what members get.`;
-            const ctaLabel = isAudiobookSample ? 'Unlock full audiobook' : 'Unlock all episodes';
+              ? `Listen to the first ${items.length} chapter${plural(items.length)} for free — a preview of the full audiobook.`
+              : isMusicShow
+                ? `Listen to the first ${items.length} track${plural(items.length)} for free — a taste of the full catalog.`
+                : `Listen to the first ${items.length} ${unit}${plural(items.length)} for free — a taste of what members get.`;
+            const ctaLabel = isAudiobookSample
+              ? 'Unlock full audiobook'
+              : isMusicShow
+                ? 'Unlock all tracks'
+                : 'Unlock all episodes';
             return (
               <section className="mb-8 md:mb-10">
                 <div
@@ -791,7 +817,9 @@ export default function Episodes() {
           <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2.5">
             {isBook
               ? (showAudiobookSampleSection ? 'Members-Only Chapters' : 'Chapters')
-              : (showSampleSection ? 'Members-Only Episodes' : 'Episodes')}
+              : isMusicShow
+                ? (showSampleSection ? 'Members-Only Tracks' : 'Tracks')
+                : (showSampleSection ? 'Members-Only Episodes' : 'Episodes')}
             {anySampleSection && (
               <Crown className="w-5 h-5 text-amber-300/80" />
             )}

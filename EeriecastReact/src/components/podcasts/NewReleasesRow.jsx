@@ -6,7 +6,7 @@ import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
 import { Episode as EpisodeApi } from "@/api/entities";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
-import { isAudiobook, formatDate } from "@/lib/utils";
+import { isAudiobook, isMusic, formatDate } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
@@ -81,7 +81,11 @@ export default function NewReleasesRow({
 
   // Enrich + filter on the client. Cheap, runs off cached data.
   const episodes = useMemo(() => {
-    const audiobookIds = new Set(podcasts.filter((p) => isAudiobook(p)).map((p) => p.id));
+    // Keep audiobooks and music out of the mixed podcast feeds; each lives on
+    // its own dedicated landing page and has its own "latest" row there.
+    const excludedIds = new Set(
+      podcasts.filter((p) => isAudiobook(p) || isMusic(p)).map((p) => p.id),
+    );
     const enrichOne = (ep) => {
       const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
       const podcastData = getById(podId);
@@ -96,7 +100,7 @@ export default function NewReleasesRow({
       let out = list
         .filter((ep) => {
           const podId = typeof ep.podcast === "object" ? ep.podcast?.id : ep.podcast;
-          return !audiobookIds.has(podId);
+          return !excludedIds.has(podId);
         })
         .map(enrichOne);
       if (categoryFilter) {

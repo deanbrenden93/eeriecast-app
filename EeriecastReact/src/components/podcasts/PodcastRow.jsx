@@ -5,7 +5,7 @@ import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import PropTypes from 'prop-types';
 
-export default function PodcastRow({ title, podcasts: podcastList = [], onPodcastPlay, showPlayIcon = false, showAudiobookPill = false, viewAllTo, subtext }) {
+export default function PodcastRow({ title, podcasts: podcastList = [], onPodcastPlay, showPlayIcon = false, showAudiobookPill = false, showMusicPill = false, viewAllTo, subtext }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
 
@@ -94,6 +94,9 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
                   {showAudiobookPill && (
                     <div className="px-2 py-0.5 rounded-full bg-cyan-500/80 text-white text-[9px] font-bold uppercase tracking-wider shadow backdrop-blur-sm">AUDIOBOOK</div>
                   )}
+                  {showMusicPill && (
+                    <div className="px-2 py-0.5 rounded-full bg-fuchsia-500/80 text-white text-[9px] font-bold uppercase tracking-wider shadow backdrop-blur-sm">MUSIC</div>
+                  )}
                   {podcast.is_exclusive && (
                     <div className="px-1.5 py-0.5 bg-gradient-to-r from-red-600 to-red-700 rounded text-[9px] font-bold text-white uppercase tracking-wider shadow-[0_0_8px_rgba(220,38,38,0.3)]">
                       Exclusive
@@ -131,6 +134,7 @@ PodcastRow.propTypes = {
   onPodcastPlay: PropTypes.func,
   showPlayIcon: PropTypes.bool,
   showAudiobookPill: PropTypes.bool,
+  showMusicPill: PropTypes.bool,
   viewAllTo: PropTypes.string,
   subtext: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
 };

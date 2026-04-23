@@ -16,6 +16,7 @@ import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext.jsx";
 import {
   isAudiobook,
+  isMusic,
   formatDate,
   getEpisodeAudioUrl,
 } from "@/lib/utils";
@@ -101,6 +102,7 @@ export default function MembersOnlyEpisodesRow({
         if (!p) return false;
         if (!p.is_exclusive) return false;
         if (isAudiobook(p)) return false;
+        if (isMusic(p)) return false;
         return true;
       }),
     [podcasts]

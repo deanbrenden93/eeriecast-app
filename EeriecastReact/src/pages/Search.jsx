@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Search as SearchIcon, Play, BookOpen, Headphones, ChevronRight } from "lucide-react";
-import { isAudiobook, getPodcastCategoriesLower } from "@/lib/utils";
+import { isAudiobook, isMusic, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
@@ -106,7 +106,7 @@ export default function Search() {
   const { openAuth } = useAuthModal();
   const { loadAndPlay } = useAudioPlayerContext();
 
-  const tabs = ["All Content", "Podcasts", "Episodes", "Audiobooks", "Members Only"];
+  const tabs = ["All Content", "Podcasts", "Episodes", "Audiobooks", "Music", "Members Only"];
 
   const searchIdRef = useRef(0);
   const debounceRef = useRef(null);
@@ -134,9 +134,11 @@ export default function Search() {
       });
 
       if (activeTab === "Podcasts") {
-        podcastResults = podcastResults.filter(p => !isAudiobook(p));
+        podcastResults = podcastResults.filter(p => !isAudiobook(p) && !isMusic(p));
       } else if (activeTab === "Audiobooks") {
         podcastResults = podcastResults.filter(p => isAudiobook(p));
+      } else if (activeTab === "Music") {
+        podcastResults = podcastResults.filter(p => isMusic(p));
       } else if (activeTab === "Members Only") {
         podcastResults = podcastResults.filter(p => p.is_exclusive);
       }
@@ -145,7 +147,7 @@ export default function Search() {
       setShowResults(podcastResults);
 
       // --- Episode search (multi-source) ---
-      if (activeTab !== "Podcasts" && activeTab !== "Audiobooks") {
+      if (activeTab !== "Podcasts" && activeTab !== "Audiobooks" && activeTab !== "Music") {
         const seenKeys = new Map();
         let allEpisodes = [];
 
@@ -312,8 +314,9 @@ export default function Search() {
   };
 
   // ── Derived result arrays ───────────────────────────────────────
-  const podcastShows = showResults.filter(p => !isAudiobook(p));
+  const podcastShows = showResults.filter(p => !isAudiobook(p) && !isMusic(p));
   const audiobookShows = showResults.filter(p => isAudiobook(p));
+  const musicShows = showResults.filter(p => isMusic(p));
   const totalResults = showResults.length + episodeResults.length;
 
   // Limit items on "All Content" to keep it scannable
@@ -384,11 +387,11 @@ export default function Search() {
 
   const renderResults = () => {
     if (activeTab === "All Content") {
-      // Show all three sections with caps
       return (
         <>
           {renderShowGrid(podcastShows, "Shows", "Podcasts", false, ALL_CONTENT_LIMIT)}
           {renderShowGrid(audiobookShows, "Audiobooks", "Audiobooks", true, ALL_CONTENT_LIMIT)}
+          {renderShowGrid(musicShows, "Music Artists", "Music", false, ALL_CONTENT_LIMIT)}
           {renderEpisodeList(episodeResults, ALL_CONTENT_LIMIT)}
         </>
       );
@@ -398,6 +401,9 @@ export default function Search() {
     }
     if (activeTab === "Audiobooks") {
       return renderShowGrid(audiobookShows, "Audiobooks", "Audiobooks", true);
+    }
+    if (activeTab === "Music") {
+      return renderShowGrid(musicShows, "Music Artists", "Music");
     }
     if (activeTab === "Episodes") {
       return renderEpisodeList(episodeResults);

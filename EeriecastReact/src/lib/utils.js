@@ -80,6 +80,28 @@ export function isAudiobook(podcast) {
   }
 }
 
+/** Category slug used to flag podcasts whose episodes are music tracks. */
+export const MUSIC_CATEGORY = "music";
+
+/** Determine if a podcast object is a music artist (case-insensitive).
+ * Music shows are surfaced on their own Music landing page and excluded from
+ * mixed podcast feeds so listeners never encounter a track in a line-up they
+ * expect to be spoken-word.
+ */
+export function isMusic(podcast) {
+  try {
+    return hasCategory(podcast, MUSIC_CATEGORY);
+  } catch {
+    return false;
+  }
+}
+
+/** True for any show that should be kept out of the standard
+ *  "podcasts & episodes" mixed feeds — currently audiobooks and music. */
+export function isNonPodcastShow(podcast) {
+  return isAudiobook(podcast) || isMusic(podcast);
+}
+
 /** Returns true if this podcast is in the "mature" category. */
 export function isMaturePodcast(podcast) {
   try { return hasCategory(podcast, 'mature'); } catch { return false; }

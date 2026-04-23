@@ -93,6 +93,11 @@ export function PodcastProvider({ children }) {
       setFeaturedCreators(creatorsArr);
       fetchedListRef.current = true;
       lastFetchedAtRef.current = Date.now();
+      // List payloads are shallower than detail payloads (no episodes,
+      // sometimes no description), so any detail that was hydrated from
+      // a previous detail call is now behind a shallower entry. Clear
+      // the hydration flags so the next visit refetches detail.
+      hydratedRef.current.clear();
     } catch (e) {
       setError(e);
     } finally {
@@ -118,6 +123,7 @@ export function PodcastProvider({ children }) {
       setFeaturedCreators(creatorsArr);
       fetchedListRef.current = true;
       lastFetchedAtRef.current = Date.now();
+      hydratedRef.current.clear();
       return podcastsArr;
     } catch (e) {
       setError(e);
@@ -149,6 +155,7 @@ export function PodcastProvider({ children }) {
       setAllPodcasts(podcastsArr);
       setFeaturedCreators(creatorsArr);
       lastFetchedAtRef.current = Date.now();
+      hydratedRef.current.clear();
       return true;
     } catch {
       return false;
@@ -159,28 +166,44 @@ export function PodcastProvider({ children }) {
 
   const getById = useCallback((id) => byId[id], [byId]);
 
+  // Keep `byId` readable from inside `ensureDetail` without making the
+  // callback's identity change every time the list updates. Previously,
+  // `ensureDetail` depended on `byId`, which created a subtle feedback
+  // loop for consumers that include it in a `useEffect` deps array:
+  //
+  //   1. consumer effect runs → calls ensureDetail
+  //   2. cache miss → setAllPodcasts(...) → byId rebuilds
+  //   3. ensureDetail gets a new identity
+  //   4. consumer effect re-runs → GOTO 1
+  //
+  // For shows whose backend payload doesn't satisfy the cache-hit check
+  // (e.g. no description, empty episodes array — common for newly-seeded
+  // music artists), step 2 fires on every invocation and the loop never
+  // terminates. Visually: the show page flashes its loading skeleton in
+  // and out forever.
+  const byIdRef = useRef(byId);
+  useEffect(() => { byIdRef.current = byId; }, [byId]);
+  // Track which detail records have been hydrated in this session so the
+  // cache check doesn't depend on fields the API may legitimately leave
+  // null (description, empty episodes, etc.).
+  const hydratedRef = useRef(new Map()); // id -> audioVariant
+
   const ensureDetail = useCallback(async (id) => {
     const audioVariant = isPremium ? 'premium' : 'free';
-    // If we already have full detail (episodes + description), return cached
-    const current = byId[id];
-    if (
-      current
-      && Array.isArray(current.episodes)
-      && current.episodes.length > 0
-      && current.description != null
-      && current.__audio_variant === audioVariant
-    ) {
+    const current = byIdRef.current[id];
+    if (current && hydratedRef.current.get(id) === audioVariant) {
       return current;
     }
     const detail = await PodcastApi.get(id);
     const detailWithVariant = { ...detail, __audio_variant: audioVariant };
+    hydratedRef.current.set(detailWithVariant.id, audioVariant);
     setAllPodcasts(prev => {
       const map = new Map(prev.map(p => [p.id, p]));
       map.set(detailWithVariant.id, { ...(map.get(detailWithVariant.id) || {}), ...detailWithVariant });
       return Array.from(map.values());
     });
     return detailWithVariant;
-  }, [byId, isPremium]);
+  }, [isPremium]);
 
   const value = useMemo(() => ({
     podcasts,

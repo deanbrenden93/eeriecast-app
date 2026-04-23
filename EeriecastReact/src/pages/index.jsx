@@ -4,6 +4,7 @@ import Home from "./Home";
 import Podcasts from "./Podcasts";
 import Discover from "./Discover";
 import Audiobooks from "./Audiobooks";
+import Music from "./Music";
 import Library from "./Library";
 import Search from "./Search";
 import Profile from "./Profile";
@@ -37,6 +38,7 @@ const PAGES = {
     Podcasts: Podcasts,
     Discover: Discover,
     Audiobooks: Audiobooks,
+    Music: Music,
     Library: Library,
     Search: Search,
     Profile: Profile,
@@ -179,6 +181,9 @@ function PagesContent() {
                     
                     <Route path="/Audiobooks" element={<AnimatedPage><Audiobooks /></AnimatedPage>} />
                     <Route path="/audiobooks" element={<AnimatedPage><Audiobooks /></AnimatedPage>} />
+
+                    <Route path="/Music" element={<AnimatedPage><Music /></AnimatedPage>} />
+                    <Route path="/music" element={<AnimatedPage><Music /></AnimatedPage>} />
                     
                     <Route path="/Library" element={<AnimatedPage><Library /></AnimatedPage>} />
                     <Route path="/library" element={<AnimatedPage><Library /></AnimatedPage>} />

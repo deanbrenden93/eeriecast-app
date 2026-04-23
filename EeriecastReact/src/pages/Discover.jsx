@@ -7,7 +7,7 @@ import { qk } from "@/lib/queryClient";
 import ShowCard from "../components/discover/ShowCard";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
-import { isAudiobook, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
+import { isAudiobook, isMusic, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from '@/context/UserContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
@@ -432,12 +432,15 @@ export default function Discover() {
     return shows.filter(p => hasCategory(p, filters.category));
   }, []);
 
-  /* ─── filter out audiobook episodes ─── */
-
+  /* ─── filter out audiobook + music episodes ─── */
+  // Audiobooks and music each have their own landing pages; keep their
+  // episodes out of the generic podcast feeds so listeners don't encounter
+  // a chapter or track in a line-up of spoken-word shows.
   const nonAudiobookEpisodes = useMemo(() => {
     return fetchedEpisodes.filter(ep => {
       const podcast = podcastMap[ep.podcast || ep.podcast_id];
-      return !podcast || !isAudiobook(podcast);
+      if (!podcast) return true;
+      return !isAudiobook(podcast) && !isMusic(podcast);
     });
   }, [fetchedEpisodes, podcastMap]);
 
@@ -510,9 +513,11 @@ export default function Discover() {
   // volume is low). If we haven't loaded it yet, fall back to the newest
   // non-audiobook episodes so the tab is never empty.
   const trendingEpisodes = useMemo(() => {
-    const audiobookIds = new Set(podcasts.filter(isAudiobook).map(p => p.id));
+    const excludedIds = new Set(
+      podcasts.filter(p => isAudiobook(p) || isMusic(p)).map(p => p.id)
+    );
     const getPodId = (ep) => (typeof ep.podcast === 'object' ? ep.podcast?.id : (ep.podcast || ep.podcast_id));
-    const filteredApi = (trendingApiEpisodes || []).filter(ep => !audiobookIds.has(getPodId(ep)));
+    const filteredApi = (trendingApiEpisodes || []).filter(ep => !excludedIds.has(getPodId(ep)));
 
     if (filteredApi.length >= 10) return filteredApi.slice(0, 100);
 
@@ -567,7 +572,9 @@ export default function Discover() {
   const handlePodcastPlay = async (podcast) => {
     try {
       if (!podcast?.id) return;
-      if (isAudiobook(podcast)) {
+      // Audiobooks and music artist pages drive playback from the show
+      // detail page, not an inline "play the latest" action — route there.
+      if (isAudiobook(podcast) || isMusic(podcast)) {
         window.location.assign(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
         return;
       }
@@ -658,7 +665,7 @@ export default function Discover() {
       <div>
         <SectionHeader title={heading} subtitle={subtitle} count={capped.length} countLabel="episodes">
           <EpisodeFilterBar
-            podcasts={podcasts.filter(p => !isAudiobook(p))}
+            podcasts={podcasts.filter(p => !isAudiobook(p) && !isMusic(p))}
             categories={categories}
             filters={episodeFilters}
             onFilterChange={(f) => { setEpisodeFilters(f); setDisplayCount(DISPLAY_PAGE_SIZE); }}
@@ -746,7 +753,8 @@ export default function Discover() {
     const filtered = podcasts.filter(p => {
       if (!selKey) return true;
       if (selKey === 'audiobook' || selKey === 'audiobooks') return isAudiobook(p);
-      if (selKey === 'free') return !p.is_exclusive && !isAudiobook(p);
+      if (selKey === 'music') return isMusic(p);
+      if (selKey === 'free') return !p.is_exclusive && !isAudiobook(p) && !isMusic(p);
       if (selKey === 'members-only' || selKey === 'members_only') return p.is_exclusive || isAudiobook(p);
       return hasCategory(p, selKey);
     });
@@ -933,16 +941,22 @@ export default function Discover() {
           100
         );
       case "Podcasts":
-        return renderShowList(podcasts.filter(p => !isAudiobook(p)), "All Podcasts", "No podcasts found.");
+        return renderShowList(
+          podcasts.filter(p => !isAudiobook(p) && !isMusic(p)),
+          "All Podcasts",
+          "No podcasts found.",
+        );
       case "Members-Only": {
-        // Audiobooks live behind the member paywall alongside exclusive shows.
-        const membersOnly = podcasts.filter(p => p.is_exclusive || isAudiobook(p));
+        // Audiobooks live behind the member paywall alongside exclusive
+        // shows; music artists surface via their own landing page.
+        const membersOnly = podcasts.filter(p => (p.is_exclusive || isAudiobook(p)) && !isMusic(p));
         return renderShowList(membersOnly, "Members-Only", "No members-only content found.");
       }
       case "Free": {
         // The Free tab is strictly for freely-listenable podcasts (no
-        // exclusive shows and no audiobooks, which are members-only).
-        const freeContent = podcasts.filter(p => !p.is_exclusive && !isAudiobook(p));
+        // exclusive shows, no audiobooks, no music — all of which have
+        // their own dedicated surfaces).
+        const freeContent = podcasts.filter(p => !p.is_exclusive && !isAudiobook(p) && !isMusic(p));
         return renderShowList(freeContent, "Free Content", "No free content found.");
       }
       case "Categories":

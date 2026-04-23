@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
-import { isAudiobook, hasCategory } from "@/lib/utils";
+import { isAudiobook, isMusic, hasCategory } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/queryClient";
 
@@ -32,6 +32,13 @@ function formatEpisodeCount(p) {
   const n = p?.episode_count ?? p?.episodes_count ?? p?.total_episodes ?? 0;
   if (!Number.isFinite(Number(n)) || Number(n) <= 0) return '';
   return `${n} episode${n === 1 ? '' : 's'}`;
+}
+
+// Subtitle for a music artist card — shows track count.
+function formatTrackCount(p) {
+  const n = p?.episode_count ?? p?.episodes_count ?? p?.total_episodes ?? 0;
+  if (!Number.isFinite(Number(n)) || Number(n) <= 0) return '';
+  return `${n} track${n === 1 ? '' : 's'}`;
 }
 import { Crown } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
@@ -131,6 +138,7 @@ export default function Podcasts() {
     const selected = selectedCategoryParam;
     if (!selected) return items;
     if (selected === 'audiobook' || selected === 'audiobooks') return items.filter(p => isAudiobook(p));
+    if (selected === 'music') return items.filter(p => isMusic(p));
     if (selected === 'free') return items.filter(p => !p.is_exclusive);
     if (selected === 'members-only' || selected === 'members only' || selected === 'members_only') return items.filter(p => p.is_exclusive);
     return items.filter(p => hasCategory(p, selected));
@@ -144,8 +152,11 @@ export default function Podcasts() {
 
   const handlePodcastPlay = async (podcast) => {
     try {
-      if (isAudiobook(podcast)) {
-        handleAudiobookNavigate(podcast);
+      // Audiobooks and music artists drive playback from their show page
+      // (chapter/track ordering matters and they never auto-queue the
+      // newest item).
+      if (isAudiobook(podcast) || isMusic(podcast)) {
+        handleNavigateToShow(podcast);
         return;
       }
       if (podcast?.is_exclusive && !isPremium) {
@@ -189,7 +200,7 @@ export default function Podcasts() {
     }
   };
 
-  const handleAudiobookNavigate = (podcast) => {
+  const handleNavigateToShow = (podcast) => {
     if (podcast?.id) {
       navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
     }
@@ -330,11 +341,31 @@ export default function Podcasts() {
               </h2>
             }
             podcasts={podcasts.filter(p => isAudiobook(p))}
-            onPodcastPlay={handleAudiobookNavigate}
+            onPodcastPlay={handleNavigateToShow}
             isCompact={true}
             showAudiobookPill={true}
             viewAllTo={createPageUrl('Audiobooks')}
             subtext={(p) => formatAudiobookRuntime(p)}
+          />
+        </div>
+      )}
+
+      {/* Music — only rendered when there are music artists in the catalog,
+          so the row doesn't appear as an empty placeholder on day zero. */}
+      {!isLoading && podcasts.some(p => isMusic(p)) && (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <PodcastRow
+            title={
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-fuchsia-400 to-fuchsia-300 bg-clip-text text-transparent">
+                Music
+              </h2>
+            }
+            podcasts={podcasts.filter(p => isMusic(p))}
+            onPodcastPlay={handleNavigateToShow}
+            isCompact={true}
+            showMusicPill={true}
+            viewAllTo={createPageUrl('Music')}
+            subtext={(p) => formatTrackCount(p)}
           />
         </div>
       )}

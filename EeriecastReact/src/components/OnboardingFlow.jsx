@@ -10,7 +10,7 @@ import {
 import { usePodcasts } from '@/context/PodcastContext';
 import { useUser } from '@/context/UserContext';
 import { useSettings } from '@/hooks/use-settings';
-import { isAudiobook, getPodcastCategorySet } from '@/lib/utils';
+import { isAudiobook, isMusic, getPodcastCategorySet } from '@/lib/utils';
 import { UserLibrary } from '@/api/entities';
 import { PaymentFormModal } from '@/pages/Premium';
 import { createPageUrl } from '@/utils';
@@ -180,7 +180,9 @@ function FollowShowsStep({ onContinue, onSkip }) {
   const shows = useMemo(() => {
     // Explicit-language shows stay in the onboarding list regardless of
     // the toggle — the playback/show-page gate catches them downstream.
-    let list = (rawPodcasts || []).filter(p => !isAudiobook(p));
+    // Music artists have their own landing page and don't belong in the
+    // "pick a podcast to follow" interest picker either.
+    let list = (rawPodcasts || []).filter(p => !isAudiobook(p) && !isMusic(p));
     if (!isPremium) {
       list = list.filter(p => !p.is_exclusive);
     }

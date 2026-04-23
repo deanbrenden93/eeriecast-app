@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Podcast, Episode, UserLibrary } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
-import { hasCategory, isAudiobook, getEpisodeAudioUrl } from "@/lib/utils";
+import { hasCategory, isAudiobook, isMusic, getEpisodeAudioUrl } from "@/lib/utils";
 import { createPageUrl } from "@/utils";
 import { useUser } from "@/context/UserContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -33,6 +33,7 @@ export default function CategoryPage() {
     const sel = categoryParam;
     if (!sel) return allPodcasts;
     if (sel === "audiobook" || sel === "audiobooks") return allPodcasts.filter(p => isAudiobook(p));
+    if (sel === "music") return allPodcasts.filter(p => isMusic(p));
     if (sel === "free") return allPodcasts.filter(p => !p.is_exclusive);
     if (sel === "members-only" || sel === "members only" || sel === "members_only") return allPodcasts.filter(p => p.is_exclusive);
     return allPodcasts.filter(p => hasCategory(p, sel));
@@ -47,7 +48,7 @@ export default function CategoryPage() {
     try {
       if (!podcast?.id) return;
       // Audiobooks and members-only shows for non-premium users: route to show page.
-      if (isAudiobook(podcast) || (podcast?.is_exclusive && !isPremium)) {
+      if (isAudiobook(podcast) || isMusic(podcast) || (podcast?.is_exclusive && !isPremium)) {
         navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
         return;
       }
