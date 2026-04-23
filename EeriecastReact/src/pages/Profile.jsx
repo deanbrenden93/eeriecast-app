@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Cake,
   AlertTriangle,
+  BarChart3,
 } from "lucide-react";
 import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
 import DateOfBirthEditModal from "@/components/profile/DateOfBirthEditModal";
@@ -96,6 +97,7 @@ export default function Profile() {
     trialDaysRemaining,
     userAge,
     isAuthenticated,
+    isAdmin,
     refreshUser,
   } = useUser();
   const { loadAndPlay } = useAudioPlayerContext();
@@ -549,6 +551,34 @@ export default function Profile() {
                   />
                 </div>
               </button>
+            </div>
+          </section>
+        )}
+
+        {/* ── Admin ── Visible only to staff + superuser accounts.
+            Isolated into its own section so it can't be mistaken for a
+            setting any non-admin might encounter. */}
+        {isAdmin && (
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
+              Admin
+            </h2>
+            <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.05] to-transparent overflow-hidden">
+              <Link
+                to={createPageUrl("AdminAnalytics")}
+                className="flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-colors group"
+              >
+                <BarChart3 className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-100 group-hover:text-white transition-colors">
+                    Analytics dashboard
+                  </p>
+                  <p className="text-[11px] text-zinc-500 truncate mt-0.5">
+                    Users, subscriptions and revenue
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0" />
+              </Link>
             </div>
           </section>
         )}

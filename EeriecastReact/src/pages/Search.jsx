@@ -95,7 +95,9 @@ export default function Search() {
 
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [activeTab, setActiveTab] = useState("All Content");
-  const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById } = usePodcasts();
+  const { podcasts: contextPodcasts, isLoading: podcastsLoading, getById, softRefreshIfStale } = usePodcasts();
+
+  useEffect(() => { softRefreshIfStale(15_000); }, [softRefreshIfStale]);
   const [showResults, setShowResults] = useState([]);
   const [episodeResults, setEpisodeResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);

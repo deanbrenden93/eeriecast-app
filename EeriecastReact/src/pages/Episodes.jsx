@@ -34,7 +34,7 @@ export default function Episodes() {
   const idParam = query.get('id') || query.get('podcast') || query.get('podcastId');
 
   const navigate = useNavigate();
-  const { ensureDetail } = usePodcasts();
+  const { ensureDetail, refetchDetail } = usePodcasts();
   const [show, setShow] = useState(null);
   const [episodes, setEpisodes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,18 +80,31 @@ export default function Episodes() {
       if (!idParam) { setIsLoading(false); return; }
       setIsLoading(true);
       try {
-        const detail = await ensureDetail(idParam);
+        // Render cached detail immediately if we have it, so the page
+        // isn't blank for users who've been here before.
+        const cached = await ensureDetail(idParam);
         if (canceled) return;
-        setShow(detail);
-        const list = Array.isArray(detail?.episodes) ? detail.episodes : (detail?.episodes?.results || []);
-        setEpisodes(list);
+        if (cached) {
+          setShow(cached);
+          const cachedList = Array.isArray(cached?.episodes) ? cached.episodes : (cached?.episodes?.results || []);
+          setEpisodes(cachedList);
+          setIsLoading(false);
+        }
+        // Always force a fresh fetch on mount: episodes/chapters/tracks
+        // uploaded by creators between sessions won't appear otherwise
+        // because detail is cached for the life of the React app.
+        const fresh = await refetchDetail(idParam);
+        if (canceled) return;
+        setShow(fresh);
+        const freshList = Array.isArray(fresh?.episodes) ? fresh.episodes : (fresh?.episodes?.results || []);
+        setEpisodes(freshList);
       } finally {
         if (!canceled) setIsLoading(false);
       }
     }
     load();
     return () => { canceled = true; };
-  }, [idParam, ensureDetail]);
+  }, [idParam, ensureDetail, refetchDetail]);
 
   // Explicit-language gate: shows with the "mature" category are browsable
   // but are hidden behind a one-time confirm modal when you reach the show

@@ -135,13 +135,13 @@ export function PodcastProvider({ children }) {
 
   /**
    * Refetch the podcast list in the background — no loading spinner, no UI
-   * flicker — when cached data is older than `maxAgeMs`. Lets pages like
-   * Discover pick up newly-added categories/shows without forcing a hard
-   * reload, without hammering the API on every mount.
+   * flicker — when cached data is older than `maxAgeMs`. Lets pages pick
+   * up newly-added categories/shows without forcing a hard reload, while
+   * avoiding API hammering on every mount.
    * Returns true if a refresh actually happened.
    */
   const inflightSoftRefreshRef = useRef(false);
-  const softRefreshIfStale = useCallback(async (maxAgeMs = 60_000) => {
+  const softRefreshIfStale = useCallback(async (maxAgeMs = 30_000) => {
     const age = Date.now() - (lastFetchedAtRef.current || 0);
     if (age < maxAgeMs) return false;
     if (inflightSoftRefreshRef.current) return false;
@@ -205,6 +205,47 @@ export function PodcastProvider({ children }) {
     return detailWithVariant;
   }, [isPremium]);
 
+  /**
+   * Force-refetch a single show's detail, bypassing the session cache.
+   * Used by the show page on mount so newly-uploaded episodes/chapters/
+   * tracks appear without requiring a full browser reload.
+   */
+  const refetchDetail = useCallback(async (id) => {
+    const audioVariant = isPremium ? 'premium' : 'free';
+    const detail = await PodcastApi.get(id);
+    const detailWithVariant = { ...detail, __audio_variant: audioVariant };
+    hydratedRef.current.set(detailWithVariant.id, audioVariant);
+    setAllPodcasts(prev => {
+      const map = new Map(prev.map(p => [p.id, p]));
+      map.set(detailWithVariant.id, { ...(map.get(detailWithVariant.id) || {}), ...detailWithVariant });
+      return Array.from(map.values());
+    });
+    return detailWithVariant;
+  }, [isPremium]);
+
+  // App-wide "new content appears without a reload" triggers:
+  // - When the tab regains focus / becomes visible after being hidden
+  //   long enough (we don't want to hammer on every alt-tab), soft-refresh
+  //   the list so newly-uploaded shows/episodes surface automatically.
+  // This replaces the Discover-only listener that used to live in that
+  // page's useEffect.
+  const softRefreshRef = useRef(softRefreshIfStale);
+  useEffect(() => { softRefreshRef.current = softRefreshIfStale; }, [softRefreshIfStale]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        softRefreshRef.current(30_000);
+      }
+    };
+    const onFocus = () => { softRefreshRef.current(30_000); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
   const value = useMemo(() => ({
     podcasts,
     maturePodcastIds,
@@ -213,10 +254,11 @@ export function PodcastProvider({ children }) {
     lastFetchedAt: lastFetchedAtRef.current,
     getById,
     ensureDetail,
+    refetchDetail,
     refreshAll,
     softRefreshIfStale,
     featuredCreators,
-  }), [podcasts, maturePodcastIds, isLoading, error, getById, ensureDetail, refreshAll, softRefreshIfStale, featuredCreators]);
+  }), [podcasts, maturePodcastIds, isLoading, error, getById, ensureDetail, refetchDetail, refreshAll, softRefreshIfStale, featuredCreators]);
 
   return (
     <PodcastContext.Provider value={value}>

@@ -8,6 +8,7 @@ import Music from "./Music";
 import Library from "./Library";
 import Search from "./Search";
 import Profile from "./Profile";
+import AdminAnalytics from "./AdminAnalytics";
 import Settings from "./Settings";
 import Billing from "./Billing";
 import Premium from "./Premium";
@@ -42,6 +43,7 @@ const PAGES = {
     Library: Library,
     Search: Search,
     Profile: Profile,
+    AdminAnalytics: AdminAnalytics,
     Settings: Settings,
     Billing: Billing,
     Premium: Premium,
@@ -193,6 +195,11 @@ function PagesContent() {
                     
                     <Route path="/Profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
                     <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
+
+                    <Route path="/AdminAnalytics" element={<AnimatedPage><AdminAnalytics /></AnimatedPage>} />
+                    <Route path="/adminanalytics" element={<AnimatedPage><AdminAnalytics /></AnimatedPage>} />
+                    <Route path="/admin" element={<AnimatedPage><AdminAnalytics /></AnimatedPage>} />
+                    <Route path="/Admin" element={<AnimatedPage><AdminAnalytics /></AnimatedPage>} />
                     
                     <Route path="/Settings" element={<AnimatedPage><Settings /></AnimatedPage>} />
                     <Route path="/settings" element={<AnimatedPage><Settings /></AnimatedPage>} />

@@ -46,6 +46,10 @@ const SHOW_COLORS = {
   'lore-a-folklore-horror-novel':  { primary: '#5eaaa8', darker: '#2d6a6a', shadow: '#5eaaa833' },
   // Dogwood — dusty crimson rose (flower petals)
   'dogwood-a-southern-gothic-body-horror-novel': { primary: '#c2455a', darker: '#8b2040', shadow: '#c2455a33' },
+  // Fractured Reality — icy electric cyan (glitch/lightning over stormy night)
+  'fractured-reality':         { primary: '#22d3ee', darker: '#0891b2', shadow: '#22d3ee33' },
+  // Lazuray — deep electric azure (leans into the name; contrasts the cover's red slash)
+  'lazuray':                   { primary: '#2563eb', darker: '#1e3a8a', shadow: '#2563eb33' },
 };
 
 /* ── Defaults ────────────────────────────────────────────────────────────── */

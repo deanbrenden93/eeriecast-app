@@ -496,6 +496,14 @@ const UserProvider = ({ children }) => {
     return flag && notExpired;
   }, [user]);
 
+  // Admin access flags — matched to Django's User.is_staff / is_superuser.
+  // `isAdmin` is the one gate you want almost everywhere: it requires
+  // BOTH staff and superuser so a plain staff moderator can't wander
+  // into revenue dashboards by accident.
+  const isStaff = useMemo(() => !!user?.is_staff, [user]);
+  const isSuperuser = useMemo(() => !!user?.is_superuser, [user]);
+  const isAdmin = useMemo(() => isStaff && isSuperuser, [isStaff, isSuperuser]);
+
   // Legacy trial information
   const isOnLegacyTrial = useMemo(() => {
     return !!user?.is_on_legacy_trial;
@@ -732,6 +740,9 @@ const UserProvider = ({ children }) => {
         logout,
         isAuthenticated: !!user || !!djangoClient.getToken(),
         isPremium,
+        isStaff,
+        isSuperuser,
+        isAdmin,
         userAge,
         canViewMature,
         guestAllowMature,

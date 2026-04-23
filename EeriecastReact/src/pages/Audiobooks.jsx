@@ -112,9 +112,12 @@ function ComicsTab() {
 
 // ─── Audiobooks Tab ──────────────────────────────────────────────────────────
 function AudiobooksTab() {
-  const { podcasts: allPodcasts, isLoading } = usePodcasts();
+  const { podcasts: allPodcasts, isLoading, softRefreshIfStale } = usePodcasts();
   const [categories, setCategories] = useState([]);
   const [filters, setFilters] = useState({ category: "all", sort: "newest" });
+
+  // Pick up newly-uploaded chapters / new audiobooks without a hard reload.
+  useEffect(() => { softRefreshIfStale(15_000); }, [softRefreshIfStale]);
 
   useEffect(() => {
     (async () => {

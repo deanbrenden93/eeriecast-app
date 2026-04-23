@@ -142,6 +142,7 @@ INSTALLED_APPS = [
     'apps.common',
     'apps.billing',
     'apps.emails',
+    'apps.analytics',
 ]
 
 # Email configuration (driven by env; safe defaults for local/dev)
@@ -327,6 +328,14 @@ STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
 STRIPE_MONTHLY_PRICE_ID = config('STRIPE_MONTHLY_PRICE_ID', default='price_1QVkCFDZQqr6bWze584rDEz0')
 STRIPE_YEARLY_PRICE_ID = config('STRIPE_YEARLY_PRICE_ID', default='price_1QVkCdDZQqr6bWzeIHpj4Enp') # Restore this line
 STRIPE_TRIAL_DAYS = 7
+
+# Plan prices in cents, used by the admin analytics endpoint to compute MRR.
+# Stripe is the source of truth but we don't store amount on Subscription rows;
+# these are the hardcoded fall-through values. Override via env if pricing
+# changes so MRR numbers stay accurate without a code deploy.
+STRIPE_MONTHLY_AMOUNT_CENTS = config('STRIPE_MONTHLY_AMOUNT_CENTS', cast=int, default=499)
+STRIPE_YEARLY_AMOUNT_CENTS = config('STRIPE_YEARLY_AMOUNT_CENTS', cast=int, default=4999)
+STRIPE_CURRENCY = config('STRIPE_CURRENCY', default='USD')
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 9999999
 

@@ -21,10 +21,12 @@ class UserSerializer(serializers.ModelSerializer):
                  'subscription_expires', 'date_of_birth', 'allow_mature_content',
                  'onboarding_completed', 'date_joined', 'created_at', 'shop_discount_code',
                  'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining',
-                 'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining', 'has_payment_method']
+                 'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining', 'has_payment_method',
+                 'is_staff', 'is_superuser']
         read_only_fields = ['id', 'date_joined', 'created_at', 'is_imported_from_memberful', 'memberful_plan_type',
                            'is_legacy_free_trial', 'free_trial_ends', 'is_on_legacy_trial', 'legacy_trial_days_remaining',
-                           'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining', 'has_payment_method']
+                           'is_on_trial', 'trial_type', 'trial_ends', 'trial_days_remaining', 'has_payment_method',
+                           'is_staff', 'is_superuser']
 
     def get_shop_discount_code(self, obj):
         request = self.context.get('request')

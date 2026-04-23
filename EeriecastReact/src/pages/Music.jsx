@@ -13,7 +13,7 @@
  * dozens of albums), this is the natural place to introduce tabs/filters
  * mirroring the Audiobooks page.
  */
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Music as MusicIcon, Play, Disc3 } from "lucide-react";
@@ -56,10 +56,14 @@ function trackCountLabel(p) {
 
 export default function Music() {
   const navigate = useNavigate();
-  const { podcasts, isLoading: podcastsLoading, getById } = usePodcasts();
+  const { podcasts, isLoading: podcastsLoading, getById, softRefreshIfStale } = usePodcasts();
   const { isAuthenticated } = useUser() || {};
   const { loadAndPlay } = useAudioPlayerContext();
   const { toast } = useToast();
+
+  // New artists / newly-uploaded tracks have to appear here without a
+  // full page reload, so kick a soft refresh on mount.
+  useEffect(() => { softRefreshIfStale(15_000); }, [softRefreshIfStale]);
 
   const artists = useMemo(
     () => (podcasts || []).filter((p) => isMusic(p)),

@@ -260,22 +260,11 @@ export default function Discover() {
 
   const categories = categoriesData;
 
-  // Keep the podcast list fresh when the user returns to this page. Runs on
-  // mount and whenever the tab regains focus. Categories have their own
+  // Refresh the podcast list on mount so newly-uploaded shows/episodes
+  // surface without a hard reload. Tab-focus / visibility-change refresh
+  // is handled globally in PodcastContext. Categories have their own
   // cache-driven refetch (refetchOnWindowFocus is on by default).
-  useEffect(() => {
-    const refresh = () => { softRefreshIfStale(60_000); };
-    refresh();
-    const onFocus = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [softRefreshIfStale]);
+  useEffect(() => { softRefreshIfStale(15_000); }, [softRefreshIfStale]);
 
   // Progressively fetch ALL episodes in background. Each page is a separate
   // cache entry so revisiting the Discover page is instant. A background

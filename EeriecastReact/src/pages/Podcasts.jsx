@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Podcast as PodcastApi, UserLibrary } from "@/api/entities";
@@ -61,8 +61,14 @@ import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 
 export default function Podcasts() {
-  const { podcasts: rawPodcasts, isLoading } = usePodcasts();
+  const { podcasts: rawPodcasts, isLoading, softRefreshIfStale } = usePodcasts();
   const podcasts = rawPodcasts;
+
+  // Refresh on mount so creators' newly-uploaded shows/episodes show up
+  // without requiring the listener to hard-reload the browser. Short
+  // stale window because this is the home feed — freshness matters more
+  // than API cost here.
+  useEffect(() => { softRefreshIfStale(15_000); }, [softRefreshIfStale]);
   const queryClient = useQueryClient();
   const [selectedPodcast, setSelectedPodcast] = useState(null);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
@@ -385,7 +391,7 @@ export default function Podcasts() {
       ) : (
         <div className="w-full px-2.5 lg:px-10 py-3">
           <MembersOnlySection
-            podcasts={podcasts.filter(p => p.is_exclusive)}
+            podcasts={podcasts.filter(p => p.is_exclusive && !isMusic(p))}
             onPodcastPlay={handlePodcastPlay}
             subtext={(p) => formatEpisodeCount(p)}
           />

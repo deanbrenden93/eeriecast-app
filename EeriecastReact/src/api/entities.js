@@ -512,3 +512,17 @@ export const Playlist = {
     return djangoClient.delete(`/library/playlists/${id}/`);
   }
 };
+
+// Admin analytics (staff + superuser only). All methods return parsed JSON
+// from the Django analytics app.
+export const Analytics = {
+  // Fetch the aggregated dashboard summary. Pass either `range`
+  // ('24h' | '7d' | '30d' | '90d' | '1y') or `start`/`end` ISO dates.
+  async summary({ range, start, end } = {}) {
+    const params = {};
+    if (range) params.range = range;
+    if (start) params.start = start;
+    if (end) params.end = end;
+    return djangoClient.get('/analytics/summary/', params);
+  },
+};

@@ -59,6 +59,10 @@ export default function FeaturedCreatorsSection() {
               ? (count === 1 ? 'Track' : 'Tracks')
               : (count === 1 ? 'Episode' : 'Episodes');
           const countLabel = count > 0 ? `${count} ${unit}` : null;
+          // Replace the generic "Eeriecast" byline with a type pill
+          // so listeners can tell at a glance whether a circle on the
+          // shelf is a podcast, an audiobook, or a music artist.
+          const typeLabel = book ? 'Audiobook' : music ? 'Music' : 'Podcast';
 
           return (
             <div
@@ -108,7 +112,7 @@ export default function FeaturedCreatorsSection() {
                 <h3 className="text-white/90 font-semibold text-[13px] leading-tight line-clamp-2 mb-0.5 group-hover:text-red-400 transition-colors duration-300 px-1">
                   {podcast.title}
                 </h3>
-                <p className="text-zinc-500 text-[11px] leading-tight mb-0.5">{podcast.author || 'Eeriecast'}</p>
+                <p className="text-zinc-500 text-[11px] leading-tight mb-0.5">{typeLabel}</p>
                 {countLabel && (
                   <p className="text-zinc-600 text-[10px] tracking-wide">{countLabel}</p>
                 )}
