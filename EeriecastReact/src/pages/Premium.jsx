@@ -324,6 +324,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
         const response = await djangoClient.post('/billing/start-trial/', {
           stripeToken: token.id,
           email: form.email,
+          plan: plan,
         });
         console.log('[Backend] Signup response:', response);
       } else {

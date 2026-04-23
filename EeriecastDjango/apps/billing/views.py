@@ -294,20 +294,25 @@ class SubscriptionViewSet(viewsets.GenericViewSet):
 @permission_classes([IsAuthenticated])
 def create_checkout_session(request):
     """
-    Create a Stripe Checkout Session for the monthly subscription with a 7-day trial.
+    Create a Stripe Checkout Session for the selected plan with a 7-day trial.
     """
     user = request.user
+    data = request.data
+    plan = data.get('plan', 'monthly')
     
-    # Allow users on legacy trial to subscribe, but block if they already have an active Stripe subscription
-    from apps.billing.models import Subscription
-    has_active_sub = Subscription.objects.filter(user=user, status__in=['active', 'trialing']).exists()
-    
-    if has_active_sub or (user.is_premium and not user.is_on_legacy_trial()):
+    # Use client's new is_premium_member() helper
+    if user.is_premium_member():
         return Response({"detail": "You already have an active subscription."}, status=status.HTTP_400_BAD_REQUEST)
 
     stripe.api_key = settings.STRIPE_SECRET_KEY
     
-    if not settings.STRIPE_MONTHLY_PRICE_ID:
+    # Restore plan selection logic
+    if plan == 'yearly':
+        price_id = settings.STRIPE_YEARLY_PRICE_ID
+    else:
+        price_id = settings.STRIPE_MONTHLY_PRICE_ID
+
+    if not price_id:
         return Response({"detail": "Stripe price ID not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     customer_id = get_or_create_stripe_customer(user)
@@ -317,7 +322,7 @@ def create_checkout_session(request):
             customer=customer_id,
             line_items=[
                 {
-                    'price': settings.STRIPE_MONTHLY_PRICE_ID,
+                    'price': price_id,
                     'quantity': 1,
                 },
             ],
@@ -344,11 +349,8 @@ def start_trial_custom(request):
     user = request.user
     data = request.data
     
-    # Allow if on legacy trial, but block if an actual subscription exists
-    from apps.billing.models import Subscription
-    has_active_sub = Subscription.objects.filter(user=user, status__in=['active', 'trialing']).exists()
-    
-    if has_active_sub or (user.is_premium and not user.is_on_legacy_trial()):
+    # Use client's new is_premium_member() helper
+    if user.is_premium_member():
         return Response({"detail": "You already have an active subscription."}, status=status.HTTP_400_BAD_REQUEST)
     
     logger.info(f"Custom trial signup started for user {user.email}")
@@ -370,11 +372,20 @@ def start_trial_custom(request):
         logger.info(f"Attaching token {stripe_token} to customer {customer_id}")
         stripe.Customer.modify(customer_id, source=stripe_token)
         
-        # 3. Create subscription
-        logger.info(f"Creating subscription with price {settings.STRIPE_MONTHLY_PRICE_ID} and {settings.STRIPE_TRIAL_DAYS} days trial")
+        # 3. Create subscription with selected plan
+        plan = data.get('plan', 'monthly')
+        if plan == 'yearly':
+            price_id = settings.STRIPE_YEARLY_PRICE_ID
+        else:
+            price_id = settings.STRIPE_MONTHLY_PRICE_ID
+
+        if not price_id:
+            return Response({"detail": "Stripe price ID not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        logger.info(f"Creating subscription with price {price_id} and {settings.STRIPE_TRIAL_DAYS} days trial")
         stripe_sub = stripe.Subscription.create(
             customer=customer_id,
-            items=[{"price": settings.STRIPE_MONTHLY_PRICE_ID}],
+            items=[{"price": price_id}],
             trial_period_days=settings.STRIPE_TRIAL_DAYS,
         )
         logger.info(f"Stripe subscription created: {stripe_sub.id}")
