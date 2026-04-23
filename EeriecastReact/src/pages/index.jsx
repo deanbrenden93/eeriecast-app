@@ -14,14 +14,14 @@ import CreatorEpisodes from "./CreatorEpisodes";
 import Category from "./Category";
 import Episodes from "./Episodes";
 import Playlist from "./Playlist";
-import Help from "./Help";
+import Help, { STORY_SUBMISSION_CATEGORY, STORY_SUBMISSION_SHOWS } from "./Help";
 import Shop from "./Shop";
 import NotFound from "./NotFound";
 import VerifyEmail from "./VerifyEmail";
 import ResetPassword from "./ResetPassword";
 import ConfirmEmailChange from "./ConfirmEmailChange";
 
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useEffect, useLayoutEffect } from 'react';
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { AnimatePresence, motion } from "framer-motion";
@@ -94,6 +94,32 @@ function scrollToTop() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
+}
+
+// Pretty-URL redirect for the Submit-a-Story flow. Lets marketing /
+// show notes / bios link directly to the contact form in its story-
+// submission state without typing out the long query-string URL.
+//
+//   /submit-a-story                       → Contact form, category preset
+//   /submit-a-story/unexplained-encounters → …plus that show pre-selected
+//
+// The slug is matched case-insensitively against the allowed shows so
+// folks can link either "Tales-from-the-Break-Room" or
+// "tales-from-the-break-room" without worrying about casing.
+function SubmitStoryRedirect() {
+    const { show: slug } = useParams();
+    const params = new URLSearchParams({
+        tab: 'contact',
+        category: STORY_SUBMISSION_CATEGORY,
+    });
+    if (slug) {
+        const normalized = slug.replace(/-/g, ' ').toLowerCase();
+        const matched = STORY_SUBMISSION_SHOWS.find(
+            (s) => s.toLowerCase() === normalized,
+        );
+        if (matched) params.set('show', matched);
+    }
+    return <Navigate to={`/Help?${params.toString()}`} replace />;
 }
 
 // Animated route wrapper
@@ -186,6 +212,11 @@ function PagesContent() {
 
                     <Route path="/Help" element={<AnimatedPage><Help /></AnimatedPage>} />
                     <Route path="/help" element={<AnimatedPage><Help /></AnimatedPage>} />
+
+                    {/* Pretty-URL aliases for the story submission flow */}
+                    <Route path="/submit-a-story" element={<SubmitStoryRedirect />} />
+                    <Route path="/submit-a-story/:show" element={<SubmitStoryRedirect />} />
+                    <Route path="/submit" element={<SubmitStoryRedirect />} />
 
                     <Route path="/Shop" element={<AnimatedPage><Shop /></AnimatedPage>} />
                     <Route path="/shop" element={<AnimatedPage><Shop /></AnimatedPage>} />

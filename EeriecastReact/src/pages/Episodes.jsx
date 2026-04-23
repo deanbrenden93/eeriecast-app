@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, Headphones, Heart, Loader2, Share2, Sparkles } from 'lucide-react';
+import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, ChevronLeft, Headphones, Heart, Loader2, Share2, Sparkles, Feather } from 'lucide-react';
 import { sharePodcast } from '@/lib/share';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
@@ -22,6 +22,7 @@ import EReader from '@/components/podcasts/EReader';
 import { findBookForShow } from '@/data/books';
 import { getShowDescription } from '@/data/show-descriptions';
 import MatureContentModal from '@/components/MatureContentModal';
+import { STORY_SUBMISSION_CATEGORY, STORY_SUBMISSION_SHOWS } from '@/pages/Help';
 
 function useQuery() {
   const { search } = useLocation();
@@ -126,6 +127,18 @@ export default function Episodes() {
   // Whether this audiobook has a matching entry in the ebook catalog.
   // Drives the "Read Book" vs "Ebook coming soon" CTA in the hero.
   const hasBook = useMemo(() => (isBook && !!findBookForShow(show)), [isBook, show]);
+
+  // Shows that accept listener story submissions get a CTA in the hero
+  // that deep-links into the Help screen's contact form with the
+  // category and show pre-selected. Match by exact (case-insensitive)
+  // title so the AFTER HOURS / spinoff variants of a show don't pick
+  // up the button by accident.
+  const storySubmissionShow = useMemo(() => {
+    if (!show) return null;
+    const t = (show.title || show.name || '').trim().toLowerCase();
+    if (!t) return null;
+    return STORY_SUBMISSION_SHOWS.find((s) => s.toLowerCase() === t) || null;
+  }, [show]);
 
   // Episode order (oldest-first) for audiobooks — needed for free-tier chapter gating
   const episodeOrder = useMemo(() => {
@@ -426,6 +439,21 @@ export default function Episodes() {
 
         {/* Content */}
         <div className="relative pt-10 md:pt-14 pb-10 md:pb-14 px-4 lg:px-10">
+          {/* Back — lets the listener return to wherever they came from
+              (discover, search, library, deep-link, etc.) without
+              reaching for the browser chrome. Sits inside the hero so it
+              rides the cinematic cover gradient instead of clashing
+              with the fixed top header above it. */}
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+            className="inline-flex items-center gap-1.5 mb-5 md:mb-7 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 text-[13px] font-medium backdrop-blur-sm"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+
           <div className="flex flex-col md:flex-row items-start gap-6 md:gap-10 max-w-6xl">
 
             {/* Cover Art — with halo glow */}
@@ -593,6 +621,30 @@ export default function Episodes() {
                   <Share2 className="w-3.5 h-3.5 mr-1.5" />
                   Share
                 </Button>
+
+                {/* Submit a Story — only for the three shows that accept
+                    listener submissions. Opens the Help screen's contact
+                    form with the correct category + show pre-selected
+                    so the listener lands ready to write. */}
+                {storySubmissionShow && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        tab: 'contact',
+                        category: STORY_SUBMISSION_CATEGORY,
+                        show: storySubmissionShow,
+                      });
+                      navigate(`${createPageUrl('Help')}?${params.toString()}`);
+                    }}
+                    className="px-5 py-2.5 rounded-full text-sm text-amber-200 bg-amber-500/[0.08] border border-amber-400/20 hover:bg-amber-500/[0.14] hover:border-amber-400/40 hover:text-amber-100 transition-all duration-300"
+                    aria-label={`Submit a story to ${storySubmissionShow}`}
+                    title={`Submit a story to ${storySubmissionShow}`}
+                  >
+                    <Feather className="w-3.5 h-3.5 mr-1.5" />
+                    Submit a Story
+                  </Button>
+                )}
 
                 {/* Read Book / Ebook coming soon — audiobooks only.
                     If there's no matching entry in the book catalog yet,
