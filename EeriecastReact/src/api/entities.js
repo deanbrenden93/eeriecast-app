@@ -7,7 +7,8 @@ export const Podcast = {
     const params = {};
 
     if (sort) params.ordering = sort;
-    if (limit) params.limit = limit;
+    // See note on Episode.list — DRF pagination uses `page_size`.
+    if (limit) { params.page_size = limit; params.limit = limit; }
     if (skip) params.offset = skip;
     if (fields) params.fields = Array.isArray(fields) ? fields.join(',') : fields;
 
@@ -63,7 +64,10 @@ export const Episode = {
     const params = {};
 
     if (sort) params.ordering = sort;
-    if (limit) params.limit = limit;
+    // DRF's PageNumberPagination reads `page_size` (and ignores `limit`),
+    // so send the canonical param. We also pass `limit` for any legacy
+    // endpoint behind this client that might still honor it.
+    if (limit) { params.page_size = limit; params.limit = limit; }
     if (skip) params.offset = skip;
     if (fields) params.fields = Array.isArray(fields) ? fields.join(',') : fields;
 
@@ -87,7 +91,7 @@ export const Episode = {
     const params = { ...query };
 
     if (sort) params.ordering = sort;
-    if (limit) params.limit = limit;
+    if (limit) { params.page_size = limit; params.limit = limit; }
     if (skip) params.offset = skip;
     if (fields) params.fields = Array.isArray(fields) ? fields.join(',') : fields;
 

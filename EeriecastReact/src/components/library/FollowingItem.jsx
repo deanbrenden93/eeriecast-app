@@ -2,10 +2,11 @@ import PropTypes from "prop-types";
 import { UserCheck } from "lucide-react";
 import { UserLibrary } from "@/api/entities";
 import { useUser } from "@/context/UserContext";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
+import { getShowSubtext } from "@/lib/utils";
 
 export default function FollowingItem({ podcast }) {
   const { refreshFollowings, isAuthenticated } = useUser();
@@ -14,14 +15,11 @@ export default function FollowingItem({ podcast }) {
   const [isDismissed, setIsDismissed] = useState(false);
   const navigate = useNavigate();
 
-  const creatorName = useMemo(() => {
-    if (typeof podcast?.author === 'string' && podcast.author.trim()) return podcast.author;
-    const c = podcast?.creator;
-    if (!c) return '';
-    if (typeof c === 'string' && c.trim()) return c;
-    if (typeof c === 'object') return c.display_name || c.name || c.username || '';
-    return '';
-  }, [podcast?.author, podcast?.creator]);
+  // Surface the same content-volume subtitle as the rest of the app
+  // (N Episodes / N Tracks / N Chapters). The old "Creator" attribution
+  // regularly landed on "Unknown Creator" for shows whose backend
+  // creator record was empty, which looked broken in the Library grid.
+  const subtitle = getShowSubtext(podcast);
 
   const handleUnfollow = async (e) => {
     e?.stopPropagation?.();
@@ -77,9 +75,9 @@ export default function FollowingItem({ podcast }) {
           <p className="text-white text-xs font-medium line-clamp-1 leading-tight">
             {podcast.title}
           </p>
-          {creatorName && (
+          {subtitle && (
             <p className="text-zinc-500 text-[11px] line-clamp-1 mt-0.5">
-              {creatorName}
+              {subtitle}
             </p>
           )}
         </div>

@@ -29,15 +29,9 @@ export default function FavoriteItem({ episode, onAddToPlaylist }) {
     return { totalDurationLabel: formatTotalDuration(totalSeconds), episodesCount: eps.length };
   }, [podcast?.episodes]);
 
-  // Safely compute creator display name
-  const creatorName = useMemo(() => {
-    if (typeof podcast?.author === 'string' && podcast.author.trim()) return podcast.author;
-    const c = podcast?.creator;
-    if (!c) return 'Unknown Artist';
-    if (typeof c === 'string' && c.trim()) return c;
-    if (typeof c === 'object') return c.display_name || c.name || c.username || 'Unknown Artist';
-    return 'Unknown Artist';
-  }, [podcast?.author, podcast?.creator]);
+  // No creator attribution on favorites — the meta line below already
+  // communicates the scale of the show (N episodes • total runtime),
+  // which is what a listener actually wants to know at a glance.
 
   const handleUnfavorite = async (e) => {
     e?.stopPropagation?.();
@@ -112,9 +106,6 @@ export default function FavoriteItem({ episode, onAddToPlaylist }) {
         <h3 className="text-white font-semibold text-sm line-clamp-2 leading-tight mb-1">
           {podcast.title}
         </h3>
-        <p className="show-name text-blue-400 text-xs mb-2 line-clamp-1">
-          {creatorName}
-        </p>
         <p className="meta text-gray-400 text-xs">
           {episodesCount > 0 ? `${episodesCount} episode${episodesCount !== 1 ? 's' : ''} • ${totalDurationLabel}` : 'No episodes yet'}
         </p>

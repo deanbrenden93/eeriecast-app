@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import PropTypes from 'prop-types';
+import { getShowSubtext } from '@/lib/utils';
 
 export default function PodcastRow({ title, podcasts: podcastList = [], onPodcastPlay, showPlayIcon = false, showAudiobookPill = false, showMusicPill = false, viewAllTo, subtext }) {
   const scrollRef = useRef(null);
@@ -111,13 +112,15 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
                   {podcast.title}
                 </h3>
                 {(() => {
-                  const sub = typeof subtext === 'function' ? subtext(podcast) : subtext;
-                  if (sub) {
-                    return <p className="text-zinc-500 text-xs leading-tight truncate">{sub}</p>;
-                  }
-                  return podcast.author ? (
-                    <p className="text-zinc-500 text-xs leading-tight truncate">{podcast.author}</p>
-                  ) : null;
+                  // Caller-supplied subtext wins; otherwise fall back to a
+                  // content-volume hint tuned to the show type (episodes /
+                  // chapters / tracks). We no longer surface the creator
+                  // here — that concept belongs to the creator portal.
+                  const sub = typeof subtext === 'function'
+                    ? subtext(podcast)
+                    : (subtext ?? getShowSubtext(podcast));
+                  if (!sub) return null;
+                  return <p className="text-zinc-500 text-xs leading-tight truncate">{sub}</p>;
                 })()}
               </div>
             </div>

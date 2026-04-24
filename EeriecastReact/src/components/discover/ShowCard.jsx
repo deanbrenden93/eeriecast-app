@@ -2,8 +2,15 @@ import { Play, Crown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import PropTypes from 'prop-types';
+import { getShowSubtext } from '@/lib/utils';
 
-export default function ShowCard({ podcast, onPlay, subtext = "" }) {
+export default function ShowCard({ podcast, onPlay, subtext }) {
+  // Let the card compute its own subtitle (N Episodes / Tracks / Chapters)
+  // when the caller hasn't supplied one. Every browsing surface gets the
+  // same consistent "content volume" signal without each page having to
+  // wire up its own helper.
+  const resolvedSubtext =
+    subtext === undefined || subtext === null ? getShowSubtext(podcast) : subtext;
   const navigate = useNavigate();
   const handleCardClick = () => {
     if (podcast?.id) navigate(`${createPageUrl('Episodes')}?id=${encodeURIComponent(podcast.id)}`);
@@ -63,9 +70,11 @@ export default function ShowCard({ podcast, onPlay, subtext = "" }) {
             {podcast.title}
           </Link>
         </h3>
-        <p className="text-zinc-500 text-xs leading-tight">
-          {subtext}
-        </p>
+        {resolvedSubtext && (
+          <p className="text-zinc-500 text-xs leading-tight">
+            {resolvedSubtext}
+          </p>
+        )}
       </div>
     </div>
   );

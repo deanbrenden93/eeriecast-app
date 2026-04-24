@@ -23,7 +23,6 @@ import { toast } from '@/components/ui/use-toast';
 import { User } from '@/api/entities';
 import TermsOfServiceModal from '@/components/legal/TermsOfServiceModal';
 import PrivacyPolicyModal from '@/components/legal/PrivacyPolicyModal';
-import DateOfBirthPicker from '@/components/common/DateOfBirthPicker';
 
 const FEATURES = [
   { icon: Headphones, label: 'Ad-free listening across the whole catalog' },
@@ -81,7 +80,16 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const { afterLoginAction, subtitle } = useAuthModal();
   const [tab, setTab] = useState(defaultTab);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '', date_of_birth: '' });
+  // Eeriecast is rated 17+ at the app store level (IARC/Mature 17+), which
+  // is where age verification happens at install time. We deliberately do
+  // NOT collect a date of birth at signup — it adds friction for a flow
+  // that's already gated by the store, and collecting less data keeps our
+  // privacy posture (GDPR/CCPA) and compliance surface (COPPA) simpler.
+  // Explicit-content access is instead gated in-app by an 18+
+  // self-attestation the first time a user turns on mature content (see
+  // MatureContentModal + Settings.jsx). New users start with
+  // `allow_mature_content = false` and opt in at the gate.
+  const [registerForm, setRegisterForm] = useState({ email: '', password: '', confirm_password: '', username: '' });
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState(null);
   const [showLoginPw, setShowLoginPw] = useState(false);
@@ -145,39 +153,17 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     e.preventDefault();
     setSubmitting(true);
     setLocalError(null);
-    if (!registerForm.date_of_birth) {
-      setLocalError('Please enter your full date of birth (month, day, and year).');
-      setSubmitting(false);
-      return;
-    }
     if (registerForm.password !== registerForm.confirm_password) {
       setLocalError('Passwords do not match');
       setSubmitting(false);
       return;
     }
-    // Auto-opt new 18+ users into mature content so the catalog is visible
-    // out of the gate. Still a soft opt-in: they can flip it off in Settings
-    // or during onboarding. Under-18 users remain gated regardless.
-    const computeAge = (iso) => {
-      try {
-        const birth = new Date(iso);
-        if (Number.isNaN(birth.getTime())) return null;
-        const now = new Date();
-        let age = now.getFullYear() - birth.getFullYear();
-        const monthDiff = now.getMonth() - birth.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age--;
-        return age;
-      } catch { return null; }
-    };
-    const age = computeAge(registerForm.date_of_birth);
-    if (age !== null && age < 13) {
-      setLocalError('You must be at least 13 years old to create an account.');
-      setSubmitting(false);
-      return;
-    }
+    // No DOB collected at signup. New users land with mature content OFF
+    // and must self-attest 18+ the first time they enable it (that flow
+    // lives in MatureContentModal + Settings.jsx).
     const payload = {
       ...registerForm,
-      allow_mature_content: age !== null && age >= 18,
+      allow_mature_content: false,
     };
     const result = await register(payload);
     if (!result || result.success === false) {
@@ -476,15 +462,6 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                             onChange={e => setRegisterForm(f => ({ ...f, email: e.target.value }))}
                             className="h-11 bg-white/[0.03] border-white/[0.08] text-white placeholder:text-zinc-600 focus-visible:ring-red-500/50 focus-visible:border-red-500/40 rounded-lg transition-colors text-sm"
                             placeholder="you@example.com"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="reg-dob" className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5 block">Date of birth</label>
-                          <DateOfBirthPicker
-                            id="reg-dob"
-                            value={registerForm.date_of_birth}
-                            onChange={(iso) => setRegisterForm(f => ({ ...f, date_of_birth: iso || '' }))}
-                            required
                           />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

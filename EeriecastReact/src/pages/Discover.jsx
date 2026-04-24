@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
 import { Podcast, UserLibrary, Category, Episode } from "@/api/entities";
 import { qk } from "@/lib/queryClient";
 import ShowCard from "../components/discover/ShowCard";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
 import ShowGrid from "@/components/ui/ShowGrid";
-import { isAudiobook, isMusic, hasCategory, getEpisodeAudioUrl, getPodcastCategoriesLower } from "@/lib/utils";
+import { isAudiobook, isMusic, hasCategory, getEpisodeAudioUrl, getShowSubtext } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from '@/context/UserContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
@@ -29,11 +29,10 @@ import { getCategoryStyle, normalizeCategoryKey } from "@/lib/categoryStyles";
 // overrides have been removed now that the Django admin is the single
 // source of truth.)
 
-const getEpCount = (podcast) => {
-  const n = podcast?.episodes_count ?? podcast?.episode_count ?? null;
-  if (typeof n === 'number' && !Number.isNaN(n)) return `${n} Episode${n === 1 ? '' : 's'}`;
-  return '';
-};
+// Show-type-aware subtitle (Episodes / Chapters / Tracks) — lives in
+// lib/utils so every browsing surface renders the same thing for the
+// same podcast. Kept as a thin alias here so call sites stay readable.
+const getEpCount = (podcast) => getShowSubtext(podcast);
 
 /* ─────────────────────── filter toolbar ─────────────────────── */
 
@@ -92,7 +91,7 @@ function SectionHeader({ title, subtitle, count, countLabel = "items", children 
   );
 }
 
-function EpisodeFilterBar({ podcasts, categories, filters, onFilterChange, resultCount }) {
+function EpisodeFilterBar({ podcasts, categories, filters, onFilterChange, resultCount, sortOptions }) {
   const showOptions = useMemo(() => [
     { value: "all", label: "All Shows" },
     ...podcasts.map(p => ({ value: String(p.id), label: p.title }))
@@ -102,11 +101,6 @@ function EpisodeFilterBar({ podcasts, categories, filters, onFilterChange, resul
     { value: "all", label: "All Categories" },
     ...categories.map(c => ({ value: c.slug || c.name, label: c.name }))
   ], [categories]);
-
-  const sortOptions = [
-    { value: "newest", label: "Newest" },
-    { value: "oldest", label: "Oldest" },
-  ];
 
   const hasActiveFilters = filters.show !== "all" || filters.category !== "all" || filters.access !== "all";
 
@@ -132,6 +126,20 @@ function EpisodeFilterBar({ podcasts, categories, filters, onFilterChange, resul
     </div>
   );
 }
+
+// Sort menus shown on each feed tab. "Relevance" preserves the order
+// the backend returned (i.e. the trending / recommendation algorithm),
+// and is the sensible default for anything other than the plain
+// "latest" feed where chronological order is the product intent.
+const RELEVANCE_SORT_OPTIONS = [
+  { value: "relevance", label: "Relevance" },
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+];
+const CHRONOLOGICAL_SORT_OPTIONS = [
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+];
 
 function ShowFilterBar({ categories, filters, onFilterChange }) {
   const categoryOptions = useMemo(() => [
@@ -266,80 +274,64 @@ export default function Discover() {
   // cache-driven refetch (refetchOnWindowFocus is on by default).
   useEffect(() => { softRefreshIfStale(15_000); }, [softRefreshIfStale]);
 
-  // Progressively fetch ALL episodes in background. Each page is a separate
-  // cache entry so revisiting the Discover page is instant. A background
-  // effect below keeps pulling the next page until everything is loaded.
-  const API_PAGE_SIZE = 100;
-  const {
-    data: episodePages,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading: isEpisodesInitialLoading,
-  } = useInfiniteQuery({
-    queryKey: qk.episodes.allPaginated({ ordering: '-published_at', pageSize: API_PAGE_SIZE }),
-    queryFn: async ({ pageParam = 1 }) => {
-      const resp = await Episode.filter({ page_size: API_PAGE_SIZE, page: pageParam }, '-published_at');
-      return resp;
-    },
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) => {
-      const results = Array.isArray(lastPage) ? lastPage : (lastPage?.results || []);
-      if (results.length < API_PAGE_SIZE) return undefined;
-      const total = lastPage?.count ?? null;
-      if (total != null) {
-        const accumulated = allPages.reduce((sum, p) => {
-          const r = Array.isArray(p) ? p : (p?.results || []);
-          return sum + r.length;
-        }, 0);
-        if (accumulated >= total) return undefined;
-      }
-      return allPages.length + 1;
-    },
-  });
+  /* ─── feed tabs share the same backend endpoints as the home screen ───
+   *
+   * Each of the "Recommended", "Trending", and "Newest" tabs hits the
+   * exact endpoint the corresponding home-screen row fetches from
+   * (`/episodes/recommended/`, `/episodes/trending/`, `/episodes/?ordering=-published_at`).
+   *
+   * Previously this page loaded every episode in the catalog in the
+   * background and then ran a client-side scoring pass for Recommended
+   * while re-sorting the list by `-published_at` for everything —
+   * which silently discarded the trending / recommended orderings and
+   * made all three tabs render the same chronological list.
+   *
+   * Using one-shot `useQuery` per feed (enabled only when the relevant
+   * tab is active) keeps the Discover surface in sync with the home
+   * rows and removes a significant amount of wasted network + memory
+   * work for large catalogs. Each feed pulls up to `FEED_FETCH_LIMIT`
+   * items, which is generous enough to support client-side filter /
+   * show-pick / category filtering without pagination.
+   */
+  const FEED_FETCH_LIMIT = 200;
 
-  // Auto-advance pagination in the background until every page is cached.
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  const rawFetchedEpisodes = useMemo(() => {
-    const pages = episodePages?.pages || [];
-    return pages.flatMap((p) => (Array.isArray(p) ? p : (p?.results || [])));
-  }, [episodePages]);
-
-  const fetchedEpisodes = rawFetchedEpisodes;
-
-  const totalEpisodeCount = episodePages?.pages?.[0]?.count ?? rawFetchedEpisodes.length;
-  const allEpisodesFetched = !hasNextPage && !isFetchingNextPage;
-  // Loading is only true during the initial fetch — background pagination
-  // doesn't block the UI because we already have something to render.
-  const episodesLoading = isEpisodesInitialLoading && rawFetchedEpisodes.length === 0;
-
-  // Listening history — cached and only fetched for authenticated users.
-  const { data: listeningHistory = [] } = useQuery({
-    queryKey: ['library', 'history', 'full'],
+  const { data: latestFeed = [], isLoading: latestLoading } = useQuery({
+    queryKey: qk.episodes.feed('latest', { ordering: '-published_at', fetchLimit: FEED_FETCH_LIMIT }),
     queryFn: async () => {
-      const resp = await UserLibrary.getHistory();
+      const resp = await Episode.list('-published_at', FEED_FETCH_LIMIT);
       return Array.isArray(resp) ? resp : (resp?.results || []);
     },
-    enabled: isAuthenticated,
+    enabled: activeTab === 'Newest',
   });
 
-  // Dedicated trending feed — fetched on demand when the Trending tab opens.
-  // Mirrors the home screen's "Trending Now" row so both surfaces stay in sync.
-  const { data: trendingApiEpisodes = [] } = useQuery({
-    queryKey: qk.episodes.feed('trending-full', { limit: 100, windowHours: 48 }),
+  const { data: trendingFeed = [], isLoading: trendingLoading } = useQuery({
+    queryKey: qk.episodes.feed('trending', { trendWindowHours: 48, fetchLimit: FEED_FETCH_LIMIT }),
     queryFn: async () => {
-      const resp = await Episode.trending(100, 48);
+      const resp = await Episode.trending(FEED_FETCH_LIMIT, 48);
       return Array.isArray(resp) ? resp : (resp?.results || []);
     },
-    enabled: activeTab === "Trending",
+    enabled: activeTab === 'Trending',
   });
 
-  // Reset filters and display count when tab changes
+  const { data: recommendedFeed = [], isLoading: recommendedLoading } = useQuery({
+    queryKey: qk.episodes.feed('recommended', { fetchLimit: FEED_FETCH_LIMIT }),
+    queryFn: async () => {
+      const resp = await Episode.recommended(FEED_FETCH_LIMIT);
+      return Array.isArray(resp) ? resp : (resp?.results || []);
+    },
+    enabled: activeTab === 'Recommended',
+  });
+
+  // Reset filters and display count when tab changes.
+  //
+  // The default sort flips with tab: Newest defaults to "newest"
+  // (chronological is the whole point) while Recommended and
+  // Trending default to "relevance" so the backend's scored order is
+  // preserved unless the user explicitly overrides it.
   useEffect(() => {
-    setEpisodeFilters({ show: "all", category: "all", sort: "newest", access: "all" });
+    const defaultSort =
+      activeTab === 'Recommended' || activeTab === 'Trending' ? 'relevance' : 'newest';
+    setEpisodeFilters({ show: "all", category: "all", sort: defaultSort, access: "all" });
     setShowFilters({ category: "all" });
     setDisplayCount(DISPLAY_PAGE_SIZE);
   }, [activeTab]);
@@ -406,10 +398,14 @@ export default function Discover() {
       });
     }
 
-    // Sort
+    // Sort.
+    //
+    // "relevance" leaves the list in whatever order the backend returned
+    // it, which is what we want for the scored feeds (trending /
+    // recommended). Only the explicit newest/oldest choices re-sort.
     if (filters.sort === "oldest") {
       filtered.sort((a, b) => new Date(a.published_at || a.created_at) - new Date(b.published_at || b.created_at));
-    } else {
+    } else if (filters.sort === "newest") {
       filtered.sort((a, b) => new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at));
     }
 
@@ -421,107 +417,36 @@ export default function Discover() {
     return shows.filter(p => hasCategory(p, filters.category));
   }, []);
 
-  /* ─── filter out audiobook + music episodes ─── */
-  // Audiobooks and music each have their own landing pages; keep their
-  // episodes out of the generic podcast feeds so listeners don't encounter
-  // a chapter or track in a line-up of spoken-word shows.
-  const nonAudiobookEpisodes = useMemo(() => {
-    return fetchedEpisodes.filter(ep => {
-      const podcast = podcastMap[ep.podcast || ep.podcast_id];
-      if (!podcast) return true;
-      return !isAudiobook(podcast) && !isMusic(podcast);
+  /* ─── feed-local post-processing ───
+   *
+   * The backend's trending + recommended endpoints already exclude
+   * audiobooks server-side, but neither excludes music (music artists
+   * are a podcast-shaped entity in the schema). The plain /episodes/
+   * list endpoint excludes neither. Drop both client-side so the feeds
+   * only surface "spoken-word podcast episodes" — music + audiobooks
+   * have their own dedicated rows and pages.
+   */
+  const excludeNonPodcastEpisodes = useCallback((list) => {
+    return (list || []).filter((ep) => {
+      const podId = typeof ep.podcast === 'object' ? ep.podcast?.id : (ep.podcast || ep.podcast_id);
+      const pod = podcastMap[podId];
+      if (!pod) return true;
+      return !isAudiobook(pod) && !isMusic(pod);
     });
-  }, [fetchedEpisodes, podcastMap]);
+  }, [podcastMap]);
 
-  /* ─── recommended episodes (all, scored) ─── */
-
-  const recommendedEpisodes = useMemo(() => {
-    if (!nonAudiobookEpisodes.length) return [];
-
-    // Extract context from listening history
-    const historyPodcastIds = new Set();
-    const historyCategories = new Set();
-
-    for (const item of listeningHistory) {
-      const epDetail = item?.episode_detail || item?.episode;
-      const podId = epDetail?.podcast || item?.podcast_id || item?.podcast;
-      if (podId) {
-        historyPodcastIds.add(Number(podId));
-        const podcast = podcastMap[podId];
-        if (podcast) {
-          for (const cat of getPodcastCategoriesLower(podcast)) {
-            historyCategories.add(cat);
-          }
-        }
-      }
-    }
-
-    // If user has no history, return all episodes by recency (they can browse)
-    if (listeningHistory.length === 0) {
-      return nonAudiobookEpisodes;
-    }
-
-    // Score each episode based on relevance to history
-    const scored = nonAudiobookEpisodes.map(ep => {
-      const podId = ep.podcast || ep.podcast_id;
-      const podcast = podcastMap[podId];
-      let score = 0;
-
-      // Boost if from a podcast user has listened to
-      if (historyPodcastIds.has(Number(podId))) score += 10;
-
-      // Boost if podcast shares categories with listening history
-      if (podcast) {
-        const podCats = getPodcastCategoriesLower(podcast);
-        for (const cat of podCats) {
-          if (historyCategories.has(cat)) score += 3;
-        }
-      }
-
-      // Small boost for recency
-      const age = Date.now() - new Date(ep.published_at || ep.created_at).getTime();
-      const dayAge = age / (1000 * 60 * 60 * 24);
-      if (dayAge < 7) score += 5;
-      else if (dayAge < 30) score += 2;
-
-      // Small boost for play_count
-      score += Math.min((ep.play_count || 0) * 0.1, 5);
-
-      return { ep, score };
-    });
-
-    scored.sort((a, b) => b.score - a.score);
-    return scored.map(s => s.ep);
-  }, [nonAudiobookEpisodes, listeningHistory, podcastMap]);
-
-  /* ─── trending episodes (capped at 100) ─── */
-
-  // Trending: prefer the backend's dedicated `/episodes/trending/` endpoint
-  // (same feed the home screen's "Trending Now" row uses — scored by recent
-  // PlaybackEvent activity, with a server-side fallback to newest when
-  // volume is low). If we haven't loaded it yet, fall back to the newest
-  // non-audiobook episodes so the tab is never empty.
-  const trendingEpisodes = useMemo(() => {
-    const excludedIds = new Set(
-      podcasts.filter(p => isAudiobook(p) || isMusic(p)).map(p => p.id)
-    );
-    const getPodId = (ep) => (typeof ep.podcast === 'object' ? ep.podcast?.id : (ep.podcast || ep.podcast_id));
-    const filteredApi = (trendingApiEpisodes || []).filter(ep => !excludedIds.has(getPodId(ep)));
-
-    if (filteredApi.length >= 10) return filteredApi.slice(0, 100);
-
-    // Backfill: merge any API results with newest non-audiobook episodes
-    // (de-duped) so there's always a useful list to display.
-    const existingIds = new Set(filteredApi.map(ep => ep.id));
-    const newestFallback = [...nonAudiobookEpisodes].sort(
-      (a, b) => new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at)
-    );
-    const merged = [
-      ...filteredApi,
-      ...newestFallback.filter(ep => !existingIds.has(ep.id)),
-    ];
-    return merged.slice(0, 100);
-  }, [trendingApiEpisodes, nonAudiobookEpisodes, podcasts]);
+  const recommendedEpisodes = useMemo(
+    () => excludeNonPodcastEpisodes(recommendedFeed),
+    [recommendedFeed, excludeNonPodcastEpisodes],
+  );
+  const trendingEpisodes = useMemo(
+    () => excludeNonPodcastEpisodes(trendingFeed),
+    [trendingFeed, excludeNonPodcastEpisodes],
+  );
+  const latestEpisodes = useMemo(
+    () => excludeNonPodcastEpisodes(latestFeed),
+    [latestFeed, excludeNonPodcastEpisodes],
+  );
 
   /* ─── play handlers ─── */
 
@@ -643,25 +568,35 @@ export default function Discover() {
     return ep;
   }, [podcastMap]);
 
-  const renderEpisodeList = (episodes, heading, subtitle = null, emptyMessage = "No episodes found.", maxCap = Infinity) => {
+  const renderEpisodeList = (
+    episodes,
+    heading,
+    subtitle = null,
+    emptyMessage = "No episodes found.",
+    { loading = false, sortOptions = CHRONOLOGICAL_SORT_OPTIONS } = {},
+  ) => {
     const filtered = filterEpisodes(episodes, episodeFilters);
-    const capped = maxCap < Infinity ? filtered.slice(0, maxCap) : filtered;
-    const visible = capped.slice(0, displayCount).map(enrichEpisode);
-    const hasMore = capped.length > displayCount;
-    const stillLoading = !allEpisodesFetched && maxCap === Infinity;
+    const visible = filtered.slice(0, displayCount).map(enrichEpisode);
+    const hasMore = filtered.length > displayCount;
 
     return (
       <div>
-        <SectionHeader title={heading} subtitle={subtitle} count={capped.length} countLabel="episodes">
+        <SectionHeader title={heading} subtitle={subtitle} count={filtered.length} countLabel="episodes">
           <EpisodeFilterBar
             podcasts={podcasts.filter(p => !isAudiobook(p) && !isMusic(p))}
             categories={categories}
             filters={episodeFilters}
             onFilterChange={(f) => { setEpisodeFilters(f); setDisplayCount(DISPLAY_PAGE_SIZE); }}
-            resultCount={capped.length}
+            resultCount={filtered.length}
+            sortOptions={sortOptions}
           />
         </SectionHeader>
-        {visible.length === 0 ? (
+        {loading && visible.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 py-16">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading episodes...
+          </div>
+        ) : visible.length === 0 ? (
           <div className="text-center py-16 text-zinc-500">{emptyMessage}</div>
         ) : (
           <EpisodesTable
@@ -672,16 +607,11 @@ export default function Discover() {
           />
         )}
 
-        {/* Infinite scroll sentinel + loading indicator */}
+        {/* Infinite scroll sentinel — paginates client-side through the
+            200-item feed window. The backend already applied its own
+            ordering, so we just reveal more items as the user scrolls. */}
         {hasMore && (
           <InfiniteScrollSentinel onVisible={() => setDisplayCount(prev => prev + DISPLAY_PAGE_SIZE)} />
-        )}
-        {stillLoading && (
-          <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 mt-6">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Loading more episodes...
-            <span>({fetchedEpisodes.length}{totalEpisodeCount ? ` of ${totalEpisodeCount}` : ''})</span>
-          </div>
         )}
       </div>
     );
@@ -899,7 +829,7 @@ export default function Discover() {
   /* ─── main render ─── */
 
   const renderContent = () => {
-    if (isLoading || episodesLoading) {
+    if (isLoading) {
       return (
         <div className="space-y-4">
           {[1, 2, 3, 4, 5].map(i => (
@@ -914,20 +844,27 @@ export default function Discover() {
         return renderEpisodeList(
           recommendedEpisodes,
           "Recommended for You",
-          "Personalized picks based on your listening history",
+          "Personalized picks from the same engine the home-screen \"For You\" row uses.",
           isAuthenticated
             ? "No recommendations yet. Listen to some episodes to get personalized suggestions."
-            : "Sign in to get personalized recommendations based on your listening history."
+            : "Sign in to get personalized recommendations based on your listening history.",
+          { loading: recommendedLoading, sortOptions: RELEVANCE_SORT_OPTIONS },
         );
       case "Newest":
-        return renderEpisodeList(nonAudiobookEpisodes, "Latest Episodes", "The most recently published episodes across all shows");
+        return renderEpisodeList(
+          latestEpisodes,
+          "Latest Episodes",
+          "The most recently published episodes across every podcast — the same feed that drives the home-screen \"New Releases\" row.",
+          "No episodes found.",
+          { loading: latestLoading, sortOptions: CHRONOLOGICAL_SORT_OPTIONS },
+        );
       case "Trending":
         return renderEpisodeList(
           trendingEpisodes,
           "Trending Now",
-          "Episodes picking up steam — falls back to the newest releases when it's quiet.",
+          "Episodes picking up steam — same feed as the home-screen \"Trending Now\" row, with a server-side fallback to the newest releases when volume is low.",
           "No trending episodes at the moment.",
-          100
+          { loading: trendingLoading, sortOptions: RELEVANCE_SORT_OPTIONS },
         );
       case "Podcasts":
         return renderShowList(
@@ -955,7 +892,13 @@ export default function Discover() {
           </AnimatePresence>
         );
       default:
-        return renderEpisodeList(recommendedEpisodes, "Recommended for You");
+        return renderEpisodeList(
+          recommendedEpisodes,
+          "Recommended for You",
+          null,
+          "No recommendations yet.",
+          { loading: recommendedLoading, sortOptions: RELEVANCE_SORT_OPTIONS },
+        );
     }
   };
 

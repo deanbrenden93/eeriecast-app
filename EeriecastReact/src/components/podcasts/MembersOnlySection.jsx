@@ -3,6 +3,7 @@ import { createPageUrl } from "@/utils";
 import { Star, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { useRef } from "react";
 import PropTypes from 'prop-types';
+import { getShowSubtext } from '@/lib/utils';
 
 export default function MembersOnlySection({ podcasts, onPodcastPlay, subtext }) {
   const scrollRef = useRef(null);
@@ -99,13 +100,14 @@ export default function MembersOnlySection({ podcasts, onPodcastPlay, subtext })
                   {podcast.title}
                 </h3>
                 {(() => {
-                  const sub = typeof subtext === 'function' ? subtext(podcast) : subtext;
-                  if (sub) {
-                    return <p className="text-zinc-500 text-xs leading-tight truncate">{sub}</p>;
-                  }
-                  return podcast.author ? (
-                    <p className="text-zinc-500 text-xs leading-tight truncate">{podcast.author}</p>
-                  ) : null;
+                  // Caller override wins; otherwise show an
+                  // episodes/tracks/chapters count based on show type.
+                  // Author/creator name is intentionally not surfaced.
+                  const sub = typeof subtext === 'function'
+                    ? subtext(podcast)
+                    : (subtext ?? getShowSubtext(podcast));
+                  if (!sub) return null;
+                  return <p className="text-zinc-500 text-xs leading-tight truncate">{sub}</p>;
                 })()}
               </div>
             </div>

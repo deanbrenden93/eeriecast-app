@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Search as SearchApi, Episode as EpisodeApi } from "@/api/entities";
 import { Search as SearchIcon, Play, BookOpen, Headphones, ChevronRight } from "lucide-react";
-import { isAudiobook, isMusic, getPodcastCategoriesLower } from "@/lib/utils";
+import { isAudiobook, isMusic, getPodcastCategoriesLower, getShowSubtext } from "@/lib/utils";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
@@ -79,7 +79,14 @@ function ShowCard({ podcast, onClick, isBook }) {
         </div>
       </div>
       <h3 className="text-white/90 font-semibold text-xs md:text-sm line-clamp-2 mb-0.5 group-hover:text-white transition-colors">{podcast.title}</h3>
-      <p className="text-zinc-500 text-[11px]">{podcast.author || 'Eeriecast'}</p>
+      {(() => {
+        // Audiobooks/music/podcasts all get a content-volume subtitle
+        // instead of the old "author" attribution — the creator concept
+        // is internal to the creator portal and shouldn't leak here.
+        const sub = getShowSubtext(podcast);
+        if (!sub) return null;
+        return <p className="text-zinc-500 text-[11px]">{sub}</p>;
+      })()}
     </div>
   );
 }

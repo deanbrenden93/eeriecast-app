@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { useMediaSession } from '@/hooks/use-media-session';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
-import { getEpisodeAudioUrl, isAudiobook, hasCategory } from '@/lib/utils';
+import { getEpisodeAudioUrl, isAudiobook, hasCategory, isMaturePodcast } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
 import { canAccessChapter, canAccessExclusiveEpisode, FREE_LISTEN_CHAPTER_LIMIT } from '@/lib/freeTier';
@@ -152,16 +152,35 @@ export const AudioPlayerProvider = ({ children }) => {
 
     // Mature-content gate
     const pod = rest.podcast;
-    if (pod && hasCategory(pod, 'mature') && !canViewMature) {
+    // Use isMaturePodcast (not hasCategory directly) so the title-based
+    // override list in utils.js — Darkness Plays, etc. — is honored even
+    // for shows whose backend categories haven't been tagged yet.
+    if (pod && isMaturePodcast(pod) && !canViewMature) {
       matureBlockedArgsRef.current = args;
       setMatureModalOpen(true);
       return 'blocked';
     }
 
-    // Premium/exclusive gate: members-only episodes (except the free sample)
-    // and individually premium-flagged episodes require a subscription.
+    // Premium/exclusive gate.
+    //
+    // Rule: the Premium paywall should only interrupt a play if the user
+    // genuinely doesn't have access. A "free sample" on a members-only
+    // show is explicitly carved out — it's there to hook listeners — and
+    // must never bounce them to /Premium, even if that episode happens
+    // to also have `is_premium` set on it.
+    //
+    // Evaluation order:
+    //   1. If the show is exclusive, let canAccessExclusiveEpisode decide
+    //      (that's the function that knows about free samples).
+    //   2. Otherwise, honor the per-episode is_premium flag (bonus episode
+    //      on an otherwise-free show).
     if (pod && !premiumRef.current) {
-      if (ep?.is_premium || (pod.is_exclusive && !canAccessExclusiveEpisode(ep, pod, false))) {
+      if (pod.is_exclusive) {
+        if (!canAccessExclusiveEpisode(ep, pod, false)) {
+          navigateRef.current(createPageUrl('Premium'));
+          return 'blocked';
+        }
+      } else if (ep?.is_premium) {
         navigateRef.current(createPageUrl('Premium'));
         return 'blocked';
       }
@@ -419,7 +438,7 @@ export const AudioPlayerProvider = ({ children }) => {
   useEffect(() => {
     if (!canViewMature) {
       const currentPod = audioPlayer.podcast;
-      if (currentPod && hasCategory(currentPod, 'mature')) {
+      if (currentPod && isMaturePodcast(currentPod)) {
         handleClosePlayer();
       }
     }

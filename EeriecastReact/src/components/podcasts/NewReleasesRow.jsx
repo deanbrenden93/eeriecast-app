@@ -51,7 +51,19 @@ export default function NewReleasesRow({
   const { loadAndPlay } = useAudioPlayerContext();
   const { episodeProgressMap, isAuthenticated } = useUser() || {};
 
-  const fetchLimit = Math.max(40, maxItems * 2);
+  // The trending / recommended endpoints already exclude audiobooks
+  // and music server-side, so a small over-fetch is plenty. The plain
+  // `-published_at` feed does NOT — chapters and tracks come back mixed
+  // in with real podcast episodes. A single recent audiobook (which
+  // can publish 40+ chapters at once) will push every regular episode
+  // off the top and leave this row blank after client-side exclusion,
+  // which is what makes the home-screen "Newest Episodes" row appear
+  // to randomly disappear. Pull a much bigger window for "latest" so
+  // there's always enough left over to fill the row.
+  const fetchLimit =
+    feedType === "latest"
+      ? Math.max(150, maxItems * 8)
+      : Math.max(40, maxItems * 2);
 
   // Primary feed — cached by feedType+params across the whole app, so all
   // three rows on the home screen plus Discover pull from the same cache and

@@ -20,12 +20,9 @@ import {
   Lock,
   Sparkles,
   ShieldAlert,
-  Cake,
-  AlertTriangle,
   BarChart3,
 } from "lucide-react";
 import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
-import DateOfBirthEditModal from "@/components/profile/DateOfBirthEditModal";
 import {
   getTrialLabel,
   formatTrialDaysRemaining,
@@ -65,24 +62,6 @@ function fmtMemberSince(iso) {
   }
 }
 
-/** Long, human-readable date for DOB display (e.g. "March 4, 1962"). */
-function fmtLongDate(iso) {
-  if (!iso) return null;
-  try {
-    // Parse as local midnight so a date like "1962-03-04" doesn't slide back
-    // a day in negative-UTC timezones.
-    const [y, m, d] = iso.split("-").map(Number);
-    if (!y || !m || !d) return null;
-    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return null;
-  }
-}
-
 /* ──────────────────────────────────────────────────────────────── */
 
 export default function Profile() {
@@ -106,12 +85,14 @@ export default function Profile() {
   // ── Modals ──
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showExplicitConfirm, setShowExplicitConfirm] = useState(false);
-  const [showDobEdit, setShowDobEdit] = useState(false);
 
-  // Explicit-language toggle is available to everyone except logged-in
-  // users whose date_of_birth places them under 18. Logged-in users with
-  // no DOB on file must pass a one-time self-attestation (same flow as
-  // guests) before turning it on.
+  // Explicit-language toggle is shown to every logged-in user. New
+  // accounts have no date_of_birth on file (we stopped collecting it at
+  // signup — store-level 17+ ratings + in-app attestation handle age
+  // verification now), so they fall into the `userAge === null` bucket
+  // and must pass a one-time 18+ self-attestation before flipping it on.
+  // Legacy accounts whose stored DOB proves they're under 18 remain
+  // blocked by the age clause below.
   const canShowExplicitToggle = isAuthenticated
     ? !(userAge !== null && userAge < 18)
     : false;
@@ -278,9 +259,6 @@ export default function Profile() {
     user.full_name || user.name || user.username || "Eeriecast Listener";
   const email = user.email || "";
   const memberSince = fmtMemberSince(user.date_joined);
-  const dobDisplay = fmtLongDate(user.date_of_birth);
-  const hasDob = !!user.date_of_birth;
-
   return (
     <div className="min-h-screen bg-black text-white pb-32">
       {/* ── Header gradient ── */}
@@ -359,27 +337,6 @@ export default function Profile() {
           trialEnds={trialEnds}
           trialDaysRemaining={trialDaysRemaining}
         />}
-
-        {/* ── Missing-DOB prompt (only shown when user skipped at signup) ── */}
-        {!hasDob && (
-          <button
-            type="button"
-            onClick={() => setShowDobEdit(true)}
-            className="w-full flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-left hover:bg-amber-500/[0.10] transition-colors group"
-          >
-            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-amber-100">
-                Add your date of birth
-              </p>
-              <p className="text-xs text-amber-200/80 mt-0.5 leading-relaxed">
-                You skipped this at signup. Without it, mature-content shows stay
-                locked even for users 18+. Adding it now takes a few seconds.
-              </p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-amber-300/70 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-0.5" />
-          </button>
-        )}
 
         {/* ── Listening stats ── */}
         <section>
@@ -482,42 +439,6 @@ export default function Profile() {
             </div>
           </section>
         )}
-
-        {/* ── Account details ── */}
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
-            Account
-          </h2>
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] divide-y divide-white/[0.04] overflow-hidden">
-            {/* Date of birth row */}
-            <button
-              type="button"
-              onClick={() => setShowDobEdit(true)}
-              className="flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-colors group w-full text-left"
-            >
-              <Cake className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition-colors flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-300 group-hover:text-white transition-colors">
-                  Date of birth
-                </p>
-                <p className={`text-xs mt-0.5 truncate ${hasDob ? 'text-gray-500' : 'text-amber-400/80'}`}>
-                  {hasDob
-                    ? `${dobDisplay}${userAge !== null ? ` · ${userAge} years old` : ''}`
-                    : 'Not set — tap to add'}
-                </p>
-              </div>
-              <span className="text-xs text-gray-500 mr-1 hidden sm:inline">
-                {hasDob ? 'Edit' : 'Add'}
-              </span>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0" />
-            </button>
-          </div>
-          <p className="text-[11px] text-gray-600 mt-2 leading-relaxed px-1">
-            {hasDob
-              ? 'Changing your date of birth requires re-entering your password.'
-              : 'You can set this once without a password. Future changes will require your password.'}
-          </p>
-        </section>
 
         {/* ── Explicit language toggle ── */}
         {canShowExplicitToggle && (
@@ -636,12 +557,6 @@ export default function Profile() {
       <ChangePasswordModal
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
-      />
-
-      {/* Date of birth edit modal */}
-      <DateOfBirthEditModal
-        isOpen={showDobEdit}
-        onClose={() => setShowDobEdit(false)}
       />
 
       {/* Explicit-language self-attestation (only for logged-in users

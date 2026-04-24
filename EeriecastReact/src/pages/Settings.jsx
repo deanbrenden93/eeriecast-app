@@ -136,14 +136,18 @@ export default function Settings() {
   const location = useLocation();
   const { toast } = useToast();
 
-  // Show the toggle for everyone EXCEPT logged-in users whose DOB proves
-  // they're under 18. If the DOB is missing (or they're a guest) we fall
-  // back to the same self-attestation modal the guest flow uses.
+  // Show the toggle for everyone EXCEPT logged-in users whose stored DOB
+  // proves they're under 18 (a legacy-account case — we no longer collect
+  // DOB at signup, so new accounts have userAge === null and fall through
+  // to the self-attestation path below). Guests always see it and go
+  // through attestation on first opt-in.
   const canShowMatureToggle = isAuthenticated
     ? !(userAge !== null && userAge < 18)
     : true;
-  // For logged-in users without a DOB on file, we require the same 18+
-  // self-attestation as guests before turning the flag on.
+  // For logged-in users without a DOB on file (now the default for every
+  // new user) we require the same 18+ self-attestation as guests before
+  // turning the flag on. This is the in-app gate that complements the
+  // store-level 17+ install gate.
   const needsAttestation = isAuthenticated && userAge === null;
   const matureChecked = isAuthenticated
     ? !!user?.allow_mature_content

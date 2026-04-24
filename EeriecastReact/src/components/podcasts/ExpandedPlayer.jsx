@@ -30,6 +30,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/utils";
+import { getContentRating } from "@/lib/showRatings";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
 import { createPageUrl } from "@/utils";
@@ -1141,9 +1142,31 @@ export default function ExpandedPlayer({
             >
               {podcast?.title || ''}
             </button>
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide text-amber-400/80 border border-amber-400/25 bg-amber-400/[0.08] leading-none select-none">
-              PG-13
-            </span>
+            {(() => {
+              // Dynamic content-rating badge. Prior to this we hard-coded
+              // "PG-13" for every episode which was obviously wrong — now
+              // we consult the single-source-of-truth rating map. When a
+              // show isn't in the map we simply render nothing rather
+              // than invent a rating.
+              const rating = getContentRating(podcast);
+              if (!rating) return null;
+              const tone =
+                rating === 'R'
+                  ? 'text-red-300 border-red-400/35 bg-red-500/[0.12]'
+                  : rating === 'PG-13'
+                    ? 'text-amber-300 border-amber-400/30 bg-amber-400/[0.10]'
+                    : rating === 'PG'
+                      ? 'text-emerald-300 border-emerald-400/30 bg-emerald-500/[0.10]'
+                      : 'text-sky-300 border-sky-400/30 bg-sky-500/[0.10]';
+              return (
+                <span
+                  title={`Rated ${rating}`}
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide leading-none select-none border ${tone}`}
+                >
+                  {rating}
+                </span>
+              );
+            })()}
             <button
               type="button"
               onClick={handleFollowToggle}

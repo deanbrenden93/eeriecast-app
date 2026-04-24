@@ -34,12 +34,6 @@ function formatEpisodeCount(p) {
   return `${n} episode${n === 1 ? '' : 's'}`;
 }
 
-// Subtitle for a music artist card — shows track count.
-function formatTrackCount(p) {
-  const n = p?.episode_count ?? p?.episodes_count ?? p?.total_episodes ?? 0;
-  if (!Number.isFinite(Number(n)) || Number(n) <= 0) return '';
-  return `${n} track${n === 1 ? '' : 's'}`;
-}
 import { Crown } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import PodcastModal from "../components/podcasts/PodcastModal";
@@ -47,6 +41,8 @@ import FeaturedHero from "../components/podcasts/FeaturedHero";
 import CategoryExplorer from "../components/podcasts/CategoryExplorer";
 import PodcastRow from "../components/podcasts/PodcastRow";
 import NewReleasesRow from "../components/podcasts/NewReleasesRow";
+import EpisodeCloudsRow from "../components/podcasts/EpisodeCloudsRow";
+import MusicTracksRow from "../components/podcasts/MusicTracksRow";
 import KeepListeningSection from "../components/podcasts/KeepListeningSection";
 import MembersOnlySection from "../components/podcasts/MembersOnlySection";
 import MembersOnlyEpisodesRow from "../components/podcasts/MembersOnlyEpisodesRow";
@@ -296,6 +292,26 @@ export default function Podcasts() {
         </div>
       )}
 
+      {/* Newest — freshly published episodes across the catalog. Sits
+          between "For You" and "Trending Now" so the home screen reads
+          as personal → recent → popular. Uses the same
+          NewReleasesRow / feedType="latest" plumbing that powers the
+          Discover → Newest tab, so the feed stays in sync. */}
+      {isLoading ? (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <LoadingSkeleton height="h-[300px]" />
+        </div>
+      ) : (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <NewReleasesRow
+            title={<h2 className="text-2xl font-bold text-white">Newest Episodes</h2>}
+            viewAllTo={`${createPageUrl('Discover')}?tab=Newest`}
+            feedType="latest"
+            onAddToPlaylist={openAddToPlaylist}
+          />
+        </div>
+      )}
+
       {/* Trending — episodes sorted by popularity */}
       {isLoading ? (
         <div className="w-full px-2.5 lg:px-10 py-3">
@@ -312,19 +328,14 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* New Releases — latest episodes across all non-audiobook podcasts */}
-      {isLoading ? (
+      {/* Drifting by Mood — themed "episode clouds" that break up the row
+          monotony with organic thumbnail clusters. Each cluster maps a
+          playful teaser title ("Explicitly Hilarious", "Lost in the
+          Woods", etc.) to an underlying podcast category and rolls 5
+          random episodes from that bucket on each visit. */}
+      {!isLoading && (
         <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton height="h-[300px]" />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <NewReleasesRow
-            title={<h2 className="text-2xl font-bold text-white">New Releases{selectedCategoryParam ? ` — ${selectedCategoryParam}` : ''}</h2>}
-            viewAllTo={`${createPageUrl('Discover')}?tab=Newest`}
-            categoryFilter={selectedCategoryParam || null}
-            onAddToPlaylist={openAddToPlaylist}
-          />
+          <EpisodeCloudsRow onAddToPlaylist={openAddToPlaylist} />
         </div>
       )}
 
@@ -356,22 +367,21 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* Music — only rendered when there are music artists in the catalog,
-          so the row doesn't appear as an empty placeholder on day zero. */}
+      {/* Music — rendered as individual track chips (not artist cards),
+          so listeners can kick off a specific song with one tap rather
+          than drilling through an artist page first. Up to 40 tracks
+          are surfaced in a two-row horizontal grid. */}
       {!isLoading && podcasts.some(p => isMusic(p)) && (
         <div className="w-full px-2.5 lg:px-10 py-3">
-          <PodcastRow
+          <MusicTracksRow
             title={
               <h2 className="text-2xl font-bold bg-gradient-to-r from-fuchsia-400 to-fuchsia-300 bg-clip-text text-transparent">
                 Music
               </h2>
             }
-            podcasts={podcasts.filter(p => isMusic(p))}
-            onPodcastPlay={handleNavigateToShow}
-            isCompact={true}
-            showMusicPill={true}
             viewAllTo={createPageUrl('Music')}
-            subtext={(p) => formatTrackCount(p)}
+            maxItems={40}
+            onAddToPlaylist={openAddToPlaylist}
           />
         </div>
       )}

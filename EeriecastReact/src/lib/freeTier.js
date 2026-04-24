@@ -60,7 +60,18 @@ export function getExclusiveSampleEpisodeIds(podcast, count = FREE_MEMBERS_ONLY_
   if (!podcast?.is_exclusive) return ids;
   if (isAudiobook(podcast)) return ids;
 
-  const episodes = Array.isArray(podcast.episodes) ? podcast.episodes : [];
+  // Accept both shapes the detail endpoint can return:
+  //   { episodes: [...] }                 (fully hydrated)
+  //   { episodes: { results: [...] } }    (paginated list serializer)
+  // Older code paths only handled the array form, which meant members-only
+  // shows coming off a list endpoint silently lost their free samples and
+  // gated everything.
+  const rawEpisodes = podcast.episodes;
+  const episodes = Array.isArray(rawEpisodes)
+    ? rawEpisodes
+    : Array.isArray(rawEpisodes?.results)
+      ? rawEpisodes.results
+      : [];
   if (episodes.length === 0) return ids;
 
   const getDate = (e) =>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Podcast, Episode, UserLibrary } from "@/api/entities";
 import ShowCard from "../components/discover/ShowCard";
-import { hasCategory, isAudiobook, isMusic, getEpisodeAudioUrl } from "@/lib/utils";
+import { hasCategory, isAudiobook, isMusic, getEpisodeAudioUrl, getShowSubtext } from "@/lib/utils";
 import { createPageUrl } from "@/utils";
 import { useUser } from "@/context/UserContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
@@ -104,18 +104,14 @@ export default function CategoryPage() {
               <span className="text-sm text-gray-400">{filtered.length} shows</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-4">
-              {filtered.map((podcast) => {
-                const n = podcast?.episodes_count ?? podcast?.episode_count ?? 0;
-                const subtext = n > 0 ? `${n} Episode${n === 1 ? '' : 's'}` : '';
-                return (
-                  <ShowCard
-                    key={podcast.id}
-                    podcast={podcast}
-                    onPlay={handlePodcastPlay}
-                    subtext={subtext}
-                  />
-                );
-              })}
+              {filtered.map((podcast) => (
+                <ShowCard
+                  key={podcast.id}
+                  podcast={podcast}
+                  onPlay={handlePodcastPlay}
+                  subtext={getShowSubtext(podcast)}
+                />
+              ))}
             </div>
           </div>
         )}

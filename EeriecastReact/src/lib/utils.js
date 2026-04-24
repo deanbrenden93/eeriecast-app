@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getContentRating } from "./showRatings";
 
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -102,9 +103,52 @@ export function isNonPodcastShow(podcast) {
   return isAudiobook(podcast) || isMusic(podcast);
 }
 
-/** Returns true if this podcast is in the "mature" category. */
+/**
+ * Returns true if this show requires the explicit-language / mature gate.
+ *
+ * A show is "mature" when either:
+ *   • its frontend content rating (see lib/showRatings.js) is 'R'; or
+ *   • it carries the backend `mature` category.
+ *
+ * The rating table is the primary source — an admin who assigns a show
+ * the 'R' rating shouldn't also have to tag it with the mature category
+ * for gating to kick in. The category check is kept as a belt-and-
+ * suspenders fallback for anything ingested via RSS before a rating is
+ * assigned.
+ */
 export function isMaturePodcast(podcast) {
-  try { return hasCategory(podcast, 'mature'); } catch { return false; }
+  try {
+    if (getContentRating(podcast) === 'R') return true;
+    if (hasCategory(podcast, 'mature')) return true;
+    return false;
+  } catch { return false; }
+}
+
+/**
+ * Build the one-line subtitle shown under a show/podcast card.
+ *
+ * The platform deliberately does *not* attribute shows to a creator on
+ * browsing surfaces — listeners think in terms of "shows", not "studios",
+ * and the creator concept exists purely for the creator-portal / royalty
+ * side of the system. So the card subtext is a content-volume hint tuned
+ * to the show type:
+ *
+ *   • Audiobook → "N Chapters"
+ *   • Music     → "N Tracks"
+ *   • Podcast   → "N Episodes"
+ *
+ * Returns an empty string when we don't have a count yet so callers can
+ * still render the card without a dangling "0 Episodes" line.
+ */
+export function getShowSubtext(podcast) {
+  if (!podcast) return '';
+  const n = Number(
+    podcast.episode_count ?? podcast.episodes_count ?? podcast.total_episodes ?? 0,
+  );
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (isAudiobook(podcast)) return `${n} Chapter${n === 1 ? '' : 's'}`;
+  if (isMusic(podcast)) return `${n} Track${n === 1 ? '' : 's'}`;
+  return `${n} Episode${n === 1 ? '' : 's'}`;
 }
 
 /**
