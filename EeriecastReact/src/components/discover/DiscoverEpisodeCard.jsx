@@ -27,7 +27,7 @@ export default function DiscoverEpisodeCard({ episode, podcast, onPlay, onAddToP
           {/* Cover */}
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-eeriecast-surface-light flex-shrink-0 ring-1 ring-white/[0.06] relative">
             {coverImage ? (
-              <img src={coverImage} alt={episode?.title} className="w-full h-full object-cover" />
+              <img src={coverImage} alt={episode?.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-2xl opacity-40">🎧</span>

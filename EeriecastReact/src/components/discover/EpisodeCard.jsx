@@ -99,7 +99,7 @@ export default function EpisodeCard({ podcast, onPlay, onAddToPlaylist, initialF
           {/* Cover */}
           <div className="w-16 h-16 rounded-lg overflow-hidden bg-eeriecast-surface-light flex-shrink-0 ring-1 ring-white/[0.06]">
             {podcast.cover_image ? (
-              <img src={podcast.cover_image} alt={podcast.title} className="w-full h-full object-cover" />
+              <img src={podcast.cover_image} alt={podcast.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-2xl opacity-40">🎧</span>

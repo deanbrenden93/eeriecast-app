@@ -360,31 +360,34 @@ export default function EpisodeCloudsRow({ onAddToPlaylist: _unused }) {
       {/* Inline keyframes — scoped via a unique animation name so they
           don't collide with anything else in the app. We keep them
           inside the component to avoid having to touch tailwind.config.
-          The extra `ec-pulse` and `ec-conic` keyframes power the
-          ambient glow and slow-rotating conic wash on each cloud card
-          so the backgrounds feel alive without distracting. */}
+          Only a single cheap transform-only keyframe survives here:
+          continuously animated backgrounds (rotating conic gradients,
+          shifting background-positions, two blurred & pulsing glow
+          blobs per card) were causing severe jank on mobile — each was
+          forcing repaints of a full-card-sized layer every frame across
+          5 simultaneously visible cards. The ambient look is now
+          achieved with static painted gradients (see `.ec-card-*` below)
+          that render once and never invalidate. `.ec-paused` is toggled
+          via IntersectionObserver so off-screen cards don't animate at
+          all, and the @media query below turns everything off for users
+          who've asked for reduced motion. */}
       <style>{`
         @keyframes ec-float {
           0%, 100% { transform: translateY(0); }
           50%      { transform: translateY(-6px); }
         }
-        @keyframes ec-drift {
-          0%   { transform: translate(0, 0); }
-          50%  { transform: translate(-8px, 6px); }
-          100% { transform: translate(0, 0); }
+        .ec-float-bubble {
+          animation: ec-float 5.5s ease-in-out infinite;
+          will-change: transform;
         }
-        @keyframes ec-pulse {
-          0%, 100% { opacity: 0.45; transform: scale(1); }
-          50%      { opacity: 0.75; transform: scale(1.08); }
+        .ec-paused .ec-float-bubble {
+          animation-play-state: paused;
         }
-        @keyframes ec-conic {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
+        .ec-card {
+          contain: layout paint style;
         }
-        @keyframes ec-shimmer {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
+        @media (prefers-reduced-motion: reduce) {
+          .ec-float-bubble { animation: none; }
         }
       `}</style>
 
@@ -496,11 +499,36 @@ FilterPill.propTypes = {
 function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
   const { Icon } = theme;
   const [hoverIdx, setHoverIdx] = useState(null);
+  const rootRef = useRef(null);
 
   // Each card owns its own dice state — this is what makes a dice click
   // affect only its card. Tokens are monotonic so the dice icon can just
   // animate `rotate: rollCount * 360` and keep spinning forward.
   const [rollCount, setRollCount] = useState(0);
+
+  // Pause the inner `ec-float` animation for every bubble whenever this
+  // card is scrolled off screen. With 5 cards in a horizontal strip
+  // only ~2 are visible at a time on mobile; keeping the other 3
+  // hammering the compositor is pure waste. IntersectionObserver is
+  // also supported everywhere we care about and degrades gracefully:
+  // if it's unavailable (no polyfill) the card just animates normally.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          // Toggle a class rather than setState → no React re-render,
+          // animation pause/resume happens purely via CSS.
+          if (entry.isIntersecting) entry.target.classList.remove("ec-paused");
+          else entry.target.classList.add("ec-paused");
+        }
+      },
+      { threshold: 0.01, rootMargin: "100px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   // Keep the previous roll's episode IDs so the next roll actively
   // avoids repeating them. Using a ref instead of state so updating it
@@ -556,63 +584,30 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
 
   return (
     <div
-      className="relative flex-shrink-0 w-[270px] sm:w-[290px] h-[340px] rounded-2xl overflow-hidden group"
+      ref={rootRef}
+      className="ec-card relative flex-shrink-0 w-[270px] sm:w-[290px] h-[340px] rounded-2xl overflow-hidden group"
       style={{
-        // Deep base so the themed gradient reads like vapor over void.
-        background:
+        // Single flat paint for the entire ambient look: a dark vertical
+        // base, a subtle themed sheen, two soft theme-colored "glow"
+        // radial gradients in opposite corners (replacing the old pair
+        // of blurred & animated circles), and a bottom vignette so the
+        // footer text reads cleanly. All baked into one gradient stack
+        // so the browser paints it once and is done — no blur filters,
+        // no animated background-position, no rotating conic. This is
+        // the single biggest perf win in the redesign.
+        backgroundImage: [
+          `radial-gradient(120% 80% at 100% 0%, ${theme.glow} 0%, transparent 55%)`,
+          `radial-gradient(120% 80% at 0% 100%, ${theme.glow} 0%, transparent 55%)`,
+          `linear-gradient(135deg, ${theme.accent}22 0%, transparent 45%)`,
+          "radial-gradient(circle at 50% 120%, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 60%)",
           "linear-gradient(160deg, rgba(23,23,27,0.95) 0%, rgba(10,10,14,0.98) 100%)",
+        ].join(", "),
       }}
     >
-      {/* Layered ambient background:
-          1. Static themed gradient wash for base color identity.
-          2. Slowly shimmering diagonal gradient for a subtle sheen.
-          3. A slow-rotating conic sweep that casts faint theme light
-             around the edges — this is what gives the card its
-             "alive" feeling without being distracting.
-          4. Two drifting, pulsing blurred blobs in the theme color.
-          5. A faint vignette so text reads cleanly over everything. */}
-      <div
-        className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${theme.gradientClass} opacity-90`}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.18] mix-blend-screen"
-        style={{
-          backgroundImage: `linear-gradient(115deg, transparent 0%, ${theme.accent}33 40%, transparent 80%)`,
-          backgroundSize: "300% 300%",
-          animation: "ec-shimmer 14s ease-in-out infinite",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute -inset-1/4 opacity-[0.22]"
-        style={{
-          background: `conic-gradient(from 0deg at 50% 50%, transparent 0deg, ${theme.accent}55 90deg, transparent 180deg, ${theme.accent}33 270deg, transparent 360deg)`,
-          animation: "ec-conic 28s linear infinite",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute -top-10 -right-10 w-56 h-56 rounded-full blur-3xl"
-        style={{
-          background: theme.glow,
-          animation: "ec-drift 9s ease-in-out infinite, ec-pulse 7s ease-in-out infinite",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute -bottom-16 -left-10 w-64 h-64 rounded-full blur-3xl"
-        style={{
-          background: theme.glow,
-          animation: "ec-drift 11s ease-in-out infinite reverse, ec-pulse 9s ease-in-out infinite",
-          opacity: 0.55,
-        }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(circle at 50% 120%, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 60%)",
-        }}
-      />
-
-      {/* thin hover border accent in the theme's color */}
+      {/* Thin hover border accent in the theme's color. Kept as a
+          separate layer because we want the border-radius to stay
+          crisp at the edges even as the ambient paint bleeds through
+          transparency. Static — no animation. */}
       <div
         className="pointer-events-none absolute inset-0 rounded-2xl border border-white/[0.06] group-hover:border-white/[0.12] transition-colors duration-500"
       />
@@ -692,7 +687,6 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
             return (
               <motion.div
                 key={item.id}
-                layout
                 initial={{
                   opacity: 0,
                   scale: 0.15,
@@ -739,13 +733,13 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
               >
                 {/* Floating inner wrapper: gentle vertical bob on its
                     own independent rhythm. Kept separate so framer
-                    owns the outer element's transform exclusively. */}
+                    owns the outer element's transform exclusively.
+                    Animation is driven via the `.ec-float-bubble`
+                    class so IntersectionObserver + the reduced-motion
+                    media query can pause / disable it centrally. */}
                 <div
-                  className="absolute inset-0 rounded-full"
-                  style={{
-                    animation: "ec-float 5.5s ease-in-out infinite",
-                    animationDelay: pos.delay,
-                  }}
+                  className="ec-float-bubble absolute inset-0 rounded-full"
+                  style={{ animationDelay: pos.delay }}
                 >
                   <button
                     type="button"
@@ -767,6 +761,10 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
                       <img
                         src={item.cover_image}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
+                        width={pos.size}
+                        height={pos.size}
                         className="w-full h-full object-cover"
                       />
                     ) : (

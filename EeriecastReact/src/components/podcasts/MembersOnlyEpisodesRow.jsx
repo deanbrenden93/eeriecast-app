@@ -303,6 +303,8 @@ export default function MembersOnlyEpisodesRow({
                     <img
                       src={cover}
                       alt={ep.title}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110"
                     />
                   ) : (

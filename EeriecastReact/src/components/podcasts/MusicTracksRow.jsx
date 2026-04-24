@@ -261,7 +261,7 @@ function TrackCard({
       {/* Cover + play overlay */}
       <div className="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden ring-1 ring-white/[0.08]">
         {track.cover_image ? (
-          <img src={track.cover_image} alt="" className="w-full h-full object-cover" />
+          <img src={track.cover_image} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-fuchsia-500/30 to-purple-900/40 flex items-center justify-center">
             <Music className="w-5 h-5 text-white/80" />

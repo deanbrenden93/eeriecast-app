@@ -61,6 +61,8 @@ export default function FollowingItem({ podcast }) {
             <img
               src={podcast.cover_image}
               alt={podcast.title}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover"
             />
           ) : (

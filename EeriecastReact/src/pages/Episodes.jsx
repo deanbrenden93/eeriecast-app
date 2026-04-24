@@ -550,8 +550,16 @@ export default function Episodes() {
           style={{ background: isBook ? 'radial-gradient(circle, #06b6d4, transparent)' : 'radial-gradient(circle, #dc2626, transparent)' }}
         />
 
-        {/* Content */}
-        <div className="relative pt-10 md:pt-14 pb-10 md:pb-14 px-4 lg:px-10">
+        {/* Content — `pt-4 md:pt-6` intentionally light because the
+            surrounding Layout already reserves 64px for the fixed top
+            nav via `pt-16`. We used to add `pt-10 md:pt-14` here on top
+            of that, which left a ~100–120px dead zone between the nav
+            and the Back button (see screenshot feedback). Now the Back
+            button sits just under the nav, the cover gradient reads as
+            one continuous piece with the header, and the hero feels
+            like a proper movie-poster treatment instead of floating in
+            a pocket of empty space. */}
+        <div className="relative pt-4 md:pt-6 pb-10 md:pb-12 px-4 lg:px-10">
           {/* Back — lets the listener return to wherever they came from
               (discover, search, library, deep-link, etc.) without
               reaching for the browser chrome. Sits inside the hero so it
@@ -561,7 +569,7 @@ export default function Episodes() {
             type="button"
             onClick={safeGoBack}
             aria-label="Go back"
-            className="inline-flex items-center gap-1.5 mb-5 md:mb-7 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 text-[13px] font-medium backdrop-blur-sm"
+            className="inline-flex items-center gap-1.5 mb-4 md:mb-5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 text-[13px] font-medium backdrop-blur-sm"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Back</span>

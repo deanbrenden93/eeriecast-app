@@ -82,7 +82,7 @@ export default function KeepListeningSection({
                 {/* Thumbnail */}
                 <div className="relative flex-shrink-0 w-[58px] h-[58px] rounded-lg overflow-hidden">
                   {cover ? (
-                    <img src={cover} alt={episode.title} className="w-full h-full object-cover" />
+                    <img src={cover} alt={episode.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-eeriecast-surface-light cover-shimmer" />
                   )}
