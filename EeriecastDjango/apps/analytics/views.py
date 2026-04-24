@@ -19,6 +19,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
@@ -27,7 +28,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.billing.models import Subscription
-from apps.library.models import PodcastFollowing
+from apps.episodes.models import Episode
+from apps.library.models import Favorite, ListeningHistory, PlaybackEvent, PodcastFollowing
 from apps.podcasts.models import Podcast
 
 from .permissions import IsStaffSuperuser
@@ -271,21 +273,221 @@ class AnalyticsSummaryView(APIView):
             paid_series.append(count)
         free_series = [max(0, cumulative_users_series[i] - paid_series[i]) for i in range(len(buckets))]
 
-        # ── CONTENT METRICS (light) ─────────────────────────────────
+        # ── CONTENT METRICS ─────────────────────────────────────────
         total_shows = Podcast.objects.count()
-        total_follows = PodcastFollowing.objects.count()
-        new_follows_in_range = PodcastFollowing.objects.filter(
+
+        # Follow counts.
+        #
+        # Two tables exist for follow-like relationships:
+        #   • PodcastFollowing — intended follows table, but the public API
+        #     endpoint (PodcastFollowingViewSet) *writes* to Favorite instead
+        #     (see apps/library/views.py:create). Production data has
+        #     effectively zero PodcastFollowing rows.
+        #   • Favorite — generic-foreign-key table that holds real follows
+        #     under content_type=Podcast. This is where the data lives.
+        #
+        # The analytics dashboard used to count the empty PodcastFollowing
+        # table, which is why every follow metric read "0". We now read
+        # from Favorite filtered to the Podcast content type, and fall
+        # back to PodcastFollowing for any environments where it has been
+        # backfilled. The two counts are summed as a belt-and-braces
+        # guard — real deployments will only have data in one of them,
+        # but double-counting a follow that somehow ended up in both is
+        # less harmful than silently dropping it.
+        podcast_ct = ContentType.objects.get_for_model(Podcast)
+        podcast_favs = Favorite.objects.filter(content_type=podcast_ct)
+        legacy_follows = PodcastFollowing.objects.all()
+
+        total_follows = podcast_favs.count() + legacy_follows.count()
+        new_follows_in_range = (
+            podcast_favs.filter(created_at__gte=start, created_at__lt=end).count()
+            + legacy_follows.filter(created_at__gte=start, created_at__lt=end).count()
+        )
+        new_follows_series = [
+            a + b for a, b in zip(
+                _counts_per_day(
+                    podcast_favs.filter(created_at__gte=start, created_at__lt=end),
+                    "created_at",
+                    buckets,
+                ),
+                _counts_per_day(
+                    legacy_follows.filter(created_at__gte=start, created_at__lt=end),
+                    "created_at",
+                    buckets,
+                ),
+                strict=False,
+            )
+        ]
+
+        # Top followed podcasts. Count Favorite rows per podcast + any
+        # stragglers in PodcastFollowing, merged in Python so we can
+        # rank across both sources.
+        fav_counts: dict[int, int] = {
+            row["object_id"]: row["n"]
+            for row in podcast_favs.values("object_id").annotate(n=Count("id"))
+        }
+        legacy_counts: dict[int, int] = {
+            row["podcast_id"]: row["n"]
+            for row in legacy_follows.values("podcast_id").annotate(n=Count("id"))
+        }
+        merged: dict[int, int] = {}
+        for pid, n in fav_counts.items():
+            merged[pid] = merged.get(pid, 0) + n
+        for pid, n in legacy_counts.items():
+            merged[pid] = merged.get(pid, 0) + n
+        top_ids = [pid for pid, _ in sorted(merged.items(), key=lambda kv: kv[1], reverse=True)[:10]]
+        id_to_title = dict(
+            Podcast.objects.filter(id__in=top_ids).values_list("id", "title")
+        )
+        top_followed = [
+            {"id": pid, "title": id_to_title.get(pid, f"Podcast #{pid}"), "follower_count": merged[pid]}
+            for pid in top_ids
+        ]
+
+        # Listened-time metrics.
+        #
+        # User.minutes_listened is declared on the model but isn't
+        # incremented anywhere in the app, so summing it produced 0.
+        # ListeningHistory is the real source of truth — one row per
+        # (user, episode) with the last-known playback position. We sum
+        # that position column and convert to minutes. This undercounts
+        # replays (a user who listens twice still only contributes their
+        # max position once), but it's accurate enough for a dashboard
+        # and matches what users would describe as "total time listened
+        # across the catalogue".
+        total_seconds_listened = (
+            ListeningHistory.objects.aggregate(total=Sum("progress")).get("total") or 0
+        )
+        total_minutes = int(total_seconds_listened // 60)
+
+        # Play & completion engagement ---------------------------------
+        # "Plays" = distinct play events recorded via PlaybackEvent
+        # (fired from /library/progress/ when the client sends
+        # event="play"). Counting events rather than unique episodes
+        # captures repeat listens, which is the normal industry
+        # definition of a "play".
+        play_events = PlaybackEvent.objects.filter(event="play")
+        complete_events = PlaybackEvent.objects.filter(event="complete")
+
+        total_plays = play_events.count()
+        plays_in_range = play_events.filter(created_at__gte=start, created_at__lt=end).count()
+        plays_prev = play_events.filter(
+            created_at__gte=start - (end - start), created_at__lt=start
+        ).count()
+        completions_in_range = complete_events.filter(
             created_at__gte=start, created_at__lt=end
         ).count()
-        top_followed = list(
-            Podcast.objects
-            .annotate(follower_count=Count("followers"))
-            .filter(follower_count__gt=0)
-            .order_by("-follower_count")[:10]
-            .values("id", "title", "follower_count")
+
+        plays_series = _counts_per_day(
+            play_events.filter(created_at__gte=start, created_at__lt=end),
+            "created_at",
+            buckets,
+        )
+        completions_series = _counts_per_day(
+            complete_events.filter(created_at__gte=start, created_at__lt=end),
+            "created_at",
+            buckets,
         )
 
-        total_minutes = user_qs.aggregate(total=Sum("minutes_listened")).get("total") or 0
+        # Listen-minutes per day — derived from heartbeat events. The
+        # web client fires a heartbeat roughly every 15s while audio is
+        # actively playing (see use-audio-player.js), so counting
+        # heartbeats-per-day × the interval gives us a reasonable proxy
+        # for "minutes listened on day D". If the heartbeat interval
+        # ever changes, adjust HEARTBEAT_SECONDS below.
+        HEARTBEAT_SECONDS = 15
+        heartbeats_series = _counts_per_day(
+            PlaybackEvent.objects.filter(
+                event="heartbeat", created_at__gte=start, created_at__lt=end
+            ),
+            "created_at",
+            buckets,
+        )
+        listen_minutes_series = [round((n * HEARTBEAT_SECONDS) / 60, 1) for n in heartbeats_series]
+        listen_minutes_in_range = int(sum(listen_minutes_series))
+
+        # Top 10 episodes by plays & by listen time.
+        top_ep_plays_rows = list(
+            play_events
+            .values("episode_id")
+            .annotate(plays=Count("id"))
+            .order_by("-plays")[:10]
+        )
+        top_ep_ids = [r["episode_id"] for r in top_ep_plays_rows]
+        ep_details = {
+            e["id"]: e for e in
+            Episode.objects.filter(id__in=top_ep_ids).values("id", "title", "podcast_id", "podcast__title")
+        }
+        top_episodes_by_plays = [
+            {
+                "id": r["episode_id"],
+                "title": ep_details.get(r["episode_id"], {}).get("title") or f"Episode #{r['episode_id']}",
+                "podcast_title": ep_details.get(r["episode_id"], {}).get("podcast__title") or "",
+                "plays": r["plays"],
+            }
+            for r in top_ep_plays_rows
+        ]
+
+        top_ep_listen_rows = list(
+            ListeningHistory.objects
+            .values("episode_id")
+            .annotate(seconds=Sum("progress"))
+            .order_by("-seconds")[:10]
+        )
+        top_ep_listen_ids = [r["episode_id"] for r in top_ep_listen_rows]
+        ep_listen_details = {
+            e["id"]: e for e in
+            Episode.objects.filter(id__in=top_ep_listen_ids).values("id", "title", "podcast_id", "podcast__title")
+        }
+        top_episodes_by_listen_time = [
+            {
+                "id": r["episode_id"],
+                "title": ep_listen_details.get(r["episode_id"], {}).get("title") or f"Episode #{r['episode_id']}",
+                "podcast_title": ep_listen_details.get(r["episode_id"], {}).get("podcast__title") or "",
+                "minutes": int((r["seconds"] or 0) // 60),
+            }
+            for r in top_ep_listen_rows
+        ]
+
+        # Top 10 shows by plays & by listen time — aggregated across all
+        # episodes of the show.
+        top_show_plays_rows = list(
+            play_events
+            .values("episode__podcast_id")
+            .annotate(plays=Count("id"))
+            .order_by("-plays")[:10]
+        )
+        show_play_ids = [r["episode__podcast_id"] for r in top_show_plays_rows]
+        show_play_titles = dict(
+            Podcast.objects.filter(id__in=show_play_ids).values_list("id", "title")
+        )
+        top_shows_by_plays = [
+            {
+                "id": r["episode__podcast_id"],
+                "title": show_play_titles.get(r["episode__podcast_id"]) or f"Podcast #{r['episode__podcast_id']}",
+                "plays": r["plays"],
+            }
+            for r in top_show_plays_rows
+        ]
+
+        top_show_listen_rows = list(
+            ListeningHistory.objects
+            .values("episode__podcast_id")
+            .annotate(seconds=Sum("progress"))
+            .order_by("-seconds")[:10]
+        )
+        show_listen_ids = [r["episode__podcast_id"] for r in top_show_listen_rows]
+        show_listen_titles = dict(
+            Podcast.objects.filter(id__in=show_listen_ids).values_list("id", "title")
+        )
+        top_shows_by_listen_time = [
+            {
+                "id": r["episode__podcast_id"],
+                "title": show_listen_titles.get(r["episode__podcast_id"]) or f"Podcast #{r['episode__podcast_id']}",
+                "minutes": int((r["seconds"] or 0) // 60),
+            }
+            for r in top_show_listen_rows
+        ]
 
         # ── RESPONSE ────────────────────────────────────────────────
         def pct_delta(curr: int, prev: int) -> float | None:
@@ -327,6 +529,11 @@ class AnalyticsSummaryView(APIView):
                 "total_follows": total_follows,
                 "new_follows_in_range": new_follows_in_range,
                 "total_minutes_listened": int(total_minutes),
+                "total_plays": total_plays,
+                "plays_in_range": plays_in_range,
+                "plays_delta_pct": pct_delta(plays_in_range, plays_prev),
+                "completions_in_range": completions_in_range,
+                "listen_minutes_in_range": listen_minutes_in_range,
             },
             "series": {
                 "labels": bucket_labels,
@@ -336,11 +543,19 @@ class AnalyticsSummaryView(APIView):
                 "free_users": free_series,
                 "new_subs": new_subs_series,
                 "canceled_subs": canceled_series,
+                "new_follows": new_follows_series,
+                "plays": plays_series,
+                "completions": completions_series,
+                "listen_minutes": listen_minutes_series,
             },
             "breakdowns": {
                 "plan_mix": plan_mix,
                 "age_distribution": age_buckets,
                 "top_followed_podcasts": top_followed,
+                "top_episodes_by_plays": top_episodes_by_plays,
+                "top_episodes_by_listen_time": top_episodes_by_listen_time,
+                "top_shows_by_plays": top_shows_by_plays,
+                "top_shows_by_listen_time": top_shows_by_listen_time,
             },
         }
         return Response(payload)

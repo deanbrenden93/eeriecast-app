@@ -115,20 +115,31 @@ function SlideContent({ slide, podcast, onPlay, navigate }) {
         </div>
       )}
 
-      {/* Title */}
+      {/* Title — reserves space for two lines so single-line titles
+          (e.g. "Dogwood") don't leave a vertical gap that shifts the
+          description and CTA row up. Combined with the description's
+          reserved min-height, this keeps the whole text column the
+          same height on every slide, so the hero never jumps. */}
       <h1
-        className="font-display font-extrabold italic text-white mb-4"
-        style={{ fontSize: 'clamp(30px, 5.5vw, 50px)', lineHeight: 1.08, letterSpacing: '-0.025em' }}
+        className="font-display font-extrabold italic text-white mb-4 flex flex-col justify-end"
+        style={{
+          fontSize: 'clamp(30px, 5.5vw, 50px)',
+          lineHeight: 1.08,
+          letterSpacing: '-0.025em',
+          minHeight: 'calc(2 * 1.08 * clamp(30px, 5.5vw, 50px))',
+        }}
       >
         {(slide.title || '').split('\n').map((line, i, arr) => (
           <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
         ))}
       </h1>
 
-      {/* Description */}
-      {slide.description && (
-        <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mb-7">{slide.description}</p>
-      )}
+      {/* Description — reserve space for the longest slide description so
+          the CTA row below stays pinned to the same vertical position
+          across slides (no jump during the cross-fade). */}
+      <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mb-7 min-h-[6.5rem]">
+        {slide.description || ''}
+      </p>
 
       {/* Actions */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -319,10 +330,14 @@ export default function FeaturedHero({ onPlay }) {
     setPaused(false);
   }, [slides.length]);
 
-  // Use minHeight (not a fixed height) so slides with tall content — long
-  // titles or a wrapping description on narrow-but-short viewports — can
-  // grow past the clamp baseline instead of clipping the badge at the top.
-  const heroMinHeight = 'clamp(360px, 46vh, 460px)';
+  // Hero height baseline. The text column itself now reserves constant
+  // vertical space (2-line title slot + ~6.5rem description slot) so
+  // every slide renders at the same height regardless of its actual
+  // title/description length. That means swapping between slides
+  // doesn't cause the section to resize, but we still use `minHeight`
+  // (not a fixed `height`) so on unusually narrow or short viewports
+  // the section can grow to fit rather than clipping the badge.
+  const heroMinHeight = 'clamp(400px, 48vh, 500px)';
 
   return (
     <section

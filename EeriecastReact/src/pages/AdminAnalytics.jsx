@@ -44,6 +44,10 @@ import {
   AlertCircle,
   Calendar,
   CalendarRange,
+  Play,
+  Headphones,
+  CheckCircle2,
+  Heart,
 } from "lucide-react";
 
 import { useUser } from "@/context/UserContext";
@@ -227,15 +231,57 @@ const gridProps = {
   vertical: false,
 };
 
+// Recharts' default <Tooltip> renders three separate inline-styled
+// elements: the outer wrapper, the label line ("Jan 5"), and each
+// name/value row. Styling only the outer wrapper via `contentStyle`
+// left the inner text with Recharts' defaults — near-black labels on
+// our near-black popup, which is why the Plan-mix pie (and every
+// other chart here) showed unreadable tooltips. We now expose a full
+// set of props so each tooltip call-site gets the same treatment.
 const tooltipStyle = {
-  background: "rgba(17, 17, 23, 0.95)",
+  background: "rgba(17, 17, 23, 0.96)",
   border: "1px solid rgba(255,255,255,0.08)",
   borderRadius: 10,
   padding: "8px 12px",
   color: "#e4e4e7",
   fontSize: 12,
   boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+  outline: "none",
 };
+
+const tooltipItemStyle = {
+  color: "#e4e4e7",
+  fontSize: 12,
+  padding: 0,
+};
+
+const tooltipLabelStyle = {
+  color: "#a1a1aa",
+  fontSize: 11,
+  marginBottom: 4,
+  fontWeight: 500,
+};
+
+// Props spread on every <Tooltip> so we only have one place to tweak
+// chart tooltip styling. Also disables the gray hover-highlight that
+// Recharts paints under bar tooltips on dark backgrounds (it reads as
+// a rendering glitch here).
+const TOOLTIP_PROPS = {
+  contentStyle: tooltipStyle,
+  itemStyle: tooltipItemStyle,
+  labelStyle: tooltipLabelStyle,
+  cursor: { fill: "rgba(255,255,255,0.04)" },
+};
+
+function formatMinutes(mins) {
+  const n = Number(mins) || 0;
+  if (n >= 60) {
+    const h = Math.floor(n / 60);
+    const m = Math.round(n % 60);
+    return m ? `${formatNumber(h)}h ${m}m` : `${formatNumber(h)}h`;
+  }
+  return `${formatNumber(n)} min`;
+}
 
 // ── page ──────────────────────────────────────────────────────────────
 
@@ -316,6 +362,37 @@ export default function AdminAnalytics() {
   }, [breakdowns]);
 
   const topShows = breakdowns.top_followed_podcasts || [];
+  const topEpisodesByPlays = breakdowns.top_episodes_by_plays || [];
+  const topEpisodesByListen = breakdowns.top_episodes_by_listen_time || [];
+  const topShowsByPlays = breakdowns.top_shows_by_plays || [];
+  const topShowsByListen = breakdowns.top_shows_by_listen_time || [];
+
+  // Engagement series — same shape as the growth charts so the same
+  // ResponsiveContainer + CartesianGrid props work across the board.
+  const playsData = useMemo(() => {
+    const labels = series.labels || [];
+    return labels.map((label, i) => ({
+      date: label,
+      Plays: series.plays?.[i] ?? 0,
+      Completions: series.completions?.[i] ?? 0,
+    }));
+  }, [series]);
+
+  const listenMinutesData = useMemo(() => {
+    const labels = series.labels || [];
+    return labels.map((label, i) => ({
+      date: label,
+      Minutes: series.listen_minutes?.[i] ?? 0,
+    }));
+  }, [series]);
+
+  const followsSeriesData = useMemo(() => {
+    const labels = series.labels || [];
+    return labels.map((label, i) => ({
+      date: label,
+      Follows: series.new_follows?.[i] ?? 0,
+    }));
+  }, [series]);
 
   // Gate render *after* all hooks have run. We still show a spinner-ish
   // placeholder while the user payload is hydrating so non-admins never
@@ -511,10 +588,7 @@ export default function AdminAnalytics() {
                     <CartesianGrid {...gridProps} />
                     <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
                     <YAxis {...axisProps} />
-                    <Tooltip
-                      contentStyle={tooltipStyle}
-                      labelFormatter={formatDateTick}
-                    />
+                    <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
                     <Legend
                       wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
                       iconType="circle"
@@ -555,10 +629,7 @@ export default function AdminAnalytics() {
                       <CartesianGrid {...gridProps} />
                       <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
                       <YAxis {...axisProps} />
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        labelFormatter={formatDateTick}
-                      />
+                      <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
                       <Bar
                         dataKey="New"
                         fill="#a78bfa"
@@ -584,7 +655,7 @@ export default function AdminAnalytics() {
                       <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
                       <YAxis {...axisProps} />
                       <Tooltip
-                        contentStyle={tooltipStyle}
+                        {...TOOLTIP_PROPS}
                         labelFormatter={formatDateTick}
                         formatter={(value, name) => [Math.abs(value), name]}
                       />
@@ -632,7 +703,10 @@ export default function AdminAnalytics() {
                             />
                           ))}
                         </Pie>
-                        <Tooltip contentStyle={tooltipStyle} />
+                        <Tooltip
+                          {...TOOLTIP_PROPS}
+                          formatter={(value, name) => [formatNumber(value), name]}
+                        />
                         <Legend
                           wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
                           iconType="circle"
@@ -659,7 +733,7 @@ export default function AdminAnalytics() {
                         <CartesianGrid {...gridProps} />
                         <XAxis dataKey="name" {...axisProps} />
                         <YAxis {...axisProps} />
-                        <Tooltip contentStyle={tooltipStyle} />
+                        <Tooltip {...TOOLTIP_PROPS} />
                         <Bar
                           dataKey="value"
                           fill={AGE_COLOR}
@@ -672,7 +746,7 @@ export default function AdminAnalytics() {
               </ChartCard>
             </div>
 
-            {/* Row — content engagement */}
+            {/* Row — content totals + top followed shows */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <ChartCard title="Content totals" className="lg:col-span-1">
                 <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -685,7 +759,7 @@ export default function AdminAnalytics() {
                   />
                   <StatRow
                     label="Listened"
-                    value={`${formatNumber(kpis.total_minutes_listened)} min`}
+                    value={formatMinutes(kpis.total_minutes_listened)}
                     sub="all time"
                   />
                 </dl>
@@ -721,6 +795,212 @@ export default function AdminAnalytics() {
               </ChartCard>
             </div>
 
+            {/* ── ENGAGEMENT SECTION ─────────────────────────────────
+                The most valuable metric for a streaming product —
+                listens and listen time on episodes and shows — used to
+                be completely absent from this dashboard. We now build
+                it out with:
+                  • 4 range-scoped KPIs (plays / listen time /
+                    completions / new follows)
+                  • 2 daily time-series charts (plays+completions,
+                    listen minutes)
+                  • 4 top-N leaderboards (episodes by plays, episodes
+                    by listen time, shows by plays, shows by listen
+                    time)
+                All numbers respect the range picker at the top. */}
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1 h-5 rounded-full bg-gradient-to-b from-red-500 to-amber-500" />
+                <h2 className="text-base font-semibold text-white">Listening engagement</h2>
+              </div>
+              <p className="text-xs text-zinc-500 -mt-1 mb-4">
+                Plays, completions and listen time across the catalogue — range-scoped.
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <KpiCard
+                  icon={Play}
+                  label="Plays"
+                  value={formatNumber(kpis.plays_in_range)}
+                  sub={`${formatNumber(kpis.total_plays)} all-time`}
+                  delta={kpis.plays_delta_pct}
+                  tone="accent"
+                />
+                <KpiCard
+                  icon={Headphones}
+                  label="Listen time"
+                  value={formatMinutes(kpis.listen_minutes_in_range)}
+                  sub="approx. from heartbeats"
+                  tone="good"
+                />
+                <KpiCard
+                  icon={CheckCircle2}
+                  label="Completions"
+                  value={formatNumber(kpis.completions_in_range)}
+                  sub="episodes finished"
+                />
+                <KpiCard
+                  icon={Heart}
+                  label="New follows"
+                  value={formatNumber(kpis.new_follows_in_range)}
+                  sub={`${formatNumber(kpis.total_follows)} total`}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <ChartCard
+                  title="Plays vs. completions"
+                  subtitle="Daily playback events"
+                >
+                  <div className="w-full h-[260px]">
+                    {(series.plays || []).every((n) => n === 0)
+                    && (series.completions || []).every((n) => n === 0) ? (
+                      <EmptyChart message="No plays recorded in this range" />
+                    ) : (
+                      <ResponsiveContainer>
+                        <BarChart
+                          data={playsData}
+                          margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid {...gridProps} />
+                          <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                          <YAxis {...axisProps} />
+                          <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
+                          <Legend
+                            wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                            iconType="circle"
+                          />
+                          <Bar dataKey="Plays" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="Completions" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </ChartCard>
+
+                <ChartCard
+                  title="Listen minutes"
+                  subtitle="Approx. minutes listened per day"
+                >
+                  <div className="w-full h-[260px]">
+                    {(series.listen_minutes || []).every((n) => n === 0) ? (
+                      <EmptyChart message="No listen time recorded in this range" />
+                    ) : (
+                      <ResponsiveContainer>
+                        <AreaChart
+                          data={listenMinutesData}
+                          margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                        >
+                          <defs>
+                            <linearGradient id="gradListen" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6} />
+                              <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid {...gridProps} />
+                          <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                          <YAxis {...axisProps} />
+                          <Tooltip
+                            {...TOOLTIP_PROPS}
+                            labelFormatter={formatDateTick}
+                            formatter={(value) => [`${formatNumber(value)} min`, "Listened"]}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="Minutes"
+                            stroke="#ef4444"
+                            strokeWidth={1.5}
+                            fill="url(#gradListen)"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </ChartCard>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <ChartCard
+                  title="Top episodes by plays"
+                  subtitle="All time"
+                >
+                  <LeaderboardList
+                    rows={topEpisodesByPlays}
+                    empty="No plays recorded yet"
+                    valueKey="plays"
+                    valueLabel="plays"
+                  />
+                </ChartCard>
+
+                <ChartCard
+                  title="Top episodes by listen time"
+                  subtitle="All time"
+                >
+                  <LeaderboardList
+                    rows={topEpisodesByListen}
+                    empty="No listen time recorded yet"
+                    valueKey="minutes"
+                    valueFormatter={formatMinutes}
+                  />
+                </ChartCard>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <ChartCard
+                  title="Top shows by plays"
+                  subtitle="All time"
+                >
+                  <LeaderboardList
+                    rows={topShowsByPlays}
+                    empty="No plays recorded yet"
+                    valueKey="plays"
+                    valueLabel="plays"
+                  />
+                </ChartCard>
+
+                <ChartCard
+                  title="Top shows by listen time"
+                  subtitle="All time"
+                >
+                  <LeaderboardList
+                    rows={topShowsByListen}
+                    empty="No listen time recorded yet"
+                    valueKey="minutes"
+                    valueFormatter={formatMinutes}
+                  />
+                </ChartCard>
+              </div>
+
+              {followsSeriesData.some((d) => d.Follows > 0) && (
+                <ChartCard
+                  title="New follows"
+                  subtitle="Daily follow activity"
+                  className="mt-4"
+                >
+                  <div className="w-full h-[220px]">
+                    <ResponsiveContainer>
+                      <LineChart
+                        data={followsSeriesData}
+                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid {...gridProps} />
+                        <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                        <YAxis {...axisProps} />
+                        <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
+                        <Line
+                          type="monotone"
+                          dataKey="Follows"
+                          stroke="#ec4899"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              )}
+            </div>
+
             {isFetching && (
               <p className="text-[11px] text-zinc-600 text-right">Updating…</p>
             )}
@@ -738,6 +1018,57 @@ function StatRow({ label, value, sub }) {
       <p className="mt-0.5 text-lg font-semibold tabular-nums text-white">{value}</p>
       {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
     </div>
+  );
+}
+
+/**
+ * A small ranked list used by the engagement section for "top episodes
+ * by plays", "top shows by listen time", and similar leaderboards. Each
+ * row renders as "01. Title · show (optional) ······ 1,234 plays".
+ *
+ * Props:
+ *   rows            – array of { id, title, podcast_title?, [valueKey] }
+ *   valueKey        – key on each row holding the numeric value
+ *   valueLabel      – suffix (e.g. "plays"). Ignored when valueFormatter
+ *                     is provided.
+ *   valueFormatter  – optional override; receives the raw value and
+ *                     returns the fully-formatted string (used for
+ *                     minute totals where we want "2h 15m" instead of
+ *                     "135 min").
+ *   empty           – message to show when rows is empty
+ */
+function LeaderboardList({ rows = [], valueKey, valueLabel = "", valueFormatter, empty }) {
+  if (!rows.length) return <EmptyChart message={empty || "No data"} />;
+  return (
+    <ul className="divide-y divide-white/[0.04]">
+      {rows.map((row, idx) => {
+        const raw = row?.[valueKey] ?? 0;
+        const label = valueFormatter
+          ? valueFormatter(raw)
+          : `${formatNumber(raw)}${valueLabel ? ` ${valueLabel}` : ""}`;
+        return (
+          <li
+            key={row.id ?? `${idx}-${row.title}`}
+            className="flex items-center gap-3 py-2.5"
+          >
+            <span className="w-6 text-xs font-mono text-zinc-500">
+              {String(idx + 1).padStart(2, "0")}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-sm text-zinc-200">{row.title}</p>
+              {row.podcast_title && (
+                <p className="truncate text-[11px] text-zinc-500">
+                  {row.podcast_title}
+                </p>
+              )}
+            </div>
+            <span className="text-xs tabular-nums text-zinc-300 flex-shrink-0">
+              {label}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
