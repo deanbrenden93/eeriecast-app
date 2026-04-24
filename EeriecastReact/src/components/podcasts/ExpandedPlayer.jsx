@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { Heart, X, Plus, Settings2, UserPlus, UserCheck, Share2, GripVertical, Trash2 } from "lucide-react";
-import { shareEpisodeAtTimestamp } from "@/lib/share";
+import { shareEpisode } from "@/lib/share";
+import ShareEpisodeDialog from "@/components/podcasts/ShareEpisodeDialog";
 import {
   DndContext,
   PointerSensor,
@@ -685,6 +686,12 @@ export default function ExpandedPlayer({
   const [favLoading, setFavLoading] = useState(false);
   // Custom sleep timer input (minutes)
   const [customSleepMinutes, setCustomSleepMinutes] = useState('');
+  // Share-choice dialog — only shown when the listener is past the
+  // intro so there's an actual choice to make between "share the
+  // moment I'm on" and "share from the top". For the first few seconds
+  // we skip the dialog entirely and just fire a clean share link.
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareDialogTs, setShareDialogTs] = useState(0);
 
   // Follow state
   const isFollowing = followedPodcastIds?.has(Number(podcast?.id));
@@ -1211,10 +1218,18 @@ export default function ExpandedPlayer({
               type="button"
               className="player-action-icon-btn"
               onClick={() => {
-                const ts = currentTime > 5 ? currentTime : 0;
-                shareEpisodeAtTimestamp(podcast, episode, ts);
+                // Past the intro? Let the sharer choose which entry
+                // point the recipient lands on. Otherwise skip the
+                // prompt and just fire a clean episode link — no one
+                // wants a modal for "share from 0:02".
+                if (currentTime > 5) {
+                  setShareDialogTs(currentTime);
+                  setShareDialogOpen(true);
+                } else {
+                  shareEpisode(podcast, episode);
+                }
               }}
-              title={currentTime > 5 ? 'Share at current time' : 'Share episode'}
+              title={currentTime > 5 ? 'Share episode' : 'Share episode'}
             >
               <span className="pi-circle">
                 <Share2 className="w-[18px] h-[18px]" />
@@ -1865,6 +1880,18 @@ export default function ExpandedPlayer({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Share-choice dialog — portal'd via Radix so it always layers
+          above the expanded player overlay. Only opens when the user
+          is past the intro; otherwise the Share button just fires a
+          clean share without a prompt. */}
+      <ShareEpisodeDialog
+        isOpen={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        podcast={podcast}
+        episode={episode}
+        timestampSeconds={shareDialogTs}
+      />
     </div>
   );
 }

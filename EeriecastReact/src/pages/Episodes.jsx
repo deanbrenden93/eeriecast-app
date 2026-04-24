@@ -99,7 +99,9 @@ export default function Episodes() {
     }
   };
 
-  const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
+  const { loadAndPlay, setPlaybackQueue, setShowExpandedPlayer, isPlaying: isPlayingCtx, play: resumePlayback } = useAudioPlayerContext();
+  const isPlayingCtxRef = useRef(isPlayingCtx);
+  useEffect(() => { isPlayingCtxRef.current = isPlayingCtx; }, [isPlayingCtx]);
   const { followedPodcastIds, refreshFollowings, isAuthenticated, isPremium, episodeProgressMap, canViewMature } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
@@ -446,7 +448,50 @@ export default function Episodes() {
     if (!target) return;
 
     autoPlayedRef.current = key;
-    doPlay(target, { startSeconds: deepLinkStart });
+
+    // A shared link is an "I want the full experience" signal — before
+    // this fix, setPlaybackQueue only flipped the mini-player on, which
+    // made deep-link arrivals look like a paused mini-bar bolted onto
+    // the show page. Opening the expanded player gives the listener an
+    // unmistakable, poster-sized play affordance immediately, and is
+    // the same visual the sharer was looking at when they clicked
+    // Share. We open it BEFORE awaiting doPlay so the expansion
+    // animation overlaps with audio-element setup and we don't waste
+    // a frame waiting on the network.
+    setShowExpandedPlayer(true);
+
+    (async () => {
+      await doPlay(target, { startSeconds: deepLinkStart });
+      // Autoplay policies on most mobile browsers (Safari iOS in
+      // particular) reject `audio.play()` unless the call happens
+      // inside the same tick as a user gesture. A tap-and-land on a
+      // shared link *is* a gesture, but by the time our async data
+      // fetches + React renders + doPlay() resolve, the gesture
+      // "freshness" window has usually lapsed, so the HTMLAudioElement
+      // stays paused. We take two shots at recovering: first retry
+      // play() once (harmless no-op if the first attempt actually
+      // succeeded — but occasionally the element just needs the second
+      // nudge after metadata settles), then, if we're still paused,
+      // surface a gentle hint telling the listener to tap the now-
+      // -prominent expanded-player play button. Desktop browsers play
+      // through immediately and will never see either branch.
+      setTimeout(async () => {
+        if (isPlayingCtxRef.current) return;
+        try { await resumePlayback(); } catch { /* ignore */ }
+        setTimeout(() => {
+          if (isPlayingCtxRef.current) return;
+          const mm = Math.floor((deepLinkStart || 0) / 60);
+          const ss = String((deepLinkStart || 0) % 60).padStart(2, '0');
+          toast({
+            title: 'Tap play to start',
+            description: deepLinkStart > 0
+              ? `Your browser paused autoplay. Resume at ${mm}:${ss}.`
+              : 'Your browser paused autoplay on this shared link.',
+            duration: 4500,
+          });
+        }, 250);
+      }, 500);
+    })();
     // doPlay is stable enough in practice; excluded from deps so we
     // don't retrigger on every render. We key off the ref instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
