@@ -56,6 +56,7 @@ const BY_SLUG = {
   'destination-terror': 'PG',
   'alone-in-the-woods': 'PG',
   'freaky-folklore': 'PG',
+  'freaky-folklore-lost-lore': 'PG',
 
   // ── G ──────────────────────────────────────────────────────────────
   'lazuray': 'G',
@@ -94,6 +95,10 @@ const BY_TITLE = {
   'destination terror': 'PG',
   'alone in the woods': 'PG',
   'freaky folklore': 'PG',
+  'freaky folklore: lost lore': 'PG',
+  'freaky folklore - lost lore': 'PG',
+  'freaky folklore lost lore': 'PG',
+  'lost lore': 'PG',
 
   // G
   'lazuray': 'G',

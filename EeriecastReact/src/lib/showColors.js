@@ -36,6 +36,11 @@ const SHOW_COLORS = {
   'manmade-monsters':          { primary: '#e11d48', darker: '#9f1239', shadow: '#e11d4833' },
   // Freaky Folklore — eerie teal-cyan (misty swamp atmosphere)
   'freaky-folklore':           { primary: '#2dd4bf', darker: '#0f766e', shadow: '#2dd4bf33' },
+  // Freaky Folklore: Lost Lore — moonlit indigo / blue-violet, echoing
+  // the spinoff cover's nighttime forest + silvery moon palette. Cool
+  // tone keeps it sibling-related to the parent show's teal without
+  // collapsing into the same color.
+  'freaky-folklore-lost-lore': { primary: '#818cf8', darker: '#3730a3', shadow: '#818cf833' },
   // Destination Terror — icy steel blue (cold snowy atmosphere)
   'destination-terror':        { primary: '#94a3b8', darker: '#475569', shadow: '#94a3b833' },
   // Alone in the Woods — muted forest green / olive

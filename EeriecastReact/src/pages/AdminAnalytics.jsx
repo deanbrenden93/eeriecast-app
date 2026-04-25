@@ -11,7 +11,7 @@
  * makes exactly one API call per range-change. Recharts handles the
  * rendering — no extra chart library needed.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -289,9 +289,48 @@ export default function AdminAnalytics() {
   const navigate = useNavigate();
   const { isAdmin, loading: userLoading } = useUser();
 
-  const [range, setRange] = useState("30d");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+  // Persist the range / custom-range selection across reloads. Stored
+  // per-device under a single key. Wrapped in try/catch because Safari
+  // private mode and embedded WebViews can throw on `localStorage`
+  // access — we silently fall back to in-memory defaults.
+  const STORAGE_KEY = "eeriecast.adminAnalytics.range.v1";
+  const VALID_RANGES = useMemo(
+    () => new Set(RANGE_OPTIONS.map((o) => o.key)),
+    []
+  );
+
+  const persisted = useMemo(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      const r = typeof parsed.range === "string" ? parsed.range : null;
+      if (r && !VALID_RANGES.has(r)) return null;
+      return {
+        range: r || "30d",
+        customStart: typeof parsed.customStart === "string" ? parsed.customStart : "",
+        customEnd: typeof parsed.customEnd === "string" ? parsed.customEnd : "",
+      };
+    } catch {
+      return null;
+    }
+  }, [VALID_RANGES]);
+
+  const [range, setRange] = useState(persisted?.range || "30d");
+  const [customStart, setCustomStart] = useState(persisted?.customStart || "");
+  const [customEnd, setCustomEnd] = useState(persisted?.customEnd || "");
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ range, customStart, customEnd })
+      );
+    } catch {
+      /* ignore — storage may be unavailable */
+    }
+  }, [range, customStart, customEnd]);
 
   const queryArgs = useMemo(() => {
     if (range === "custom") {

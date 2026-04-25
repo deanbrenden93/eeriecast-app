@@ -3,10 +3,10 @@ import { createPageUrl } from '@/utils';
 import { useUser } from '@/context/UserContext.jsx';
 import PropTypes from 'prop-types';
 import { motion } from 'framer-motion';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, BarChart3 } from 'lucide-react';
 
 export default function UserMenu({ isOpen, onClose }) {
-  const { user, logout, isOnLegacyTrial } = useUser();
+  const { user, logout, isOnLegacyTrial, isAdmin } = useUser();
 
   if (!isOpen) return null;
 
@@ -55,6 +55,20 @@ export default function UserMenu({ isOpen, onClose }) {
             className="block px-4 py-2 font-semibold text-yellow-400 hover:bg-white/5 transition-colors"
           >
             Go Premium
+          </Link>
+        )}
+        {/* Analytics — staff + superuser only. `isAdmin` from UserContext
+            is the AND of `is_staff && is_superuser`, and is falsy when no
+            user is logged in, so this branch is the strict gate the
+            request asked for: admins see it, everyone else does not. */}
+        {!!user && isAdmin && (
+          <Link
+            to={createPageUrl('AdminAnalytics')}
+            onClick={onClose}
+            className="flex items-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-zinc-300"
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            Analytics
           </Link>
         )}
         <Link
