@@ -8,6 +8,7 @@ router.register(r'subscriptions', views.SubscriptionViewSet, basename='subscript
 urlpatterns = [
     path('me/', views.me_status, name='billing-me-status'),
     path('cancel/', views.cancel_subscription, name='billing-cancel-subscription'),
+    path('resume/', views.resume_subscription, name='billing-resume-subscription'),
     path('subscriptions/upsert/', views.upsert_subscription, name='billing-upsert-subscription'),
     path('start-trial/', views.start_trial_custom, name='billing-start-trial-custom'),
     path('create-checkout-session/', views.create_checkout_session, name='billing-create-checkout-session'),

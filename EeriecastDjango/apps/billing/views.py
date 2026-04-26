@@ -140,6 +140,50 @@ def cancel_subscription(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def resume_subscription(request):
+    """
+    Undo a pending cancellation by clearing ``cancel_at_period_end`` on the
+    Stripe subscription. Only works while the subscription is still active
+    or trialing — once Stripe has actually moved it to ``canceled`` the user
+    must re-subscribe instead.
+    """
+    user = request.user
+    subscription_id = request.data.get('subscription_id')
+
+    if not subscription_id:
+        return Response({"detail": "subscription_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        sub = Subscription.objects.get(stripe_subscription_id=subscription_id, user=user)
+    except Subscription.DoesNotExist:
+        return Response({"detail": "Subscription not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Stripe can't un-cancel a fully canceled subscription — the user has to
+    # start a new one. Surface a clear error so the UI can route them to the
+    # upgrade flow rather than silently failing.
+    if sub.status == "canceled":
+        return Response(
+            {"detail": "This subscription has already ended. Please start a new subscription."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        stripe_sub = stripe.Subscription.modify(
+            subscription_id,
+            cancel_at_period_end=False,
+        )
+
+        handle_subscription_change(stripe_sub)
+
+        return Response(SubscriptionSerializer(sub).data)
+    except Exception as e:
+        logger.error(f"Error resuming subscription {subscription_id}: {str(e)}")
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def upsert_subscription(request):
     """
     Minimal upsert endpoint to record/update a Stripe subscription for a user.

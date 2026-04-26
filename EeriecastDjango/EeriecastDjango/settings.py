@@ -333,8 +333,8 @@ STRIPE_TRIAL_DAYS = 7
 # Stripe is the source of truth but we don't store amount on Subscription rows;
 # these are the hardcoded fall-through values. Override via env if pricing
 # changes so MRR numbers stay accurate without a code deploy.
-STRIPE_MONTHLY_AMOUNT_CENTS = config('STRIPE_MONTHLY_AMOUNT_CENTS', cast=int, default=499)
-STRIPE_YEARLY_AMOUNT_CENTS = config('STRIPE_YEARLY_AMOUNT_CENTS', cast=int, default=4999)
+STRIPE_MONTHLY_AMOUNT_CENTS = config('STRIPE_MONTHLY_AMOUNT_CENTS', cast=int, default=799)
+STRIPE_YEARLY_AMOUNT_CENTS = config('STRIPE_YEARLY_AMOUNT_CENTS', cast=int, default=6996)
 STRIPE_CURRENCY = config('STRIPE_CURRENCY', default='USD')
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 9999999

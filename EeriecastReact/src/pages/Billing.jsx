@@ -18,6 +18,8 @@ import {
   Trash2,
   Pencil,
   Sparkles,
+  RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
@@ -56,6 +58,7 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [billingData, setBillingData] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
   const [showUpdateCard, setShowUpdateCard] = useState(false);
 
   const fetchBillingStatus = async () => {
@@ -106,6 +109,36 @@ export default function Billing() {
     }
   };
 
+  const handleResumeSubscription = async () => {
+    if (!activeSub?.stripe_subscription_id) return;
+
+    setResumeLoading(true);
+    try {
+      await djangoClient.post("/billing/resume/", {
+        subscription_id: activeSub.stripe_subscription_id,
+      });
+
+      toast({
+        title: "Subscription Resumed",
+        description: isStripeTrial
+          ? "Your plan will renew automatically when your trial ends."
+          : "Your plan will continue to renew automatically.",
+      });
+
+      await fetchBillingStatus();
+      await fetchUser();
+    } catch (err) {
+      console.error("Failed to resume subscription:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to resume subscription.",
+        variant: "destructive",
+      });
+    } finally {
+      setResumeLoading(false);
+    }
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return "N/A";
     return new Date(dateStr).toLocaleDateString(undefined, {
@@ -148,6 +181,16 @@ export default function Billing() {
     exp_month: activeSub.card_exp_month,
     exp_year: activeSub.card_exp_year,
   } : null);
+
+  // Whether the current Stripe-managed subscription (paid or trialing) is
+  // flagged to stop renewing at the end of the current period. Legacy trials
+  // are not Stripe subscriptions, so they have no auto-renew either.
+  const willCancelAtPeriodEnd = !!activeSub?.cancel_at_period_end;
+  // True when there's an active billing relationship that *will* renew
+  // automatically — i.e. a Stripe subscription (active or trialing) that
+  // hasn't been flagged to cancel.
+  const willAutoRenew = !!activeSub && !willCancelAtPeriodEnd && activeSub?.status !== "canceled";
+  const periodEndDate = activeSub?.current_period_end || unifiedTrialEnds;
 
   return (
     <div className="min-h-screen bg-[#0a0a10] text-white relative overflow-y-auto overflow-x-hidden">
@@ -208,7 +251,10 @@ export default function Billing() {
                     <span className="font-semibold text-white">{leadStrong}</span>
                     <span className="text-blue-200/80">
                       {leadRest}
-                      {trialType === "standard" && (
+                      {trialType === "standard" && willCancelAtPeriodEnd && (
+                        <>. Your plan won&apos;t renew at the end of your trial.</>
+                      )}
+                      {trialType === "standard" && !willCancelAtPeriodEnd && (
                         <>. You&apos;ll be charged automatically unless you cancel.</>
                       )}
                       {trialType !== "standard" && "."}
@@ -242,7 +288,7 @@ export default function Billing() {
                   </div>
                   <p className="text-zinc-400 text-sm">
                     {onAnyTrial
-                      ? (trialLabel || "Free Trial")
+                      ? "Full access to Premium features"
                       : (activeSub?.plan_nickname || (isPremium ? "Monthly Subscription" : "Free Plan"))}
                   </p>
                 </div>
@@ -262,15 +308,60 @@ export default function Billing() {
                         : (<span className="capitalize">{status}</span>)}
                     </span>
                   </div>
-                  {(activeSub?.current_period_end || unifiedTrialEnds) && (
+                  {periodEndDate && (
                     <p className="text-[11px] text-zinc-500 mt-2">
                       {onAnyTrial
                         ? `Trial ends on ${formatDate(unifiedTrialEnds || activeSub?.current_period_end)}`
-                        : `${activeSub?.cancel_at_period_end ? "Ends on" : "Renews on"} ${formatDate(activeSub?.current_period_end)}`}
+                        : `${willCancelAtPeriodEnd ? "Ends on" : "Renews on"} ${formatDate(activeSub?.current_period_end)}`}
                     </p>
                   )}
                 </div>
               </div>
+
+              {/* Renewal / cancellation indicator — visible for both
+                  trialing and active Stripe subscriptions so users always
+                  know whether they'll be charged again. Legacy trials have
+                  no Stripe subscription attached, so we surface the
+                  "no auto-renew" state for them too. */}
+              {(activeSub || isLegacyTrial) && (
+                <div className="mt-5 pt-5 border-t border-white/[0.05] relative z-10">
+                  {willAutoRenew ? (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                        <RefreshCw className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-emerald-300">
+                          {isStripeTrial ? "Auto-renews after trial" : "Auto-renew on"}
+                        </p>
+                        <p className="text-[12px] text-zinc-500 mt-0.5">
+                          {isStripeTrial
+                            ? `You'll be charged on ${formatDate(periodEndDate)} unless you cancel before then.`
+                            : `Your subscription will renew automatically on ${formatDate(periodEndDate)}.`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <XCircle className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-amber-300">
+                          {isLegacyTrial ? "No payment method on file" : "Will not renew"}
+                        </p>
+                        <p className="text-[12px] text-zinc-500 mt-0.5">
+                          {isLegacyTrial
+                            ? `You won't be charged. Add a payment method to keep Premium after ${formatDate(periodEndDate)}.`
+                            : isStripeTrial
+                              ? `You won't be charged. Access ends on ${formatDate(periodEndDate)}.`
+                              : `Your access ends on ${formatDate(periodEndDate)} and won't renew.`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
 
             {/* Info Section */}
@@ -348,7 +439,33 @@ export default function Billing() {
                 ) : null}
 
                 {isPremium && !isLegacyTrial ? (
-                  !activeSub?.cancel_at_period_end && activeSub?.status !== 'canceled' && (
+                  activeSub?.status === 'canceled' ? (
+                    // Subscription has fully ended — Stripe can't un-cancel it,
+                    // so the user has to start a new one via the upgrade flow.
+                    <Button
+                      onClick={() => navigate("/premium")}
+                      className="w-full h-14 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold border border-red-500/20 shadow-lg shadow-red-600/10 group transition-all"
+                    >
+                      <span className="flex-1 text-left font-semibold">Resubscribe to Premium</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  ) : willCancelAtPeriodEnd ? (
+                    // Cancellation pending — let the user reverse it.
+                    <Button
+                      onClick={handleResumeSubscription}
+                      disabled={resumeLoading}
+                      className="w-full h-14 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-semibold border border-emerald-500/20 shadow-lg shadow-emerald-600/10 group transition-all disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${resumeLoading ? "animate-spin" : ""}`} />
+                      <span className="font-semibold">
+                        {resumeLoading
+                          ? "Resuming..."
+                          : isStripeTrial
+                            ? "Keep My Plan & Auto-Renew"
+                            : "Resume Subscription"}
+                      </span>
+                    </Button>
+                  ) : (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
