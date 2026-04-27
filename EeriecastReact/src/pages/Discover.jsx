@@ -214,6 +214,20 @@ export default function Discover() {
     } catch { return null; }
   })();
 
+  // Persist the user's last active Discover tab so backing out from
+  // any screen via the bottom-nav "Podcasts" button drops them back
+  // on whatever they were browsing (Trending, Newest, etc.) instead
+  // of always resetting to the default tab. URL ?tab= still wins —
+  // deep links / "View all" CTAs target a specific tab on purpose.
+  const DISCOVER_TAB_KEY = 'eeriecast_discover_last_tab';
+  const remembered = (() => {
+    try {
+      const raw = localStorage.getItem(DISCOVER_TAB_KEY);
+      if (!raw) return null;
+      return tabs.find(t => t.toLowerCase() === raw.toLowerCase()) || null;
+    } catch { return null; }
+  })();
+
   const queryCategoryParam = (() => {
     try {
       const params = new URLSearchParams(location.search);
@@ -221,7 +235,14 @@ export default function Discover() {
     } catch { return null; }
   })();
 
-  const [activeTab, setActiveTab] = useState(queryTab || "Recommended");
+  const [activeTab, setActiveTab] = useState(queryTab || remembered || "Recommended");
+
+  // Persist the active tab whenever the user switches it in-page.
+  // Skips persistence when the URL itself is steering the tab (deep link)
+  // so view-all CTAs don't permanently sticky-pin a tab the user didn't pick.
+  useEffect(() => {
+    try { localStorage.setItem(DISCOVER_TAB_KEY, activeTab); } catch { /* storage unavailable */ }
+  }, [activeTab]);
   const { podcasts: rawPodcasts, isLoading, getById, softRefreshIfStale } = usePodcasts();
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);

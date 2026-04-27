@@ -1,16 +1,18 @@
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDownUp } from "lucide-react";
+import { Play } from "lucide-react";
 import FollowingItem from "./FollowingItem";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
+import { FilterDropdown } from "@/components/common/FilterControls";
 import { useUser } from "@/context/UserContext";
+import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useMemo, useState } from "react";
 
 export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode }) {
   const navigate = useNavigate();
-  const { followedPodcastIds } = useUser();
+  const { followedPodcastIds, episodeProgressMap } = useUser();
+  const { setPlaybackQueue } = useAudioPlayerContext();
 
   // ── Followed podcasts ──
   const followingPodcasts = useMemo(() => {
@@ -47,7 +49,20 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
   const [selectedShow, setSelectedShow] = useState('all');
 
   // ── Sort ──
-  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' | 'oldest'
+  // 'newest' | 'oldest' | 'unplayed'.
+  // "Unplayed" filters out anything the user has already finished, then
+  // surfaces the freshest episodes first so they can immediately hit
+  // "Play All" and have a queue ready.
+  const [sortOrder, setSortOrder] = useState('newest');
+
+  // Surfaced as a dropdown rather than a cycle button — listeners
+  // expect to pick a sort directly instead of stepping through three
+  // hidden states one tap at a time.
+  const sortOptions = [
+    { value: 'newest', label: 'Newest' },
+    { value: 'oldest', label: 'Oldest' },
+    { value: 'unplayed', label: 'Unplayed' },
+  ];
 
   // ── Visible episodes (filtered + sorted) ──
   const visibleEpisodes = useMemo(() => {
@@ -55,12 +70,40 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
     if (selectedShow !== 'all') {
       filtered = allEpisodes.filter(ep => String(ep.podcast?.id) === String(selectedShow));
     }
+    if (sortOrder === 'unplayed') {
+      filtered = filtered.filter(ep => {
+        const prog = episodeProgressMap?.get(Number(ep.id));
+        // Treat as unplayed if there's no record at all, or if the
+        // listener hasn't yet crossed the completion threshold.
+        return !prog || !prog.completed;
+      });
+    }
     const toTs = (e) => new Date(e?.published_at || e?.created_date || e?.release_date || 0).getTime();
-    const sorted = [...filtered].sort((a, b) =>
-      sortOrder === 'newest' ? toTs(b) - toTs(a) : toTs(a) - toTs(b)
-    );
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortOrder === 'oldest') return toTs(a) - toTs(b);
+      // "newest" and "unplayed" both default to recency-first.
+      return toTs(b) - toTs(a);
+    });
     return sorted;
-  }, [allEpisodes, selectedShow, sortOrder]);
+  }, [allEpisodes, selectedShow, sortOrder, episodeProgressMap]);
+
+  // ── Play all unplayed episodes — kicks off a queue from the top ──
+  const handlePlayAll = async () => {
+    if (!visibleEpisodes.length || typeof setPlaybackQueue !== 'function') return;
+    const queueItems = visibleEpisodes.map(ep => {
+      const prog = episodeProgressMap?.get(Number(ep.id));
+      return {
+        podcast: ep.podcast,
+        episode: ep,
+        // Resume mid-episode if the listener was partway through but
+        // hadn't finished — preserves their existing progress.
+        resume: prog && !prog.completed && prog.progress > 0
+          ? { progress: prog.progress }
+          : { progress: 0 },
+      };
+    });
+    try { await setPlaybackQueue(queueItems, 0); } catch { /* swallow */ }
+  };
 
   // ── Empty state ──
   if (followingPodcasts.length === 0) {
@@ -105,38 +148,55 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
       <div>
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-            Latest Episodes
+            {sortOrder === 'unplayed' ? 'Unplayed Episodes' : 'Latest Episodes'}
           </h3>
           <div className="flex items-center gap-3">
-            {/* Filter by show */}
-            <Select value={selectedShow} onValueChange={setSelectedShow}>
-              <SelectTrigger className="w-48 bg-gray-800 border-gray-700 text-sm h-9">
-                <SelectValue placeholder="Filter by show" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Shows</SelectItem>
-                {showOptions.map(s => (
-                  <SelectItem key={s.id} value={String(s.id)}>{s.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Play All — only meaningful when there are episodes to queue.
+                Surfaced more prominently when the listener is on the
+                "Unplayed" sort because that's the moment they're most
+                likely to want a hands-off catch-up session. */}
+            {visibleEpisodes.length > 0 && (
+              <Button
+                size="sm"
+                onClick={handlePlayAll}
+                className={`h-9 px-3.5 rounded-full gap-1.5 text-sm font-semibold transition-all duration-300 ${
+                  sortOrder === 'unplayed'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white shadow-[0_4px_16px_rgba(220,38,38,0.25)]'
+                    : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08]'
+                }`}
+                title={`Play ${visibleEpisodes.length} ${sortOrder === 'unplayed' ? 'unplayed' : ''} episode${visibleEpisodes.length === 1 ? '' : 's'}`}
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Play All
+              </Button>
+            )}
 
-            {/* Sort toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
-              className="h-9 px-3 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-zinc-300 text-sm gap-1.5"
-            >
-              <ArrowDownUp className="w-3.5 h-3.5" />
-              {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
-            </Button>
+            {/* Filter by show — pill-styled dropdown matching Discover */}
+            <FilterDropdown
+              value={selectedShow}
+              onChange={setSelectedShow}
+              placeholder="Show"
+              options={[
+                { value: "all", label: "All Shows" },
+                ...showOptions.map((s) => ({ value: String(s.id), label: s.title })),
+              ]}
+            />
+
+            {/* Sort dropdown — Newest / Oldest / Unplayed */}
+            <FilterDropdown
+              value={sortOrder}
+              onChange={setSortOrder}
+              placeholder="Sort"
+              options={sortOptions}
+            />
           </div>
         </div>
 
         {visibleEpisodes.length === 0 ? (
           <div className="text-center text-zinc-500 py-10">
-            No episodes available from your followed shows.
+            {sortOrder === 'unplayed'
+              ? "You're all caught up — no unplayed episodes from your followed shows."
+              : 'No episodes available from your followed shows.'}
           </div>
         ) : (
           <EpisodesTable

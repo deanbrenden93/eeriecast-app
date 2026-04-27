@@ -544,27 +544,74 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
     return list;
   }, [pool, theme.category, contentFilter, isEpisodeFree]);
 
-  // The actual 5-item cluster. Recomputes when the pool/filter changes
-  // OR when this specific card's rollCount ticks up. Sibling cards'
-  // rollCounts are irrelevant here, which is exactly what fixes the
-  // "click one dice, all clouds reshuffle" bug.
-  const items = useMemo(() => {
+  // ── The picked-IDs model ─────────────────────────────────────
+  // We deliberately decouple "which episodes are in this cloud right
+  // now" from "what the latest data says about those episodes".
+  //
+  // The previous implementation re-rolled the cluster every time
+  // `episodeMatches` changed reference. That fired far too eagerly:
+  // when the user backgrounded the tab and came back, React Query's
+  // refetch-on-window-focus lit up both the latest-feed query and the
+  // cached podcast list (which feed `enrichedPool`). Each refetch
+  // resolved at a slightly different moment, so over a couple of
+  // seconds the cluster reshuffled a dozen times in rapid succession
+  // — exactly the "bubbles reset over and over" behavior reported.
+  //
+  // Fix: hold the picked episode IDs in state and only roll fresh
+  // picks on explicit triggers (dice click, content-filter toggle, or
+  // the very first hydration once a non-empty pool arrives). Pool
+  // refetches still update the rendered metadata (titles, covers)
+  // for the same IDs, but they no longer cause a reshuffle.
+  const [pickedIds, setPickedIds] = useState([]);
+  const hasInitialPickRef = useRef(false);
+
+  const rollPicks = useCallback(() => {
+    if (episodeMatches.length === 0) return;
     const picks = pickCloudEpisodes(episodeMatches, lastPicksRef.current);
-    // Remember this roll's IDs for the *next* pickCloudEpisodes call.
+    if (picks.length === 0) return;
     lastPicksRef.current = new Set(picks.map((p) => p.id));
-    return picks.map((ep) => ({
-      kind: "episode",
-      id: `ep-${ep.id}`,
-      title: ep.title,
-      cover_image: ep.cover_image,
-      episode: ep,
-      podcast: ep.podcast_data,
-      is_free: isEpisodeFree(ep),
-    }));
-    // rollCount is an intentional dependency even though it's not used
-    // inside — it's the "roll me again" trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [episodeMatches, rollCount, isEpisodeFree]);
+    setPickedIds(picks.map((p) => p.id));
+    hasInitialPickRef.current = true;
+  }, [episodeMatches]);
+
+  // Roll on the user's explicit triggers — the dice or the filter
+  // toggle — but never on a passive pool refetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { rollPicks(); }, [rollCount, contentFilter]);
+
+  // Initial-fill pass: do the very first roll the moment the pool
+  // becomes available. Guarded by `hasInitialPickRef` so it can never
+  // fire a second time even if `episodeMatches` later changes
+  // reference (which is exactly the path that used to trigger the
+  // rapid-fire rerolls).
+  useEffect(() => {
+    if (hasInitialPickRef.current) return;
+    if (episodeMatches.length === 0) return;
+    rollPicks();
+  }, [episodeMatches, rollPicks]);
+
+  // Resolve the picked IDs against the *current* pool so any data
+  // refresh (fresh cover art, edited title) flows through naturally
+  // without disturbing the chosen cluster. If a picked episode falls
+  // out of the pool entirely the bubble is simply omitted; the row
+  // still renders the rest, and the next dice click refills cleanly.
+  const items = useMemo(() => {
+    if (pickedIds.length === 0) return [];
+    const byId = new Map();
+    for (const ep of pool) byId.set(ep.id, ep);
+    return pickedIds
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((ep) => ({
+        kind: "episode",
+        id: `ep-${ep.id}`,
+        title: ep.title,
+        cover_image: ep.cover_image,
+        episode: ep,
+        podcast: ep.podcast_data,
+        is_free: isEpisodeFree(ep),
+      }));
+  }, [pickedIds, pool, isEpisodeFree]);
 
   const featured = items[0];
   const active = hoverIdx != null ? items[hoverIdx] : featured;
@@ -756,12 +803,25 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
                         : `0 6px 18px -8px rgba(0,0,0,0.6)`,
                     }}
                   >
-                    {/* Cover */}
+                    {/* Cover.
+                        NOTE: do NOT use loading="lazy" here. These
+                        bubbles live inside framer-motion's animated
+                        transform layers, and Chromium has a
+                        long-standing quirk where lazy-loaded images
+                        inside a transformed / animated parent can
+                        fail their initial in-viewport check and stay
+                        blank until something forces a layout
+                        reevaluation (a hover, a scroll, a window
+                        resize). The Random Cravings row is hero
+                        content above the fold — only ~5 small
+                        thumbnails per card — so the right call is to
+                        load eagerly and keep `decoding="async"` so we
+                        still get off-thread decode without the
+                        viewport-detection footgun. */}
                     {item.cover_image ? (
                       <img
                         src={item.cover_image}
                         alt=""
-                        loading="lazy"
                         decoding="async"
                         width={pos.size}
                         height={pos.size}

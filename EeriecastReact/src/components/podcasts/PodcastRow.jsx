@@ -5,6 +5,7 @@ import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import PropTypes from 'prop-types';
 import { getShowSubtext } from '@/lib/utils';
+import FollowButton from '@/components/common/FollowButton';
 
 export default function PodcastRow({ title, podcasts: podcastList = [], onPodcastPlay, showPlayIcon = false, showAudiobookPill = false, showMusicPill = false, viewAllTo, subtext }) {
   const scrollRef = useRef(null);
@@ -103,6 +104,13 @@ export default function PodcastRow({ title, podcasts: podcastList = [], onPodcas
                       Exclusive
                     </div>
                   )}
+                </div>
+
+                {/* Follow pill — top-left corner so it never collides with
+                    the existing audiobook / music / exclusive badges or
+                    the centered hover play button. */}
+                <div className="absolute top-2 left-2 z-[5]">
+                  <FollowButton podcast={podcast} />
                 </div>
               </div>
 

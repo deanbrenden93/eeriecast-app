@@ -37,6 +37,7 @@ import { toast } from "@/components/ui/use-toast";
 import { createPageUrl } from "@/utils";
 import { isAudiobook } from "@/lib/utils";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
+import HoldToShuffleButton from "@/components/common/HoldToShuffleButton";
 import { Capacitor } from '@capacitor/core';
 
 // Feature flag: offline downloads are an app-only feature. The player's
@@ -678,6 +679,7 @@ export default function ExpandedPlayer({
     audioRef,
     removeFromQueue,
     reorderQueue,
+    shuffleUpNext,
     clearQueue,
   } = useAudioPlayerContext();
   const sleepTimerActive = sleepTimerRemaining > 0;
@@ -1845,16 +1847,28 @@ export default function ExpandedPlayer({
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase">Up Next</h3>
-                      {upNext && upNext.length > 0 && typeof clearQueue === 'function' && (
-                        <button
-                          type="button"
-                          onClick={clearQueue}
-                          className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-wider text-white/40 hover:text-red-400 uppercase transition-colors"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Clear
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {/* Hold-to-shuffle — randomizes the upcoming queue
+                            order in place. Press-and-hold is required so
+                            an accidental tap on this drawer can't blow up
+                            a curated listening order. */}
+                        {upNext && upNext.length > 1 && typeof shuffleUpNext === 'function' && (
+                          <HoldToShuffleButton
+                            onConfirm={shuffleUpNext}
+                            label="Shuffle queue"
+                          />
+                        )}
+                        {upNext && upNext.length > 0 && typeof clearQueue === 'function' && (
+                          <button
+                            type="button"
+                            onClick={clearQueue}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-wider text-white/40 hover:text-red-400 uppercase transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Clear
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {(!upNext || upNext.length === 0) ? (

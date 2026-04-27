@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import PropTypes from 'prop-types';
 import { getShowSubtext } from '@/lib/utils';
+import FollowButton from '@/components/common/FollowButton';
 
 export default function ShowCard({ podcast, onPlay, subtext }) {
   // Let the card compute its own subtitle (N Episodes / Tracks / Chapters)
@@ -50,6 +51,11 @@ export default function ShowCard({ podcast, onPlay, subtext }) {
             <span>Members</span>
           </div>
         )}
+
+        {/* Follow pill — top-right corner of cover, doesn't block art */}
+        <div className="absolute top-2 right-2 z-[5]">
+          <FollowButton podcast={podcast} />
+        </div>
 
         {/* Hover play overlay */}
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">

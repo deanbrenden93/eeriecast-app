@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
+import { useSafeBack } from '@/hooks/use-safe-back';
 import RichTextEditor, { countWords, stripTags } from '@/components/ui/RichTextEditor';
 
 // Listener story submissions go to the first slot so it's the most
@@ -776,6 +777,7 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
 
 export default function Help() {
   const navigate = useNavigate();
+  const safeGoBack = useSafeBack();
   const location = useLocation();
 
   // Deep-link support: the "Submit a Story" buttons on eligible show
@@ -800,21 +802,11 @@ export default function Help() {
 
   const handleClose = () => {
     setClosing(true);
-    // `navigate(-1)` would literally hit the browser "back" stack,
-    // which for a direct link (e.g. /submit-a-story shared in
-    // marketing) points at whatever external page the listener was on
-    // before. React Router tracks its own history index on
-    // window.history.state.idx — idx > 0 means we have at least one
-    // prior in-app page to return to; otherwise we fall back to the
-    // app home so the X button never kicks the user off the site.
-    setTimeout(() => {
-      const idx = window.history.state?.idx;
-      if (typeof idx === 'number' && idx > 0) {
-        navigate(-1);
-      } else {
-        navigate('/Podcasts', { replace: true });
-      }
-    }, 350);
+    // Delay matches the slide-out animation; `useSafeBack` then either
+    // pops the in-app history entry or redirects to the Podcasts home
+    // when this screen was reached via a direct / deep link, so the
+    // X button never bounces the user off-site.
+    setTimeout(safeGoBack, 350);
   };
 
   const tabs = [

@@ -664,6 +664,26 @@ export const AudioPlayerProvider = ({ children }) => {
     });
   }, []);
 
+  // Randomly shuffle the *upcoming* queue entries (everything after the
+  // currently playing item). The current track stays pinned at its index
+  // so playback isn't interrupted, and tracks already played stay in
+  // listener-history order. Uses Fisher–Yates so each ordering is
+  // equally likely.
+  const shuffleUpNext = useCallback(() => {
+    setQueue(prev => {
+      const list = Array.isArray(prev) ? [...prev] : [];
+      const curIdx = idxRef.current ?? -1;
+      const startIdx = curIdx >= 0 ? curIdx + 1 : 0;
+      const tail = list.slice(startIdx);
+      if (tail.length < 2) return prev; // nothing to shuffle
+      for (let i = tail.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [tail[i], tail[j]] = [tail[j], tail[i]];
+      }
+      return [...list.slice(0, startIdx), ...tail];
+    });
+  }, []);
+
   // Clear the queue except for the currently playing item so playback
   // isn't interrupted. If nothing is playing, clear everything.
   const clearQueue = useCallback(() => {
@@ -730,6 +750,7 @@ export const AudioPlayerProvider = ({ children }) => {
         addNext,
         removeFromQueue,
         reorderQueue,
+        shuffleUpNext,
         clearQueue,
         // sleep timer api
         sleepTimerRemaining,
@@ -897,6 +918,7 @@ export const useAudioPlayerContext = () => {
       addNext: noop,
       removeFromQueue: noop,
       reorderQueue: noop,
+      shuffleUpNext: noop,
       clearQueue: noop,
       sleepTimerRemaining: 0,
       sleepTimerEndTime: null,

@@ -1,9 +1,9 @@
 import PropTypes from "prop-types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Clock } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useUser } from "@/context/UserContext";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
+import { FilterDropdown } from "@/components/common/FilterControls";
 
 export default function HistoryTab({
   historyEpisodes = [],
@@ -90,29 +90,27 @@ export default function HistoryTab({
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           {/* Filter by show */}
-          <Select value={selectedShow} onValueChange={setSelectedShow}>
-            <SelectTrigger className="w-48 bg-gray-800 border-gray-700 text-sm h-9">
-              <SelectValue placeholder="Filter by show" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Shows</SelectItem>
-              {showOptions.map(s => (
-                <SelectItem key={s.id} value={String(s.id)}>{s.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <FilterDropdown
+            value={selectedShow}
+            onChange={setSelectedShow}
+            placeholder="Show"
+            options={[
+              { value: "all", label: "All Shows" },
+              ...showOptions.map((s) => ({ value: String(s.id), label: s.title })),
+            ]}
+          />
 
           {/* Status filter */}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-sm h-9">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
+          <FilterDropdown
+            value={statusFilter}
+            onChange={setStatusFilter}
+            placeholder="Status"
+            options={[
+              { value: "all", label: "All" },
+              { value: "in_progress", label: "In Progress" },
+              { value: "completed", label: "Completed" },
+            ]}
+          />
         </div>
       </div>
 

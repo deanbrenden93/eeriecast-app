@@ -4,6 +4,7 @@ import { Star, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { useRef } from "react";
 import PropTypes from 'prop-types';
 import { getShowSubtext } from '@/lib/utils';
+import FollowButton from '@/components/common/FollowButton';
 
 export default function MembersOnlySection({ podcasts, onPodcastPlay, subtext }) {
   const scrollRef = useRef(null);
@@ -84,6 +85,12 @@ export default function MembersOnlySection({ podcasts, onPodcastPlay, subtext })
                   <div className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[9px] font-bold uppercase tracking-wider shadow-[0_0_8px_rgba(245,158,11,0.3)]">
                     MEMBERS
                   </div>
+                </div>
+
+                {/* Follow pill — top-left, paired with the members badge
+                    on the right so neither obscures cover art. */}
+                <div className="absolute top-2 left-2 z-10">
+                  <FollowButton podcast={podcast} />
                 </div>
                 
                 {/* Hover overlay */}

@@ -14,6 +14,7 @@ import { getPodcastCategoriesLower, isAudiobook, isMusic, getEpisodeAudioUrl, is
 import { canAccessChapter, FREE_LISTEN_CHAPTER_LIMIT, FREE_READ_CHAPTER_LIMIT, getExclusiveSampleEpisodeIds } from '@/lib/freeTier';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
+import { useSafeBack } from '@/hooks/use-safe-back';
 import { getShowColors } from '@/lib/showColors';
 import { useToast } from '@/components/ui/use-toast';
 import { Episode } from '@/api/entities';
@@ -83,21 +84,7 @@ export default function Episodes() {
 
   const goToPremium = () => navigate(createPageUrl('Premium'));
 
-  // Safe back: `navigate(-1)` walks the full browser history, which for
-  // a listener who arrived via a shared / deep link points at whatever
-  // external site they were on (search results, a social post, email).
-  // React Router stores an in-app history index on window.history.state
-  // — idx > 0 means there's at least one prior in-app page to return
-  // to; otherwise we fall back to the Podcasts home so the button can
-  // never kick the user off the site.
-  const safeGoBack = () => {
-    const idx = window.history.state?.idx;
-    if (typeof idx === 'number' && idx > 0) {
-      navigate(-1);
-    } else {
-      navigate(createPageUrl('Podcasts'), { replace: true });
-    }
-  };
+  const safeGoBack = useSafeBack();
 
   const { loadAndPlay, setPlaybackQueue, setShowExpandedPlayer, isPlaying: isPlayingCtx, play: resumePlayback } = useAudioPlayerContext();
   const isPlayingCtxRef = useRef(isPlayingCtx);

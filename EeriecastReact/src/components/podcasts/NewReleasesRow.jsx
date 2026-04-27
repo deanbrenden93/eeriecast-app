@@ -44,6 +44,7 @@ export default function NewReleasesRow({
   trendWindowHours = 48,
   maxItems = 20,
   onAddToPlaylist,
+  numbered = feedType === "trending",
 }) {
   const scrollRef = useRef(null);
   const navigate = useNavigate();
@@ -212,13 +213,17 @@ export default function NewReleasesRow({
         className="flex space-x-3 overflow-x-auto pb-4 scroll-smooth"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {episodes.map((ep) => {
+        {episodes.map((ep, idx) => {
           const podName = ep.podcast_data?.title || "";
           const dur = formatDuration(ep.duration);
           const prog = episodeProgressMap?.get(Number(ep.id));
           const progPct = prog && prog.duration > 0 ? Math.min(100, Math.max(0, (prog.progress / prog.duration) * 100)) : 0;
           const isCompleted = prog?.completed || progPct >= 95;
           const hasProgress = progPct > 0;
+          // Trending rank — #1 is the most popular, so it sits on the
+          // far left as the row's first card and the numbers ascend as
+          // the user scrolls right. Reads naturally as "Top 1, 2, 3…".
+          const rank = numbered ? idx + 1 : null;
 
           return (
             <div key={ep.id} className="flex-shrink-0 w-44">
@@ -258,6 +263,31 @@ export default function NewReleasesRow({
                       <Play className="w-4 h-4 text-white ml-0.5 fill-white" />
                     </button>
                   </div>
+
+                  {/* Countdown rank — Netflix-style stamped numeral at the
+                      bottom-left of the cover. Counts DOWN to #1 from left
+                      to right so listeners scroll *toward* the apex of the
+                      chart. The closer to #1 the bigger the gold flourish. */}
+                  {rank != null && (
+                    <div className="pointer-events-none absolute bottom-0 left-0 z-[4] flex items-end leading-none select-none">
+                      <span
+                        className={`font-black tabular-nums leading-[0.78] tracking-tighter
+                          ${rank <= 3 ? 'text-amber-300/95' : 'text-white/85'}
+                          ${rank >= 100 ? 'text-[3.25rem]' : rank >= 10 ? 'text-[4rem]' : 'text-[5rem]'}
+                        `}
+                        style={{
+                          WebkitTextStroke: rank <= 3 ? '2px rgba(0,0,0,0.55)' : '2px rgba(0,0,0,0.7)',
+                          textShadow: rank <= 3
+                            ? '0 4px 18px rgba(251,191,36,0.55), 0 2px 6px rgba(0,0,0,0.6)'
+                            : '0 4px 14px rgba(0,0,0,0.55)',
+                          paddingLeft: '0.15rem',
+                          paddingBottom: '0.05rem',
+                        }}
+                      >
+                        {rank}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Three-dot menu — top-right on hover (below badge if present) */}
                   <div className="absolute bottom-1.5 right-1.5 z-[5]" onClick={(e) => e.stopPropagation()}>
@@ -325,4 +355,5 @@ NewReleasesRow.propTypes = {
   trendWindowHours: PropTypes.number,
   maxItems: PropTypes.number,
   onAddToPlaylist: PropTypes.func,
+  numbered: PropTypes.bool,
 };

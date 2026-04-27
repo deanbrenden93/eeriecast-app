@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useUser } from '@/context/UserContext.jsx';
+import { useSafeBack } from '@/hooks/use-safe-back';
 import { STRIPE_PUBLIC_KEY } from '@/constants';
 
 const MONTHLY_PRICE = 7.99;
@@ -604,6 +605,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
 
 export default function Premium() {
   const navigate = useNavigate();
+  const safeGoBack = useSafeBack();
   const location = useLocation();
   const { user, isAuthenticated, isPremium, isOnLegacyTrial } = useUser();
   const { openAuth } = useAuthModal();
@@ -676,7 +678,7 @@ export default function Premium() {
       <div className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/[0.04] bg-[#0a0a10]/60 backdrop-blur-md">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={safeGoBack}
           className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -687,7 +689,7 @@ export default function Premium() {
         </span>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={safeGoBack}
           className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.04] border border-white/[0.06] text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-all"
           aria-label="Close"
         >
@@ -851,7 +853,7 @@ export default function Premium() {
         <div className="text-center">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={safeGoBack}
             className="text-sm text-zinc-600 hover:text-zinc-300 transition-colors"
           >
             Maybe later

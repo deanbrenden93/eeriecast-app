@@ -1,9 +1,9 @@
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play, Heart, ArrowDownUp, ListPlus } from "lucide-react";
+import { Play, Heart, ListPlus } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import EpisodesTable from "@/components/podcasts/EpisodesTable";
+import { FilterDropdown } from "@/components/common/FilterControls";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext";
 
@@ -160,28 +160,26 @@ export default function FavoritesTab({
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           {/* Filter by show */}
-          <Select value={selectedShow} onValueChange={setSelectedShow}>
-            <SelectTrigger className="w-48 bg-gray-800 border-gray-700 text-sm h-9">
-              <SelectValue placeholder="Filter by show" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Shows</SelectItem>
-              {showOptions.map(s => (
-                <SelectItem key={s.id} value={String(s.id)}>{s.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <FilterDropdown
+            value={selectedShow}
+            onChange={setSelectedShow}
+            placeholder="Show"
+            options={[
+              { value: "all", label: "All Shows" },
+              ...showOptions.map((s) => ({ value: String(s.id), label: s.title })),
+            ]}
+          />
 
-          {/* Sort toggle */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
-            className="h-9 px-3 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-zinc-300 text-sm gap-1.5"
-          >
-            <ArrowDownUp className="w-3.5 h-3.5" />
-            {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
-          </Button>
+          {/* Sort dropdown */}
+          <FilterDropdown
+            value={sortOrder}
+            onChange={setSortOrder}
+            placeholder="Sort"
+            options={[
+              { value: 'newest', label: 'Newest' },
+              { value: 'oldest', label: 'Oldest' },
+            ]}
+          />
         </div>
 
         <div className="flex items-center gap-2">

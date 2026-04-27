@@ -48,11 +48,20 @@ import {
   Headphones,
   CheckCircle2,
   Heart,
+  LayoutDashboard,
+  Library as LibraryIcon,
+  Search,
+  ChevronRight,
+  Music,
+  BookOpen,
+  Mic2,
 } from "lucide-react";
 
 import { useUser } from "@/context/UserContext";
+import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { Analytics } from "@/api/entities";
 import { createPageUrl } from "@/utils";
+import { isAudiobook, isMusic } from "@/lib/utils";
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -321,6 +330,48 @@ export default function AdminAnalytics() {
   const [customStart, setCustomStart] = useState(persisted?.customStart || "");
   const [customEnd, setCustomEnd] = useState(persisted?.customEnd || "");
 
+  // Top-level dashboard tab. We persist the choice so admins who deep-link
+  // back into the per-show drill-down don't get bumped to Overview every
+  // time. Stored separately from the range to avoid confusing the two.
+  const VIEW_KEY = "eeriecast.adminAnalytics.view.v1";
+  const [view, setView] = useState(() => {
+    try {
+      const v = window.localStorage.getItem(VIEW_KEY);
+      return v === "show" ? "show" : "overview";
+    } catch {
+      return "overview";
+    }
+  });
+  const [selectedShowId, setSelectedShowId] = useState(() => {
+    try {
+      return window.localStorage.getItem(`${VIEW_KEY}.show`) || null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VIEW_KEY, view);
+    } catch {
+      /* ignore */
+    }
+  }, [view]);
+  useEffect(() => {
+    try {
+      if (selectedShowId) {
+        window.localStorage.setItem(`${VIEW_KEY}.show`, String(selectedShowId));
+      } else {
+        window.localStorage.removeItem(`${VIEW_KEY}.show`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [selectedShowId]);
+
+  // Catalogue used by the per-show picker. Already cached app-wide so this
+  // is essentially free.
+  const { podcasts: allPodcasts } = usePodcasts();
+
   useEffect(() => {
     try {
       window.localStorage.setItem(
@@ -433,6 +484,33 @@ export default function AdminAnalytics() {
     }));
   }, [series]);
 
+  // Human-readable label for the active range — used in section subtitles
+  // so admins always know the temporal scope of the data they're looking
+  // at without having to scroll back up to the date picker.
+  const rangeLabel = useMemo(() => {
+    if (range === "custom" && customStart && customEnd) {
+      const fmt = (s) => {
+        try {
+          return new Date(s).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          });
+        } catch {
+          return s;
+        }
+      };
+      return `${fmt(customStart)} – ${fmt(customEnd)}`;
+    }
+    const map = {
+      "24h": "the last 24 hours",
+      "7d": "the last 7 days",
+      "30d": "the last 30 days",
+      "90d": "the last 90 days",
+      "1y": "the last year",
+    };
+    return map[range] || "the selected range";
+  }, [range, customStart, customEnd]);
+
   // Gate render *after* all hooks have run. We still show a spinner-ish
   // placeholder while the user payload is hydrating so non-admins never
   // momentarily see the dashboard chrome.
@@ -500,6 +578,20 @@ export default function AdminAnalytics() {
           />
         </div>
 
+        {/* View tabs — splits the dashboard into a high-level Overview and
+            a per-show drill-down so admins can investigate one show at a
+            time without losing the global picture. */}
+        <div className="mb-6">
+          <DashboardTabs
+            tabs={[
+              { id: "overview", label: "Overview", icon: LayoutDashboard },
+              { id: "show", label: "Per-show", icon: LibraryIcon },
+            ]}
+            active={view}
+            onChange={setView}
+          />
+        </div>
+
         {error ? (
           <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.05] p-5 text-sm text-rose-200">
             <p className="font-medium">Couldn't load analytics.</p>
@@ -518,345 +610,149 @@ export default function AdminAnalytics() {
           </div>
         ) : isLoading ? (
           <DashboardSkeleton />
+        ) : view === "show" ? (
+          <PerShowView
+            podcasts={allPodcasts}
+            breakdowns={breakdowns}
+            rangeLabel={rangeLabel}
+            selectedShowId={selectedShowId}
+            setSelectedShowId={setSelectedShowId}
+          />
         ) : (
-          <div className="space-y-6">
-            {/* Featured KPI row — the four numbers you glance at first */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KpiCard
-                icon={Users}
-                label="Total users"
-                value={formatNumber(kpis.total_users)}
-                sub={`${formatNumber(kpis.free_users_now)} free · ${formatNumber(kpis.paying_users_now)} paid`}
-              />
-              <KpiCard
-                icon={Crown}
-                label="Active subscribers"
-                value={formatNumber(kpis.paying_users_now)}
-                sub={`${formatNumber(kpis.trialing_now)} on trial`}
-                tone="accent"
-              />
-              <KpiCard
-                icon={DollarSign}
-                label="MRR"
-                value={formatCurrency(kpis.mrr_cents, currency)}
-                sub={`${formatCurrency(kpis.arr_cents, currency)} ARR`}
-                tone="good"
-              />
-              <KpiCard
-                icon={Activity}
-                label="Churn (in range)"
-                value={formatPercent((kpis.churn_rate || 0) * 100, { digits: 2 })}
-                sub={`${formatNumber(kpis.canceled_in_range)} canceled`}
-                tone={kpis.churn_rate && kpis.churn_rate > 0.05 ? "bad" : "default"}
-              />
-            </div>
-
-            {/* Secondary KPI row — range-scoped growth indicators */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <KpiCard
-                icon={UserPlus}
-                label="New users"
-                value={formatNumber(kpis.new_users_in_range)}
-                delta={kpis.new_users_delta_pct}
-              />
-              <KpiCard
-                icon={CreditCard}
-                label="New subs"
-                value={formatNumber(kpis.new_subs_in_range)}
-                delta={kpis.new_subs_delta_pct}
-              />
-              <KpiCard
-                icon={TrendingDown}
-                label="Cancellations"
-                value={formatNumber(kpis.canceled_in_range)}
-                delta={kpis.canceled_delta_pct !== null ? -kpis.canceled_delta_pct : null}
-              />
-              <KpiCard
-                icon={DollarSign}
-                label="ARPU"
-                value={formatCurrency(kpis.arpu_cents, currency)}
-                sub="per paying user / mo"
-              />
-              <KpiCard
-                icon={Users}
-                label="Email verified"
-                value={
-                  kpis.total_users
-                    ? formatPercent(
-                        (kpis.email_verified_count / kpis.total_users) * 100,
-                      )
-                    : "—"
-                }
-                sub={`${formatNumber(kpis.email_verified_count)} of ${formatNumber(kpis.total_users)}`}
-              />
-              <KpiCard
-                icon={Activity}
-                label="Onboarded"
-                value={
-                  kpis.total_users
-                    ? formatPercent(
-                        (kpis.onboarding_completed_count / kpis.total_users) * 100,
-                      )
-                    : "—"
-                }
-                sub={`${formatNumber(kpis.onboarding_completed_count)} of ${formatNumber(kpis.total_users)}`}
-              />
-            </div>
-
-            {/* Primary chart — Free vs Paid growth over time */}
-            <ChartCard
-              title="User growth"
-              subtitle="Free and paid users by day"
+          <div className="space-y-10">
+            {/* ────────────────────────────────────────────────────────
+                SECTION 1 — RIGHT NOW
+                Snapshots that don't depend on the date picker. Always
+                reflect the current state of the platform. */}
+            <DashboardSection
+              title="Right now"
+              subtitle="Snapshots of the platform's current state — these don't change with the date range above."
             >
-              <div className="w-full h-[320px]">
-                <ResponsiveContainer>
-                  <AreaChart
-                    data={usersStackedData}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="gradFree" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#64748b" stopOpacity={0.55} />
-                        <stop offset="95%" stopColor="#64748b" stopOpacity={0.05} />
-                      </linearGradient>
-                      <linearGradient id="gradPaid" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.75} />
-                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid {...gridProps} />
-                    <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
-                    <YAxis {...axisProps} />
-                    <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
-                    <Legend
-                      wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
-                      iconType="circle"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="Free"
-                      stackId="1"
-                      stroke="#94a3b8"
-                      strokeWidth={1.5}
-                      fill="url(#gradFree)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="Paid"
-                      stackId="1"
-                      stroke="#f59e0b"
-                      strokeWidth={1.5}
-                      fill="url(#gradPaid)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <KpiCard
+                  icon={Users}
+                  label="Total users"
+                  value={formatNumber(kpis.total_users)}
+                  sub={`${formatNumber(kpis.free_users_now)} free · ${formatNumber(kpis.paying_users_now)} paid`}
+                />
+                <KpiCard
+                  icon={Crown}
+                  label="Active subscribers"
+                  value={formatNumber(kpis.paying_users_now)}
+                  sub={`${formatNumber(kpis.trialing_now)} on trial`}
+                  tone="accent"
+                />
+                <KpiCard
+                  icon={DollarSign}
+                  label="MRR"
+                  value={formatCurrency(kpis.mrr_cents, currency)}
+                  sub={`${formatCurrency(kpis.arr_cents, currency)} ARR`}
+                  tone="good"
+                />
               </div>
-            </ChartCard>
-
-            {/* Row — signups + subscription flow */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <ChartCard
-                title="New signups"
-                subtitle="Daily signup count"
-              >
-                <div className="w-full h-[260px]">
-                  <ResponsiveContainer>
-                    <BarChart
-                      data={signupsData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid {...gridProps} />
-                      <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
-                      <YAxis {...axisProps} />
-                      <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
-                      <Bar
-                        dataKey="New"
-                        fill="#a78bfa"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-
-              <ChartCard
-                title="Subscription flow"
-                subtitle="New vs. canceled per day"
-              >
-                <div className="w-full h-[260px]">
-                  <ResponsiveContainer>
-                    <BarChart
-                      data={subsData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                      stackOffset="sign"
-                    >
-                      <CartesianGrid {...gridProps} />
-                      <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
-                      <YAxis {...axisProps} />
-                      <Tooltip
-                        {...TOOLTIP_PROPS}
-                        labelFormatter={formatDateTick}
-                        formatter={(value, name) => [Math.abs(value), name]}
-                      />
-                      <Legend
-                        wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
-                        iconType="circle"
-                      />
-                      <Bar dataKey="New" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar
-                        dataKey="Canceled"
-                        fill="#f43f5e"
-                        radius={[0, 0, 4, 4]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            </div>
-
-            {/* Row — plan mix + age distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <ChartCard
-                title="Plan mix"
-                subtitle="Active subscriptions by plan"
-              >
-                <div className="w-full h-[260px]">
-                  {planMixData.length === 0 ? (
-                    <EmptyChart message="No active subscriptions yet" />
-                  ) : (
-                    <ResponsiveContainer>
-                      <PieChart>
-                        <Pie
-                          data={planMixData}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={60}
-                          outerRadius={90}
-                          paddingAngle={2}
-                          stroke="none"
-                        >
-                          {planMixData.map((entry) => (
-                            <Cell
-                              key={entry.name}
-                              fill={PLAN_COLORS[entry.name] || "#64748b"}
-                            />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          {...TOOLTIP_PROPS}
-                          formatter={(value, name) => [formatNumber(value), name]}
-                        />
-                        <Legend
-                          wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
-                          iconType="circle"
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </ChartCard>
-
-              <ChartCard
-                title="Age distribution"
-                subtitle="Only users who've provided date of birth"
-              >
-                <div className="w-full h-[260px]">
-                  {ageData.every((d) => d.value === 0) ? (
-                    <EmptyChart message="No DOB data yet" />
-                  ) : (
-                    <ResponsiveContainer>
-                      <BarChart
-                        data={ageData}
-                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid {...gridProps} />
-                        <XAxis dataKey="name" {...axisProps} />
-                        <YAxis {...axisProps} />
-                        <Tooltip {...TOOLTIP_PROPS} />
-                        <Bar
-                          dataKey="value"
-                          fill={AGE_COLOR}
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </ChartCard>
-            </div>
-
-            {/* Row — content totals + top followed shows */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <ChartCard title="Content totals" className="lg:col-span-1">
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <StatRow label="Total shows" value={formatNumber(kpis.total_shows)} />
-                  <StatRow label="Total follows" value={formatNumber(kpis.total_follows)} />
-                  <StatRow
-                    label="New follows"
-                    value={formatNumber(kpis.new_follows_in_range)}
-                    sub="in range"
-                  />
-                  <StatRow
-                    label="Listened"
-                    value={formatMinutes(kpis.total_minutes_listened)}
-                    sub="all time"
-                  />
-                </dl>
-              </ChartCard>
-
-              <ChartCard
-                title="Top followed shows"
-                className="lg:col-span-2"
-                subtitle="Global, all-time"
-              >
-                {topShows.length === 0 ? (
-                  <EmptyChart message="No follows yet" />
-                ) : (
-                  <ul className="divide-y divide-white/[0.04]">
-                    {topShows.map((s, idx) => (
-                      <li
-                        key={s.id}
-                        className="flex items-center gap-3 py-2.5"
-                      >
-                        <span className="w-6 text-xs font-mono text-zinc-500">
-                          {String(idx + 1).padStart(2, "0")}
-                        </span>
-                        <span className="flex-1 min-w-0 truncate text-sm text-zinc-200">
-                          {s.title}
-                        </span>
-                        <span className="text-xs tabular-nums text-zinc-400">
-                          {formatNumber(s.follower_count)} followers
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </ChartCard>
-            </div>
-
-            {/* ── ENGAGEMENT SECTION ─────────────────────────────────
-                The most valuable metric for a streaming product —
-                listens and listen time on episodes and shows — used to
-                be completely absent from this dashboard. We now build
-                it out with:
-                  • 4 range-scoped KPIs (plays / listen time /
-                    completions / new follows)
-                  • 2 daily time-series charts (plays+completions,
-                    listen minutes)
-                  • 4 top-N leaderboards (episodes by plays, episodes
-                    by listen time, shows by plays, shows by listen
-                    time)
-                All numbers respect the range picker at the top. */}
-            <div className="pt-2">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-1 h-5 rounded-full bg-gradient-to-b from-red-500 to-amber-500" />
-                <h2 className="text-base font-semibold text-white">Listening engagement</h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <KpiCard
+                  icon={DollarSign}
+                  label="ARPU"
+                  value={formatCurrency(kpis.arpu_cents, currency)}
+                  sub="per paying user / mo"
+                />
+                <KpiCard
+                  icon={Headphones}
+                  label="Total shows"
+                  value={formatNumber(kpis.total_shows)}
+                  sub="catalogue size"
+                />
+                <KpiCard
+                  icon={Heart}
+                  label="Total follows"
+                  value={formatNumber(kpis.total_follows)}
+                  sub="all-time"
+                />
+                <KpiCard
+                  icon={Activity}
+                  label="Listened"
+                  value={formatMinutes(kpis.total_minutes_listened)}
+                  sub="all-time"
+                />
+                <KpiCard
+                  icon={Users}
+                  label="Email verified"
+                  value={
+                    kpis.total_users
+                      ? formatPercent(
+                          (kpis.email_verified_count / kpis.total_users) * 100,
+                        )
+                      : "—"
+                  }
+                  sub={`${formatNumber(kpis.email_verified_count)} of ${formatNumber(kpis.total_users)}`}
+                />
+                <KpiCard
+                  icon={Activity}
+                  label="Onboarded"
+                  value={
+                    kpis.total_users
+                      ? formatPercent(
+                          (kpis.onboarding_completed_count / kpis.total_users) * 100,
+                        )
+                      : "—"
+                  }
+                  sub={`${formatNumber(kpis.onboarding_completed_count)} of ${formatNumber(kpis.total_users)}`}
+                />
               </div>
-              <p className="text-xs text-zinc-500 -mt-1 mb-4">
-                Plays, completions and listen time across the catalogue — range-scoped.
-              </p>
+            </DashboardSection>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {/* ────────────────────────────────────────────────────────
+                SECTION 2 — IN SELECTED RANGE
+                Everything that respects the date picker — both the
+                growth + revenue indicators *and* the engagement
+                indicators (which used to live in their own section,
+                inconsistent with how the rest of the dashboard was
+                framed). */}
+            <DashboardSection
+              title="In selected range"
+              subtitle={`Activity inside ${rangeLabel} — these numbers all respect the date picker above.`}
+            >
+              {/* Growth + revenue, range-scoped */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <KpiCard
+                  icon={UserPlus}
+                  label="New users"
+                  value={formatNumber(kpis.new_users_in_range)}
+                  delta={kpis.new_users_delta_pct}
+                />
+                <KpiCard
+                  icon={CreditCard}
+                  label="New subs"
+                  value={formatNumber(kpis.new_subs_in_range)}
+                  delta={kpis.new_subs_delta_pct}
+                />
+                <KpiCard
+                  icon={TrendingDown}
+                  label="Cancellations"
+                  value={formatNumber(kpis.canceled_in_range)}
+                  delta={kpis.canceled_delta_pct !== null ? -kpis.canceled_delta_pct : null}
+                />
+                <KpiCard
+                  icon={Activity}
+                  label="Churn rate"
+                  value={formatPercent(
+                    // Defensive clamp to [0, 100]. Backend already
+                    // guarantees 0 ≤ churn_rate ≤ 1 by scoping the
+                    // numerator to the at-start cohort, but cached
+                    // responses from before that fix could still
+                    // produce > 100% — clamp here so the dashboard
+                    // never displays a nonsensical retention figure.
+                    Math.max(0, Math.min(100, (kpis.churn_rate || 0) * 100)),
+                    { digits: 2 },
+                  )}
+                  sub="of at-start cohort"
+                  tone={kpis.churn_rate && kpis.churn_rate > 0.05 ? "bad" : "default"}
+                />
+              </div>
+
+              {/* Engagement, range-scoped */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KpiCard
                   icon={Play}
                   label="Plays"
@@ -882,11 +778,124 @@ export default function AdminAnalytics() {
                   icon={Heart}
                   label="New follows"
                   value={formatNumber(kpis.new_follows_in_range)}
-                  sub={`${formatNumber(kpis.total_follows)} total`}
+                  sub={`${formatNumber(kpis.total_follows)} all-time`}
                 />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              {/* Primary chart — Free vs Paid growth over time */}
+              <ChartCard
+                title="User growth"
+                subtitle="Free and paid users by day"
+              >
+                <div className="w-full h-[320px]">
+                  <ResponsiveContainer>
+                    <AreaChart
+                      data={usersStackedData}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="gradFree" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#64748b" stopOpacity={0.55} />
+                          <stop offset="95%" stopColor="#64748b" stopOpacity={0.05} />
+                        </linearGradient>
+                        <linearGradient id="gradPaid" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.75} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.05} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid {...gridProps} />
+                      <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                      <YAxis {...axisProps} />
+                      <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
+                      <Legend
+                        wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                        iconType="circle"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="Free"
+                        stackId="1"
+                        stroke="#94a3b8"
+                        strokeWidth={1.5}
+                        fill="url(#gradFree)"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="Paid"
+                        stackId="1"
+                        stroke="#f59e0b"
+                        strokeWidth={1.5}
+                        fill="url(#gradPaid)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+
+              {/* Row — signups + subscription flow */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <ChartCard
+                  title="New signups"
+                  subtitle="Daily signup count"
+                >
+                <div className="w-full h-[260px]">
+                  <ResponsiveContainer>
+                    <BarChart
+                      data={signupsData}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid {...gridProps} />
+                      <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                      <YAxis {...axisProps} />
+                      <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
+                      <Bar
+                        dataKey="New"
+                        fill="#a78bfa"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+
+                <ChartCard
+                  title="Subscription flow"
+                  subtitle="New vs. canceled per day"
+                >
+                  <div className="w-full h-[260px]">
+                    <ResponsiveContainer>
+                      <BarChart
+                        data={subsData}
+                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                        stackOffset="sign"
+                      >
+                        <CartesianGrid {...gridProps} />
+                        <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                        <YAxis {...axisProps} />
+                        <Tooltip
+                          {...TOOLTIP_PROPS}
+                          labelFormatter={formatDateTick}
+                          formatter={(value, name) => [Math.abs(value), name]}
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                          iconType="circle"
+                        />
+                        <Bar dataKey="New" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        <Bar
+                          dataKey="Canceled"
+                          fill="#f43f5e"
+                          radius={[0, 0, 4, 4]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              </div>
+
+              {/* Row — plays vs completions + listen minutes (engagement
+                  time-series, both range-scoped) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <ChartCard
                   title="Plays vs. completions"
                   subtitle="Daily playback events"
@@ -958,7 +967,160 @@ export default function AdminAnalytics() {
                 </ChartCard>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              {followsSeriesData.some((d) => d.Follows > 0) && (
+                <ChartCard
+                  title="New follows"
+                  subtitle="Daily follow activity"
+                >
+                  <div className="w-full h-[220px]">
+                    <ResponsiveContainer>
+                      <LineChart
+                        data={followsSeriesData}
+                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid {...gridProps} />
+                        <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
+                        <YAxis {...axisProps} />
+                        <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
+                        <Line
+                          type="monotone"
+                          dataKey="Follows"
+                          stroke="#ec4899"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              )}
+            </DashboardSection>
+
+            {/* ────────────────────────────────────────────────────────
+                SECTION 3 — DEMOGRAPHICS & MIX
+                Composition of the *current* user base — shape of the
+                pie, not the size. Doesn't move with the date picker. */}
+            <DashboardSection
+              title="Demographics & mix"
+              subtitle="Composition of your current user base — independent of the date range above."
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <ChartCard
+                  title="Plan mix"
+                  subtitle="Active subscriptions by plan"
+                >
+                  <div className="w-full h-[260px]">
+                    {planMixData.length === 0 ? (
+                      <EmptyChart message="No active subscriptions yet" />
+                    ) : (
+                      <ResponsiveContainer>
+                        <PieChart>
+                          <Pie
+                            data={planMixData}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={60}
+                            outerRadius={90}
+                            paddingAngle={2}
+                            stroke="none"
+                          >
+                            {planMixData.map((entry) => (
+                              <Cell
+                                key={entry.name}
+                                fill={PLAN_COLORS[entry.name] || "#64748b"}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            {...TOOLTIP_PROPS}
+                            formatter={(value, name) => [formatNumber(value), name]}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 11, color: "#a1a1aa" }}
+                            iconType="circle"
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </ChartCard>
+
+                <ChartCard
+                  title="Age distribution"
+                  subtitle="Only users who've provided date of birth"
+                >
+                  <div className="w-full h-[260px]">
+                    {ageData.every((d) => d.value === 0) ? (
+                      <EmptyChart message="No DOB data yet" />
+                    ) : (
+                      <ResponsiveContainer>
+                        <BarChart
+                          data={ageData}
+                          margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                        >
+                          <CartesianGrid {...gridProps} />
+                          <XAxis dataKey="name" {...axisProps} />
+                          <YAxis {...axisProps} />
+                          <Tooltip {...TOOLTIP_PROPS} />
+                          <Bar
+                            dataKey="value"
+                            fill={AGE_COLOR}
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </ChartCard>
+              </div>
+            </DashboardSection>
+
+            {/* ────────────────────────────────────────────────────────
+                SECTION 4 — ALL-TIME LEADERBOARDS
+                Who's winning across the platform's full lifetime.
+                These intentionally ignore the date picker so admins
+                can use them as a steady "north star" reference. */}
+            <DashboardSection
+              title="All-time leaderboards"
+              subtitle="Top performers across the platform's full lifetime — these aren't affected by the date range above."
+            >
+              <ChartCard
+                title="Top followed shows"
+                subtitle="By follower count"
+              >
+                {topShows.length === 0 ? (
+                  <EmptyChart message="No follows yet" />
+                ) : (
+                  <ul className="divide-y divide-white/[0.04]">
+                    {topShows.map((s, idx) => (
+                      <li
+                        key={s.id}
+                        className="flex items-center gap-3 py-2.5"
+                      >
+                        <span className="w-6 text-xs font-mono text-zinc-500">
+                          {String(idx + 1).padStart(2, "0")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedShowId(String(s.id));
+                            setView("show");
+                          }}
+                          className="flex-1 min-w-0 truncate text-left text-sm text-zinc-200 hover:text-white transition-colors"
+                          title="View per-show analytics"
+                        >
+                          {s.title}
+                        </button>
+                        <span className="text-xs tabular-nums text-zinc-400">
+                          {formatNumber(s.follower_count)} followers
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </ChartCard>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <ChartCard
                   title="Top episodes by plays"
                   subtitle="All time"
@@ -1009,36 +1171,7 @@ export default function AdminAnalytics() {
                   />
                 </ChartCard>
               </div>
-
-              {followsSeriesData.some((d) => d.Follows > 0) && (
-                <ChartCard
-                  title="New follows"
-                  subtitle="Daily follow activity"
-                  className="mt-4"
-                >
-                  <div className="w-full h-[220px]">
-                    <ResponsiveContainer>
-                      <LineChart
-                        data={followsSeriesData}
-                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid {...gridProps} />
-                        <XAxis dataKey="date" tickFormatter={formatDateTick} {...axisProps} />
-                        <YAxis {...axisProps} />
-                        <Tooltip {...TOOLTIP_PROPS} labelFormatter={formatDateTick} />
-                        <Line
-                          type="monotone"
-                          dataKey="Follows"
-                          stroke="#ec4899"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </ChartCard>
-              )}
-            </div>
+            </DashboardSection>
 
             {isFetching && (
               <p className="text-[11px] text-zinc-600 text-right">Updating…</p>
@@ -1046,16 +1179,6 @@ export default function AdminAnalytics() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatRow({ label, value, sub }) {
-  return (
-    <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] px-3 py-2.5">
-      <p className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold tabular-nums text-white">{value}</p>
-      {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -1143,6 +1266,614 @@ function DashboardSkeleton() {
         <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] h-[280px] animate-pulse" />
         <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] h-[280px] animate-pulse" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * High-level tab strip used to swap between the platform-wide Overview
+ * and the per-show drill-down. Kept inline (rather than a generic UI
+ * primitive) because it's only used in this one place and the styling
+ * is intentionally tuned to feel like the rest of the analytics chrome
+ * — soft pill, low contrast for the inactive state, a bit of warmth on
+ * the active state to suggest you're "drilled in".
+ */
+function DashboardTabs({ tabs, active, onChange }) {
+  return (
+    <div className="inline-flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+      {tabs.map((t) => {
+        const Icon = t.icon;
+        const isActive = active === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onChange(t.id)}
+            aria-pressed={isActive}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              isActive
+                ? "bg-white/[0.08] text-white border border-white/[0.1] shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03] border border-transparent"
+            }`}
+          >
+            {Icon && <Icon className="w-3.5 h-3.5" />}
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Visual section wrapper with a header band. Used to make the temporal
+ * scope of each group of cards/charts blindingly obvious — "Right now"
+ * never gets confused with "In selected range" again, even at a glance.
+ */
+function DashboardSection({ title, subtitle, children, action }) {
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/[0.05] pb-3">
+        <div className="min-w-0">
+          <h2 className="text-base md:text-lg font-semibold text-white tracking-tight">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="text-[11px] md:text-xs text-zinc-500 mt-1 max-w-2xl leading-relaxed">
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {action}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+// ─── Per-show drill-down ─────────────────────────────────────────────
+//
+// Renders either a searchable picker (when nothing's selected) or the
+// detail view for the selected show. All numbers come from the existing
+// summary payload — no new endpoints needed. Where a metric isn't in
+// the platform-wide top-10 we tell the admin so explicitly rather than
+// silently rendering "0".
+
+function PerShowView({
+  podcasts,
+  breakdowns,
+  rangeLabel,
+  selectedShowId,
+  setSelectedShowId,
+}) {
+  // Stable, alphabetised list — admins jumping in fresh shouldn't have
+  // to figure out the discovery ranking just to find a show.
+  const podcastList = useMemo(
+    () =>
+      [...(podcasts || [])]
+        .filter(Boolean)
+        .sort((a, b) =>
+          String(a.title || "").localeCompare(String(b.title || ""))
+        ),
+    [podcasts]
+  );
+
+  const followerById = useMemo(
+    () =>
+      Object.fromEntries(
+        (breakdowns?.top_followed_podcasts || []).map((s) => [
+          String(s.id),
+          s.follower_count || 0,
+        ])
+      ),
+    [breakdowns]
+  );
+  const showPlaysById = useMemo(
+    () =>
+      Object.fromEntries(
+        (breakdowns?.top_shows_by_plays || []).map((s) => [
+          String(s.id),
+          s.plays || 0,
+        ])
+      ),
+    [breakdowns]
+  );
+  const showListenById = useMemo(
+    () =>
+      Object.fromEntries(
+        (breakdowns?.top_shows_by_listen_time || []).map((s) => [
+          String(s.id),
+          s.minutes || 0,
+        ])
+      ),
+    [breakdowns]
+  );
+  const epPlaysById = useMemo(
+    () =>
+      Object.fromEntries(
+        (breakdowns?.top_episodes_by_plays || []).map((e) => [
+          String(e.id),
+          e.plays || 0,
+        ])
+      ),
+    [breakdowns]
+  );
+  const epListenById = useMemo(
+    () =>
+      Object.fromEntries(
+        (breakdowns?.top_episodes_by_listen_time || []).map((e) => [
+          String(e.id),
+          e.minutes || 0,
+        ])
+      ),
+    [breakdowns]
+  );
+
+  const selected = useMemo(() => {
+    if (!selectedShowId) return null;
+    return (
+      podcastList.find((p) => String(p.id) === String(selectedShowId)) || null
+    );
+  }, [selectedShowId, podcastList]);
+
+  if (!selected) {
+    return (
+      <ShowPickerPanel
+        podcasts={podcastList}
+        followerById={followerById}
+        playsById={showPlaysById}
+        onPick={(id) => setSelectedShowId(String(id))}
+      />
+    );
+  }
+
+  return (
+    <PerShowDetail
+      show={selected}
+      onChangeShow={() => setSelectedShowId(null)}
+      followerCount={followerById[String(selected.id)] ?? null}
+      showPlays={
+        Object.prototype.hasOwnProperty.call(
+          showPlaysById,
+          String(selected.id)
+        )
+          ? showPlaysById[String(selected.id)]
+          : null
+      }
+      showListen={
+        Object.prototype.hasOwnProperty.call(
+          showListenById,
+          String(selected.id)
+        )
+          ? showListenById[String(selected.id)]
+          : null
+      }
+      epPlaysById={epPlaysById}
+      epListenById={epListenById}
+      rangeLabel={rangeLabel}
+    />
+  );
+}
+
+// Picks the appropriate "type" icon for a show card. Falls back to a
+// microphone for everything that isn't explicitly an audiobook or
+// album so the UI never shows a missing icon.
+function showTypeIcon(podcast) {
+  if (isAudiobook(podcast)) return BookOpen;
+  if (isMusic(podcast)) return Music;
+  return Mic2;
+}
+
+function ShowPickerPanel({ podcasts, followerById, playsById, onPick }) {
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return podcasts;
+    return podcasts.filter((p) =>
+      String(p.title || "")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [podcasts, query]);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base md:text-lg font-semibold text-white tracking-tight">
+              Pick a show to drill into
+            </h2>
+            <p className="text-xs text-zinc-500 mt-1 max-w-xl leading-relaxed">
+              Choose any show in the catalogue to see its episode list and any
+              engagement data we have for it. Plays / listen-time figures come
+              from the platform-wide top-10 leaderboards — shows or episodes
+              outside the top 10 are marked accordingly.
+            </p>
+          </div>
+          <div className="relative flex-shrink-0 w-full md:w-72">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search shows…"
+              className="w-full pl-9 pr-3 h-9 rounded-full bg-black/40 border border-white/[0.08] text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-white/[0.18]"
+            />
+          </div>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-10 text-center text-sm text-zinc-500">
+          {query
+            ? `No shows matching "${query}".`
+            : "No shows in the catalogue yet."}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filtered.map((p) => {
+            const Icon = showTypeIcon(p);
+            const followers = followerById[String(p.id)];
+            const plays = playsById[String(p.id)];
+            const cover = p.cover_image_url || p.cover_url || p.image_url;
+            const epCount = Array.isArray(p.episodes)
+              ? p.episodes.length
+              : Array.isArray(p.episodes?.results)
+              ? p.episodes.results.length
+              : null;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onPick(p.id)}
+                className="group flex items-center gap-3 p-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04] transition-colors text-left"
+              >
+                <div className="w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-white/[0.04] flex items-center justify-center">
+                  {cover ? (
+                    <img
+                      src={cover}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Icon className="w-5 h-5 text-zinc-500" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-sm font-medium text-zinc-100 group-hover:text-white">
+                    {p.title}
+                  </p>
+                  <p className="truncate text-[11px] text-zinc-500 mt-0.5">
+                    {epCount != null && (
+                      <span>{formatNumber(epCount)} episodes</span>
+                    )}
+                    {followers != null && (
+                      <span>
+                        {epCount != null ? " · " : ""}
+                        {formatNumber(followers)} followers
+                      </span>
+                    )}
+                    {plays != null && (
+                      <span>
+                        {epCount != null || followers != null ? " · " : ""}
+                        {formatNumber(plays)} plays
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-300 flex-shrink-0" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PerShowDetail({
+  show,
+  onChangeShow,
+  followerCount,
+  showPlays,
+  showListen,
+  epPlaysById,
+  epListenById,
+  rangeLabel,
+}) {
+  // Episodes can live under .episodes (array) or .episodes.results
+  // depending on which serializer ran. Normalise once.
+  const episodes = useMemo(() => {
+    if (Array.isArray(show?.episodes)) return show.episodes;
+    if (Array.isArray(show?.episodes?.results)) return show.episodes.results;
+    return [];
+  }, [show]);
+
+  // Sort newest first by published_at; fall back to original order so
+  // shows that don't ship publish dates still render predictably.
+  const episodesSorted = useMemo(() => {
+    return [...episodes].sort((a, b) => {
+      const ta = Date.parse(a?.published_at || a?.publishedAt || "") || 0;
+      const tb = Date.parse(b?.published_at || b?.publishedAt || "") || 0;
+      return tb - ta;
+    });
+  }, [episodes]);
+
+  // Episode IDs that belong to this show — used to filter the platform
+  // wide top-10 leaderboards down to just this show's contributions.
+  const ownEpisodeIds = useMemo(
+    () => new Set(episodes.map((e) => String(e.id))),
+    [episodes]
+  );
+
+  // "This show's episodes that placed in the platform-wide top 10"
+  const topEpisodesForShowByPlays = useMemo(
+    () =>
+      episodesSorted
+        .filter((e) =>
+          Object.prototype.hasOwnProperty.call(epPlaysById, String(e.id))
+        )
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          plays: epPlaysById[String(e.id)],
+        }))
+        .sort((a, b) => (b.plays || 0) - (a.plays || 0)),
+    [episodesSorted, epPlaysById]
+  );
+
+  const topEpisodesForShowByListen = useMemo(
+    () =>
+      episodesSorted
+        .filter((e) =>
+          Object.prototype.hasOwnProperty.call(epListenById, String(e.id))
+        )
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          minutes: epListenById[String(e.id)],
+        }))
+        .sort((a, b) => (b.minutes || 0) - (a.minutes || 0)),
+    [episodesSorted, epListenById]
+  );
+
+  const cover =
+    show.cover_image_url || show.cover_url || show.image_url || null;
+  const Icon = showTypeIcon(show);
+  const typeLabel = isAudiobook(show)
+    ? "Audiobook"
+    : isMusic(show)
+    ? "Album"
+    : "Podcast";
+
+  return (
+    <div className="space-y-8">
+      {/* Hero card — show identity + headline metrics */}
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div className="p-5 md:p-6 flex flex-col md:flex-row gap-5">
+          <div className="w-32 h-32 md:w-40 md:h-40 flex-shrink-0 rounded-xl overflow-hidden bg-white/[0.04] flex items-center justify-center">
+            {cover ? (
+              <img
+                src={cover}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Icon className="w-10 h-10 text-zinc-500" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
+                  <Icon className="w-3 h-3" /> {typeLabel}
+                </p>
+                <h2 className="mt-1 text-xl md:text-2xl font-semibold text-white tracking-tight truncate">
+                  {show.title}
+                </h2>
+                {show.author && (
+                  <p className="text-sm text-zinc-400 mt-0.5 truncate">
+                    by {show.author}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onChangeShow}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs text-zinc-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Change show
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <MiniStat
+                label="Episodes"
+                value={formatNumber(episodes.length)}
+                sub="in catalogue"
+              />
+              <MiniStat
+                label="Followers"
+                value={
+                  followerCount != null
+                    ? formatNumber(followerCount)
+                    : "—"
+                }
+                sub={followerCount != null ? "all-time" : "outside top-10"}
+              />
+              <MiniStat
+                label="Plays"
+                value={showPlays != null ? formatNumber(showPlays) : "—"}
+                sub={
+                  showPlays != null ? `in ${rangeLabel}` : "outside top-10"
+                }
+                tone="accent"
+              />
+              <MiniStat
+                label="Listen time"
+                value={
+                  showListen != null ? formatMinutes(showListen) : "—"
+                }
+                sub={
+                  showListen != null
+                    ? `in ${rangeLabel}`
+                    : "outside top-10"
+                }
+                tone="good"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Per-show top episodes (filtered from platform top-10) */}
+      <DashboardSection
+        title="This show's top episodes"
+        subtitle={`Episodes from this show that placed in the platform-wide top 10 for ${rangeLabel}. Episodes outside the top 10 won't appear here.`}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ChartCard
+            title="By plays"
+            subtitle={`Within ${rangeLabel}`}
+          >
+            <LeaderboardList
+              rows={topEpisodesForShowByPlays}
+              empty="None of this show's episodes placed in the platform top 10 for plays in this range."
+              valueKey="plays"
+              valueLabel="plays"
+            />
+          </ChartCard>
+          <ChartCard
+            title="By listen time"
+            subtitle={`Within ${rangeLabel}`}
+          >
+            <LeaderboardList
+              rows={topEpisodesForShowByListen}
+              empty="None of this show's episodes placed in the platform top 10 for listen time in this range."
+              valueKey="minutes"
+              valueFormatter={formatMinutes}
+            />
+          </ChartCard>
+        </div>
+      </DashboardSection>
+
+      {/* Full episode catalogue */}
+      <DashboardSection
+        title="Episode catalogue"
+        subtitle={`Every episode for this show. Plays and listen-time columns are filled in only when an episode placed in the platform-wide top 10 for ${rangeLabel}.`}
+      >
+        {episodesSorted.length === 0 ? (
+          <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-10 text-center text-sm text-zinc-500">
+            No episodes available for this show.
+          </div>
+        ) : (
+          <EpisodeCatalogueTable
+            episodes={episodesSorted}
+            epPlaysById={epPlaysById}
+            epListenById={epListenById}
+          />
+        )}
+      </DashboardSection>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub, tone = "default" }) {
+  const valueClass =
+    tone === "accent"
+      ? "text-amber-300"
+      : tone === "good"
+      ? "text-emerald-300"
+      : "text-white";
+  return (
+    <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] px-3 py-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+        {label}
+      </p>
+      <p className={`mt-0.5 text-lg font-semibold tabular-nums ${valueClass}`}>
+        {value}
+      </p>
+      {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function EpisodeCatalogueTable({ episodes, epPlaysById, epListenById }) {
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      {/* Header — desktop only */}
+      <div className="hidden md:grid grid-cols-[minmax(0,1fr)_120px_120px_120px] gap-4 px-4 py-2.5 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-white/[0.05] bg-white/[0.01]">
+        <span>Episode</span>
+        <span className="text-right">Published</span>
+        <span className="text-right">Plays</span>
+        <span className="text-right">Listen time</span>
+      </div>
+      <ul className="divide-y divide-white/[0.04]">
+        {episodes.map((e) => {
+          const plays = epPlaysById[String(e.id)];
+          const minutes = epListenById[String(e.id)];
+          const cover = e.cover_image_url || e.cover_url || e.image_url;
+          return (
+            <li
+              key={e.id}
+              className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_120px_120px] gap-2 md:gap-4 px-4 py-3 hover:bg-white/[0.02] transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 flex-shrink-0 rounded-md overflow-hidden bg-white/[0.04]">
+                  {cover ? (
+                    <img
+                      src={cover}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : null}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-zinc-100">{e.title}</p>
+                  <p className="md:hidden truncate text-[11px] text-zinc-500 mt-0.5">
+                    {fmtDate(e.published_at || e.publishedAt)}
+                  </p>
+                </div>
+              </div>
+              <span className="hidden md:block text-right text-xs text-zinc-400 self-center tabular-nums">
+                {fmtDate(e.published_at || e.publishedAt)}
+              </span>
+              <span
+                className={`text-right text-sm tabular-nums self-center ${
+                  plays != null ? "text-amber-200" : "text-zinc-600"
+                }`}
+              >
+                {plays != null ? formatNumber(plays) : "—"}
+              </span>
+              <span
+                className={`text-right text-sm tabular-nums self-center ${
+                  minutes != null ? "text-emerald-200" : "text-zinc-600"
+                }`}
+              >
+                {minutes != null ? formatMinutes(minutes) : "—"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

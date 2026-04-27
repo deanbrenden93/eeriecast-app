@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { useUser } from "@/context/UserContext";
+import { useSafeBack } from "@/hooks/use-safe-back";
 import { djangoClient } from "@/api/djangoClient";
 import {
   getTrialLabel,
@@ -44,6 +45,7 @@ import {
 
 export default function Billing() {
   const navigate = useNavigate();
+  const safeGoBack = useSafeBack();
   const {
     user,
     isPremium,
@@ -201,7 +203,7 @@ export default function Billing() {
       <div className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/[0.04] bg-[#0a0a10]/60 backdrop-blur-md sticky top-0">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={safeGoBack}
           className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />

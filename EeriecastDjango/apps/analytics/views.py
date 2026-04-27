@@ -248,13 +248,28 @@ class AnalyticsSummaryView(APIView):
             buckets,
         )
 
-        # Churn % over the range: cancellations / (active at start)
-        active_at_start = all_subs.filter(
+        # Churn % over the range — defined as the share of the at-start
+        # cohort that left during the window. We deliberately scope the
+        # numerator to the same cohort (subs that were active at the
+        # start of the window AND canceled inside it). Without that
+        # restriction, a sub created and canceled within the same window
+        # would inflate churn above 100% (e.g. 3 cancellations against
+        # 2 active-at-start subs producing 150%), which is meaningless
+        # to operators trying to gauge retention.
+        active_at_start_qs = all_subs.filter(
             created_at__lt=start,
         ).filter(
             Q(canceled_at__isnull=True) | Q(canceled_at__gte=start)
+        )
+        active_at_start = active_at_start_qs.count()
+        churned_from_cohort = active_at_start_qs.filter(
+            canceled_at__gte=start, canceled_at__lt=end,
         ).count()
-        churn_rate = (canceled_in_range / active_at_start) if active_at_start else 0.0
+        churn_rate = (churned_from_cohort / active_at_start) if active_at_start else 0.0
+        # Bound to [0, 1] as a final defensive guard — the cohort filter
+        # above guarantees this analytically, but rounding off corner
+        # cases (e.g. timezone boundaries) is cheap insurance.
+        churn_rate = max(0.0, min(1.0, churn_rate))
 
         # Cumulative paid / free split aligned to the same buckets so the
         # frontend can render a stacked area chart of Free vs Paid over time.

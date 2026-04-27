@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
@@ -6,6 +7,30 @@ import { Loader2 } from "lucide-react";
 import { getCategoryStyle } from "@/lib/categoryStyles";
 
 export default function CategoryExplorer() {
+  const scrollRef = useRef(null);
+
+  // Translate vertical scroll-wheel input into horizontal scrolling so
+  // desktop users can sweep the category row without having to grab the
+  // scrollbar. We only intercept when the wheel is predominantly vertical
+  // (deltaY > deltaX) so trackpad users on Mac who already swipe sideways
+  // keep their native momentum.
+  const handleWheel = (e) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const absX = Math.abs(e.deltaX);
+    const absY = Math.abs(e.deltaY);
+    if (absY <= absX) return; // already horizontal — leave it alone
+    // Only hijack when there's room to scroll horizontally; otherwise let
+    // the page scroll continue uninterrupted.
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 0) return;
+    const atStart = el.scrollLeft <= 0 && e.deltaY < 0;
+    const atEnd = el.scrollLeft >= maxScroll - 1 && e.deltaY > 0;
+    if (atStart || atEnd) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  };
+
   // Shares the ['categories', 'list'] cache with Discover, so navigating
   // between pages doesn't trigger a second fetch or a loading flash.
   const { data: categoriesData = [], isLoading } = useQuery({
@@ -35,6 +60,8 @@ export default function CategoryExplorer() {
     <div>
       <h2 className="text-2xl font-bold text-white mb-6">Explore Categories</h2>
       <div
+        ref={scrollRef}
+        onWheel={handleWheel}
         className="overflow-x-auto overflow-y-hidden -mx-1 px-1 py-1"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         aria-label="Categories"

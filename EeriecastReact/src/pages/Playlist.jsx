@@ -10,6 +10,8 @@ import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
+import { useSafeBack } from '@/hooks/use-safe-back';
+import { createPageUrl } from '@/utils';
 
 function useQuery() {
   const { search } = useLocation();
@@ -66,6 +68,9 @@ export default function Playlist() {
   const query = useQuery();
   const idParam = query.get('id');
   const navigate = useNavigate();
+  // Library is the natural home for a playlist view, so direct-link
+  // visitors who hit Back end up there rather than off-site.
+  const safeGoBack = useSafeBack(createPageUrl('Library'));
 
   const [playlist, setPlaylist] = useState(null);
   const [episodes, setEpisodes] = useState([]);
@@ -248,7 +253,7 @@ export default function Playlist() {
     return (
       <div className="min-h-screen bg-eeriecast-surface text-white">
         <div className="px-4 lg:px-10 py-8">
-          <Button variant="ghost" className="mb-4 text-zinc-400 hover:text-white" onClick={() => navigate(-1)}>Back</Button>
+          <Button variant="ghost" className="mb-4 text-zinc-400 hover:text-white" onClick={safeGoBack}>Back</Button>
           <div className="text-gray-400">Playlist not found.</div>
         </div>
       </div>

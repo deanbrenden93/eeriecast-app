@@ -1,10 +1,11 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Ghost, Home as HomeIcon, Search as SearchIcon, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
+import { useSafeBack } from '@/hooks/use-safe-back';
 
 export default function NotFound() {
-  const navigate = useNavigate();
+  const safeGoBack = useSafeBack(createPageUrl('Home'));
 
   return (
     <div className="min-h-[calc(100vh-140px)] bg-black text-white flex items-center justify-center px-6 py-16">
@@ -23,7 +24,7 @@ export default function NotFound() {
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button
-            onClick={() => navigate(-1)}
+            onClick={safeGoBack}
             variant="outline"
             className="bg-transparent border-gray-700 text-white hover:bg-gray-800 hover:text-white rounded-full px-6 py-2 flex items-center gap-2"
           >
