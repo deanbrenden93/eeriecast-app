@@ -55,6 +55,10 @@ const SHOW_COLORS = {
   'fractured-reality':         { primary: '#22d3ee', darker: '#0891b2', shadow: '#22d3ee33' },
   // Lazuray — deep electric azure (leans into the name; contrasts the cover's red slash)
   'lazuray':                   { primary: '#2563eb', darker: '#1e3a8a', shadow: '#2563eb33' },
+  // GIMU (musician) — clean white. `darker` shifts to a soft off-white so
+  // hover/gradient transitions still read as a state change instead of
+  // looking flat, and the shadow stays a low-alpha white glow.
+  'gimu':                      { primary: '#ffffff', darker: '#d4d4d8', shadow: '#ffffff33' },
 };
 
 /* ── Defaults ────────────────────────────────────────────────────────────── */
@@ -66,10 +70,46 @@ const DEFAULTS = {
 };
 
 /**
+ * Pick a readable foreground (text/icon) color to render on top of the
+ * given accent. Uses WCAG relative luminance with a single threshold —
+ * pale primaries (white, off-white, light yellow) get near-black text
+ * so labels and play glyphs don't disappear, everything else keeps the
+ * standard white foreground that all our other accents were designed
+ * around. Returns plain hex so it works in both inline styles and SVG
+ * `fill` / `stroke` attributes.
+ */
+function pickFg(hex) {
+  const h = (hex || '').replace('#', '');
+  if (h.length !== 6 && h.length !== 3) return '#ffffff';
+  const v = h.length === 3
+    ? h.split('').map((c) => c + c).join('')
+    : h;
+  const r = parseInt(v.slice(0, 2), 16) / 255;
+  const g = parseInt(v.slice(2, 4), 16) / 255;
+  const b = parseInt(v.slice(4, 6), 16) / 255;
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  // 0.6 chosen empirically: keeps every existing show on white text,
+  // flips only on truly pale accents like GIMU's #ffffff.
+  return L > 0.6 ? '#0a0a0a' : '#ffffff';
+}
+
+function withFg(palette) {
+  return { ...palette, fg: pickFg(palette.primary) };
+}
+
+/**
  * Look up the accent colors for a given show.
  * @param {Object} show — the podcast/book object (needs id and/or slug)
  * @param {boolean} isBook — whether the show is an audiobook
- * @returns {{ hero: {primary,darker,shadow}, row: {primary,darker,shadow} }}
+ * @returns {{
+ *   hero: { primary: string, darker: string, shadow: string, fg: string },
+ *   row:  { primary: string, darker: string, shadow: string, fg: string },
+ * }}
+ *   `fg` is the recommended text/icon color to render on top of
+ *   `primary` / `darker` — defaults to white but flips to near-black
+ *   when the accent is pale (e.g. GIMU). Consumers should prefer it
+ *   over hard-coded `text-white` / `fill-white`.
  */
 export function getShowColors(show, isBook = false) {
   const slug = show?.slug;
@@ -79,11 +119,11 @@ export function getShowColors(show, isBook = false) {
   const defaultHero = isBook ? DEFAULTS.audiobook : DEFAULTS.podcast;
 
   if (!custom) {
-    return { hero: defaultHero, row: DEFAULTS.row };
+    return { hero: withFg(defaultHero), row: withFg(DEFAULTS.row) };
   }
 
   return {
-    hero: { ...defaultHero, ...custom },
-    row:  { ...DEFAULTS.row, ...custom },
+    hero: withFg({ ...defaultHero, ...custom }),
+    row:  withFg({ ...DEFAULTS.row, ...custom }),
   };
 }

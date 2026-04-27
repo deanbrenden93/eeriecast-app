@@ -258,12 +258,16 @@ export default function EpisodesTable({
                 <Button
                   size="icon"
                   onClick={() => onPlay && onPlay(ep)}
-                  className={`text-white w-9 h-9 rounded-lg hover:brightness-110 ${!accentColor ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : ''}`}
+                  className={`w-9 h-9 rounded-lg hover:brightness-110 ${!accentColor ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700' : ''}`}
                   style={accentColor ? {
                     background: `linear-gradient(to right, ${accentColor.primary}, ${accentColor.darker})`,
-                  } : undefined}
+                    color: accentColor.fg || '#ffffff',
+                  } : { color: '#ffffff' }}
                 >
-                  <Play className="w-4 h-4 fill-white ml-0.5" />
+                  <Play
+                    className="w-4 h-4 ml-0.5"
+                    style={{ fill: accentColor?.fg || '#ffffff' }}
+                  />
                 </Button>
               )}
             </div>
@@ -293,6 +297,7 @@ EpisodesTable.propTypes = {
   accentColor: PropTypes.shape({
     primary: PropTypes.string,
     darker: PropTypes.string,
+    fg: PropTypes.string,
   }),
   freeSampleEpisodeId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   dismissingIds: PropTypes.instanceOf(Set),

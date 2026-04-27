@@ -737,14 +737,18 @@ export default function Episodes() {
               {/* Action buttons */}
               <div className="flex flex-wrap items-center gap-3">
                 <Button
-                  className="px-7 py-2.5 rounded-full flex items-center gap-2.5 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110 text-white"
+                  className="px-7 py-2.5 rounded-full flex items-center gap-2.5 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
                   style={{
                     background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
                     boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
+                    color: showColors.hero.fg,
                   }}
                   onClick={isBook ? doPlayAudiobook : () => doPlay(showSampleSection ? (sampleEpisodes[0] || sortedEpisodes[0]) : sortedEpisodes[0])}
                 >
-                  <Play className="w-4 h-4 fill-white" />
+                  <Play
+                    className="w-4 h-4"
+                    style={{ fill: showColors.hero.fg, color: showColors.hero.fg }}
+                  />
                   {isBook
                     ? (audiobookResume ? 'Continue' : 'Start Listening')
                     : 'Play'}
@@ -817,10 +821,11 @@ export default function Episodes() {
                 {isBook && (
                   hasBook ? (
                     <Button
-                      className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold text-white shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
+                      className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
                       style={{
                         background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
                         boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
+                        color: showColors.hero.fg,
                       }}
                       onClick={() => {
                         if (!isAuthenticated) { openAuth('login'); return; }
@@ -904,9 +909,10 @@ export default function Episodes() {
                         style={{
                           background: `linear-gradient(135deg, ${showColors.hero.primary}, ${showColors.hero.darker})`,
                           boxShadow: `0 6px 16px -6px ${showColors.hero.shadow || 'transparent'}`,
+                          color: showColors.hero.fg,
                         }}
                       >
-                        <Sparkles className="w-5 h-5 text-white" />
+                        <Sparkles className="w-5 h-5" style={{ color: showColors.hero.fg }} />
                       </div>
                       <div>
                         <h3 className="text-lg md:text-xl font-bold flex items-center gap-2">
@@ -923,9 +929,10 @@ export default function Episodes() {
 
                     <Button
                       onClick={goToPremium}
-                      className="self-start sm:self-auto px-4 py-2 rounded-full text-xs font-semibold text-white shadow-md transition-all duration-300 hover:scale-[1.02] hover:brightness-110"
+                      className="self-start sm:self-auto px-4 py-2 rounded-full text-xs font-semibold shadow-md transition-all duration-300 hover:scale-[1.02] hover:brightness-110"
                       style={{
                         background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                        color: showColors.hero.fg,
                       }}
                     >
                       <Crown className="w-3.5 h-3.5 mr-1.5" />
