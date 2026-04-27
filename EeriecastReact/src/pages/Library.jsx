@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { Podcast, UserLibrary, Episode } from "@/api/entities";
+import { Podcast, UserLibrary } from "@/api/entities";
 import { Button } from "@/components/ui/button";
-import { Play, Edit, Plus, Download, Trash2, Headphones, Smartphone } from "lucide-react";
+import { Play, Edit, Plus, Download, Trash2, Headphones, MoreVertical } from "lucide-react";
 import { Capacitor } from '@capacitor/core';
 import FavoritesTab from "../components/library/FavoritesTab";
 import FollowingTab from "../components/library/FollowingTab";
@@ -15,11 +15,31 @@ import PlaylistRenameModal from "../components/library/PlaylistRenameModal";
 import PlaylistDeleteModal from "../components/library/PlaylistDeleteModal";
 import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { useUser } from "@/context/UserContext.jsx";
-import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
+import { usePlaylistContext, getEpisodesBatch } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { FREE_FAVORITE_LIMIT } from "@/lib/freeTier";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+
+// Same human-friendly runtime formatter used on the Playlist detail
+// page. Centralizing the format here keeps the card and the hero in
+// visual lockstep ("1h 12m" everywhere, never "73m" on one and
+// something else on the other).
+function formatRuntime(approxMinutes) {
+  if (typeof approxMinutes !== 'number' || !Number.isFinite(approxMinutes) || approxMinutes <= 0) return '';
+  const total = Math.round(approxMinutes);
+  if (total < 60) return `${total}m`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
 
 
 export default function Library() {
@@ -38,6 +58,33 @@ export default function Library() {
     } catch { return null; }
   })();
   const [activeTab, setActiveTab] = useState(queryTab || "Following");
+
+  // Persist the active tab in the URL query string. Doing this with
+  // `replace: true` means:
+  //   • a hard refresh on /Library?tab=Favorites lands back on the
+  //     Favorites tab instead of bouncing to Following,
+  //   • navigating away to a podcast / episode and hitting Back
+  //     restores the tab the listener was on (because the URL in
+  //     history holds the tab),
+  //   • the URL stays shareable / linkable (so a notification or
+  //     external email can deep-link straight into one tab).
+  // `replace` keeps every tab switch out of the back-button stack —
+  // the listener pressing Back from "History" should leave the
+  // Library entirely, not cycle through every tab they touched.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const current = params.get('tab');
+      if ((current || '').toLowerCase() === activeTab.toLowerCase()) return;
+      params.set('tab', activeTab);
+      const next = `${location.pathname}?${params.toString()}${location.hash || ''}`;
+      window.history.replaceState(window.history.state, '', next);
+    } catch { /* ignore */ }
+    // We deliberately depend only on `activeTab` here — re-syncing
+    // on every `location` change would fight tab clicks that are
+    // about to write to the URL themselves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
   const [podcasts, setPodcasts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
@@ -132,14 +179,12 @@ export default function Library() {
   async function handlePlayPlaylist(pl) {
     try {
       if (!pl || !Array.isArray(pl.episodes) || pl.episodes.length === 0) return;
-      // Fetch all episodes to build a full queue
-      const eps = [];
-      for (const id of pl.episodes) {
-        try {
-          const ep = await Episode.get(id);
-          if (ep) eps.push(ep);
-        } catch { /* skip */ }
-      }
+      // Parallel batch fetch — episodes already seen on the Playlist
+      // detail page or in another card cover return from cache, so
+      // hitting Play on the Library card after viewing the playlist
+      // is essentially instant.
+      const fetched = await getEpisodesBatch(pl.episodes);
+      const eps = fetched.filter(Boolean);
       if (!eps.length) return;
       const getArt = (ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
       const pseudoPodcast = {
@@ -288,22 +333,25 @@ export default function Library() {
   };
 
   // ── Playlist card cover: 2×2 mosaic from first 4 episode images ──
+  //
+  // Uses `getEpisodesBatch` from PlaylistContext, which:
+  //   • parallelizes the up-to-4 `Episode.get` calls (was sequential)
+  //   • shares a module-scoped cache with the Playlist detail page,
+  //     so coming back to Library after viewing one of these
+  //     playlists shows the mosaic instantly instead of refetching
+  //     each tile one-by-one.
   function PlaylistCardCover({ episodeIds = [] }) {
     const [images, setImages] = useState([]);
     useEffect(() => {
       let mounted = true;
       const ids = episodeIds.slice(0, 4);
-      if (!ids.length) return;
+      if (!ids.length) { setImages([]); return; }
       (async () => {
-        const imgs = [];
-        for (const id of ids) {
-          try {
-            const ep = await Episode.get(id);
-            const art = ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null;
-            if (art) imgs.push(art);
-          } catch { /* skip */ }
-          if (imgs.length >= 4) break;
-        }
+        const fetched = await getEpisodesBatch(ids);
+        const imgs = fetched
+          .map((ep) => ep?.image_url || ep?.artwork || ep?.cover_image || ep?.podcast?.cover_image || null)
+          .filter(Boolean)
+          .slice(0, 4);
         if (mounted) setImages(imgs);
       })();
       return () => { mounted = false; };
@@ -379,58 +427,95 @@ export default function Library() {
 
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
-        {playlists.map((pl) => {
+        {playlists.map((pl, i) => {
           const episodeCount = Array.isArray(pl.episodes) ? pl.episodes.length : 0;
           const approx = pl.approximate_length_minutes;
+          const runtime = formatRuntime(approx);
           return (
-            <div
+            <motion.div
               key={pl.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              // Lightweight stagger across the grid so the Playlists
+              // tab feels alive when it mounts. Capped at 8 cards
+              // (320ms) so a heavy library never feels like it's
+              // animating forever.
+              transition={{ duration: 0.28, delay: Math.min(i, 8) * 0.04, ease: 'easeOut' }}
               className="group cursor-pointer"
               onClick={() => navigate(`/Playlist?id=${encodeURIComponent(pl.id)}`)}
             >
               {/* Cover mosaic — square */}
               <div className="relative">
                 <PlaylistCardCover episodeIds={Array.isArray(pl.episodes) ? pl.episodes : []} />
-                {/* Play overlay on hover */}
-                <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(pl); }}
-                    className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center shadow-lg shadow-red-900/40 transition-transform duration-200 scale-90 group-hover:scale-100"
-                  >
-                    <Play className="w-5 h-5 fill-white text-white ml-0.5" />
-                  </button>
+
+                {/* Always-visible Play button (touch-friendly).
+                    Subtler in idle, brighter on hover/press. The
+                    previous design hid it behind `group-hover` which
+                    made the affordance invisible on every mobile and
+                    tablet device. */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(pl); }}
+                  aria-label={`Play ${pl.name}`}
+                  className="absolute bottom-2.5 right-2.5 w-11 h-11 rounded-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 flex items-center justify-center shadow-lg shadow-violet-900/50 ring-1 ring-violet-400/30 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:-translate-y-0.5 opacity-90 group-hover:opacity-100"
+                >
+                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                </button>
+
+                {/* Kebab — Rename / Delete. Replaces the noisy inline
+                    text buttons that ate two extra lines of every
+                    card. */}
+                <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Playlist options"
+                        className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-sm flex items-center justify-center text-zinc-200 hover:text-white ring-1 ring-white/[0.08] transition-all duration-200 opacity-80 hover:opacity-100"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="bg-[#18181f] border-white/[0.08] text-zinc-300">
+                      <DropdownMenuItem
+                        onClick={() => handleRenamePlaylist(pl)}
+                        className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+                      >
+                        <Edit className="w-4 h-4 mr-2" /> Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-white/[0.06]" />
+                      <DropdownMenuItem
+                        onClick={() => handleDeletePlaylist(pl)}
+                        className="cursor-pointer text-red-400 focus:bg-red-500/10 focus:text-red-300"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
-              {/* Info + actions */}
+              {/* Info row — count + runtime. The `key` on the meta
+                  block makes Framer remount it when the runtime
+                  flips, so adding/removing an episode produces a
+                  subtle confirming flash instead of a silent number
+                  swap. */}
               <div className="mt-3">
-                <h3 className="text-white font-semibold text-sm leading-tight truncate group-hover:text-white/90 transition-colors">
+                <h3 className="text-white font-semibold text-sm leading-tight truncate group-hover:text-violet-200 transition-colors">
                   {pl.name}
                 </h3>
-                <p className="text-zinc-500 text-xs mt-1">
+                <motion.p
+                  key={`${episodeCount}-${approx}`}
+                  initial={{ opacity: 0.6 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.25 }}
+                  className="text-zinc-500 text-xs mt-1 truncate"
+                >
                   {episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'}
-                  {typeof approx === 'number' ? ` · ${approx}m` : ''}
-                </p>
-
-                {/* Action buttons */}
-                <div className="flex items-center gap-1.5 mt-2" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => handleRenamePlaylist(pl)}
-                    className="text-zinc-500 hover:text-white text-[11px] px-2 py-1 rounded-md hover:bg-white/[0.06] transition-colors"
-                  >
-                    <Edit className="w-3 h-3 inline mr-1" />
-                    Rename
-                  </button>
-                  <button
-                    onClick={() => handleDeletePlaylist(pl)}
-                    className="text-zinc-500 hover:text-red-400 text-[11px] px-2 py-1 rounded-md hover:bg-red-500/[0.08] transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3 inline mr-1" />
-                    Delete
-                  </button>
-                </div>
+                  {runtime ? ` · ${runtime}` : ''}
+                </motion.p>
               </div>
-            </div>
+            </motion.div>
           );
         })}
 
@@ -439,9 +524,9 @@ export default function Library() {
           onClick={() => setShowCreateModal(true)}
           className="cursor-pointer group"
         >
-          <div className="w-full aspect-square rounded-xl border-2 border-dashed border-white/[0.06] hover:border-red-500/30 flex flex-col items-center justify-center transition-all duration-300">
-            <Plus className="w-8 h-8 text-zinc-600 group-hover:text-red-400 transition-colors mb-2" />
-            <span className="text-zinc-600 group-hover:text-red-400 text-xs transition-colors">New Playlist</span>
+          <div className="w-full aspect-square rounded-xl border-2 border-dashed border-white/[0.06] hover:border-violet-500/40 flex flex-col items-center justify-center transition-all duration-300 hover:bg-violet-500/[0.04]">
+            <Plus className="w-8 h-8 text-zinc-600 group-hover:text-violet-400 transition-colors mb-2" />
+            <span className="text-zinc-600 group-hover:text-violet-400 text-xs transition-colors">New Playlist</span>
           </div>
         </div>
       </div>

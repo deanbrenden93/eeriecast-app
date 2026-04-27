@@ -508,10 +508,10 @@ export default function Podcasts() {
         episode={episodeToAdd}
         playlists={playlists}
         onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
-        onAdded={(playlist) => {
-          updatePlaylist(playlist);
-          setShowAddModal(false);
-          setEpisodeToAdd(null);
+        onAdded={({ playlist: pl, action }) => {
+          if (action === 'updated' && pl?.id) updatePlaylist(pl);
+          // 'created' is already handled by PlaylistContext.addPlaylist
+          // inside the modal; nothing more to do here.
         }}
       />
 

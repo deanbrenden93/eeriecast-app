@@ -23,6 +23,7 @@ import {
 import { canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
+import ScrollingTitle from "@/components/common/ScrollingTitle";
 import { qk } from "@/lib/queryClient";
 
 /* ───────────────────────────── helpers ───────────────────────────── */
@@ -391,9 +392,11 @@ export default function MembersOnlyEpisodesRow({
 
                 {/* Info */}
                 <div className="p-3 space-y-1 mt-auto min-h-[4rem] flex flex-col justify-end">
-                  <h3 className="text-white/90 font-semibold text-xs line-clamp-2 leading-tight group-hover:text-amber-400 transition-colors duration-300">
-                    {ep.title}
-                  </h3>
+                  <ScrollingTitle
+                    as="h3"
+                    text={ep.title}
+                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-amber-400 transition-colors duration-300"
+                  />
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); goToShow(show.id); }}

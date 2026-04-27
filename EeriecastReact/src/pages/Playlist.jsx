@@ -1,17 +1,42 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Playlist as PlaylistApi, Episode } from '@/api/entities';
+import { Playlist as PlaylistApi } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play, Clock, ListMusic, Headphones } from 'lucide-react';
+import { Play, Clock, ListMusic, Headphones, Shuffle, MoreVertical, Pencil, Trash2, Plus, Compass } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext.jsx';
 import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { usePodcasts } from '@/context/PodcastContext.jsx';
-import { usePlaylistContext } from '@/context/PlaylistContext.jsx';
+import { usePlaylistContext, getEpisodesBatch } from '@/context/PlaylistContext.jsx';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
+import PlaylistRenameModal from '@/components/library/PlaylistRenameModal';
+import PlaylistDeleteModal from '@/components/library/PlaylistDeleteModal';
+import PlaylistSortableList from '@/components/library/PlaylistSortableList';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { toast } from '@/components/ui/use-toast';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { createPageUrl } from '@/utils';
+
+// Format the playlist's total runtime in a human-friendly shape:
+// "5m" / "47m" / "1h 12m" / "12h" — matches what listeners expect
+// to see on a podcast/audiobook surface and is far more legible
+// than the raw "73m" the backend stores.
+function formatRuntime(approxMinutes) {
+  if (typeof approxMinutes !== 'number' || !Number.isFinite(approxMinutes) || approxMinutes <= 0) return '';
+  const total = Math.round(approxMinutes);
+  if (total < 60) return `${total}m`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
 
 function useQuery() {
   const { search } = useLocation();
@@ -79,14 +104,29 @@ export default function Playlist() {
   const [sortOrder, setSortOrder] = useState('Custom');
 
   const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
-  const { isAuthenticated, isPremium, removeEpisodeFromPlaylist } = useUser();
+  const { isAuthenticated, isPremium } = useUser();
   const { openAuth } = useAuthModal();
   const { getById: getPodcastById } = usePodcasts();
-  const { playlists, updatePlaylist } = usePlaylistContext();
+  const {
+    playlists,
+    updatePlaylist,
+    removePlaylist,
+    removeEpisodeFromPlaylist,
+    reorderPlaylist,
+  } = usePlaylistContext();
 
   // Add-to-Playlist modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
+
+  // Edit / delete modals (now reachable directly from the detail
+  // page, not just from the Library card).
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // Track which episode (if any) is animating out so the row can
+  // fade/slide before unmounting.
+  const [exitingId, setExitingId] = useState(null);
 
   const handleOpenAddToPlaylist = (episode) => {
     if (!isAuthenticated) { openAuth('login'); return; }
@@ -96,6 +136,12 @@ export default function Playlist() {
   };
 
   // ── Fetch playlist + episodes ───────────────────────────────────
+  //
+  // Episodes are fetched in parallel through `getEpisodesBatch`, which
+  // dedupes against a module-scoped cache shared with the Library card
+  // mosaics. Switching between Library and a Playlist (or back) no
+  // longer triggers N sequential round trips; previously-seen episodes
+  // resolve from cache instantly.
   useEffect(() => {
     let canceled = false;
     async function load() {
@@ -109,24 +155,21 @@ export default function Playlist() {
         const ids = Array.isArray(pl?.episodes) ? pl.episodes : [];
         if (ids.length === 0) { setEpisodes([]); return; }
 
-        // Fetch episodes and enrich with podcast cover art
-        const eps = [];
-        for (const id of ids) {
-          try {
-            const ep = await Episode.get(id);
-            if (!ep) continue;
-            // Enrich: if ep.podcast is just an ID, attach the full podcast object for cover_image fallback
-            if (ep.podcast && typeof ep.podcast !== 'object') {
+        const fetched = await getEpisodesBatch(ids);
+        if (canceled) return;
+
+        const eps = fetched
+          .filter(Boolean)
+          .map((ep) => {
+            // Enrich: if `ep.podcast` is just an ID, attach the full
+            // podcast object so cover-image fallbacks work.
+            if (ep && ep.podcast && typeof ep.podcast !== 'object') {
               const podcastObj = getPodcastById(ep.podcast);
-              if (podcastObj) {
-                ep.podcast = podcastObj;
-              }
+              if (podcastObj) return { ...ep, podcast: podcastObj };
             }
-            eps.push(ep);
-          } catch {
-            // skip failures
-          }
-        }
+            return ep;
+          });
+
         if (!canceled) setEpisodes(eps);
       } finally {
         if (!canceled) setIsLoading(false);
@@ -135,6 +178,17 @@ export default function Playlist() {
     load();
     return () => { canceled = true; };
   }, [idParam, getPodcastById]);
+
+  // Sync local `playlist` state when the global context updates this
+  // playlist (e.g. another surface added or removed an episode). This
+  // keeps the runtime pill, episode count, and ID list in lockstep
+  // with the rest of the app without a refetch.
+  useEffect(() => {
+    if (!playlist?.id) return;
+    const fromCtx = playlists.find((p) => p.id === playlist.id);
+    if (fromCtx && fromCtx !== playlist) setPlaylist(fromCtx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlists]);
 
   // ── Sorting ─────────────────────────────────────────────────────
   const sortedEpisodes = useMemo(() => {
@@ -186,6 +240,30 @@ export default function Playlist() {
     await setPlaybackQueue(queueItems, 0);
   };
 
+  // ── Shuffle: queue a randomized version of the current view ─────
+  //
+  // We build a one-off shuffled copy and queue it; the underlying
+  // playlist order on the server is untouched. This matches the way
+  // every other player surface treats shuffle (a queue mode, not a
+  // permanent reorder) so listeners don't accidentally scramble the
+  // ordering they painstakingly set with drag-to-reorder.
+  const handleShuffle = async () => {
+    if (!sortedEpisodes.length) return;
+    const shuffled = [...sortedEpisodes];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const pseudoPodcast = buildPseudoPodcast(shuffled[0]);
+    const queueItems = shuffled.map(ep => ({
+      podcast: { ...pseudoPodcast, cover_image: getEpArtwork(ep) || pseudoPodcast.cover_image },
+      episode: ep,
+      resume: { progress: 0 },
+    }));
+    await setPlaybackQueue(queueItems, 0);
+    toast({ title: 'Shuffled', description: `Playing ${shuffled.length} episodes in random order.` });
+  };
+
   // ── Play from here: queue from clicked episode onward ───────────
   const doPlay = async (ep) => {
     if (!ep) return;
@@ -207,17 +285,95 @@ export default function Playlist() {
     if (!playlist?.id) return;
     if (removingEpisodeId === ep.id) return;
     setRemovingEpisodeId(ep.id);
-    const ok = await removeEpisodeFromPlaylist(playlist.id, ep.id);
-    if (ok) {
-      setEpisodes(prev => prev.filter(e => e.id !== ep.id));
-      setPlaylist(p => {
-        const updated = { ...p, episodes: (Array.isArray(p?.episodes) ? p.episodes.filter(id => id !== ep.id) : []) };
-        // Sync the global playlist context so Library cards update immediately
-        updatePlaylist(updated);
-        return updated;
+    setExitingId(ep.id);
+    try {
+      // PlaylistContext handles optimistic update, server PATCH, and
+      // merges the response (including the freshly recomputed
+      // `approximate_length_minutes`) into the global store — so the
+      // hero runtime pill and the Library card both update without
+      // a refetch.
+      const updated = await removeEpisodeFromPlaylist(playlist.id, ep.id);
+      // Wait for exit animation to roughly settle before unmounting.
+      setTimeout(() => {
+        setEpisodes(prev => prev.filter(e => e.id !== ep.id));
+        setExitingId(null);
+      }, 220);
+      if (updated) {
+        toast({
+          title: 'Removed from playlist',
+          description: ep.title ? `"${ep.title}" removed.` : 'Episode removed.',
+        });
+      }
+    } catch {
+      setExitingId(null);
+      toast({
+        title: 'Could not remove episode',
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
       });
+    } finally {
+      setRemovingEpisodeId(null);
     }
-    setRemovingEpisodeId(null);
+  };
+
+  // ── Drag-to-reorder ─────────────────────────────────────────────
+  //
+  // Persist via PATCH on the entire `episodes` array (DRF's
+  // PrimaryKeyRelatedField calls `set(...)` which preserves the order
+  // we send). Debounced so a user dragging multiple times in quick
+  // succession only fires one round trip after they settle.
+  const reorderTimerRef = useRef(null);
+  const pendingOrderRef = useRef(null);
+
+  const handleReorder = (nextEpisodes) => {
+    setEpisodes(nextEpisodes);
+    pendingOrderRef.current = nextEpisodes.map((e) => e.id);
+
+    if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+    reorderTimerRef.current = setTimeout(async () => {
+      const ids = pendingOrderRef.current;
+      pendingOrderRef.current = null;
+      reorderTimerRef.current = null;
+      if (!ids || !playlist?.id) return;
+      try {
+        await reorderPlaylist(playlist.id, ids);
+      } catch {
+        toast({
+          title: 'Could not save new order',
+          description: 'Your changes will sync the next time you make an edit.',
+          variant: 'destructive',
+        });
+      }
+    }, 400);
+  };
+
+  // Flush any pending reorder when the user navigates away mid-debounce.
+  useEffect(() => {
+    return () => {
+      if (reorderTimerRef.current && pendingOrderRef.current && playlist?.id) {
+        const ids = pendingOrderRef.current;
+        clearTimeout(reorderTimerRef.current);
+        reorderPlaylist(playlist.id, ids).catch(() => { /* swallow */ });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlist?.id]);
+
+  // ── Rename / delete callbacks ───────────────────────────────────
+  const handleRenamed = (updated) => {
+    if (updated?.id) {
+      setPlaylist((p) => ({ ...p, ...updated }));
+      updatePlaylist(updated);
+      toast({ title: 'Playlist renamed', description: updated.name });
+    }
+    setShowRenameModal(false);
+  };
+
+  const handleDeleted = () => {
+    if (playlist?.id) removePlaylist(playlist.id);
+    toast({ title: 'Playlist deleted' });
+    setShowDeleteModal(false);
+    navigate(createPageUrl('Library'));
   };
 
   // ── Loading state ───────────────────────────────────────────────
@@ -322,16 +478,22 @@ export default function Playlist() {
                   <Headphones className="w-3 h-3" />
                   {episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'}
                 </span>
-                {typeof approx === 'number' && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 bg-white/[0.04] border border-white/[0.06] px-3 py-1.5 rounded-full">
+                {formatRuntime(approx) && (
+                  <motion.span
+                    key={approx}
+                    initial={{ opacity: 0.5, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.25 }}
+                    className="inline-flex items-center gap-1.5 text-xs text-zinc-400 bg-white/[0.04] border border-white/[0.06] px-3 py-1.5 rounded-full"
+                  >
                     <Clock className="w-3 h-3" />
-                    ~{approx}m
-                  </span>
+                    {formatRuntime(approx)}
+                  </motion.span>
                 )}
               </div>
 
               {/* Actions */}
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Button
                   className="px-6 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/15 transition-all duration-500 hover:scale-[1.02] border border-violet-400/10"
                   onClick={handlePlayAll}
@@ -340,6 +502,46 @@ export default function Playlist() {
                   <Play className="w-4 h-4 fill-white" />
                   Play All
                 </Button>
+
+                <Button
+                  variant="ghost"
+                  className="px-5 py-2.5 rounded-full flex items-center gap-2 text-sm font-semibold bg-white/[0.04] hover:bg-white/[0.08] text-white border border-white/[0.08] transition-all duration-300"
+                  onClick={handleShuffle}
+                  disabled={!episodes.length}
+                  aria-label="Shuffle playlist"
+                  title="Shuffle"
+                >
+                  <Shuffle className="w-4 h-4" />
+                  Shuffle
+                </Button>
+
+                {/* Overflow menu — Edit / Delete */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Playlist options"
+                      className="w-10 h-10 rounded-full flex items-center justify-center bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white border border-white/[0.06] transition-all duration-300"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-[#18181f] border-white/[0.08] text-zinc-300">
+                    <DropdownMenuItem
+                      onClick={() => setShowRenameModal(true)}
+                      className="cursor-pointer focus:bg-white/[0.06] focus:text-white"
+                    >
+                      <Pencil className="w-4 h-4 mr-2" /> Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/[0.06]" />
+                    <DropdownMenuItem
+                      onClick={() => setShowDeleteModal(true)}
+                      className="cursor-pointer text-red-400 focus:bg-red-500/10 focus:text-red-300"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" /> Delete playlist
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -371,32 +573,92 @@ export default function Playlist() {
         </div>
 
         {episodes.length === 0 ? (
-          <div className="text-center py-16">
-            <Headphones className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
-            <p className="text-zinc-500 text-sm">This playlist is empty. Add episodes from any show to get started.</p>
-          </div>
-        ) : (
-          <EpisodesTable
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="text-center py-16 px-6 rounded-2xl bg-gradient-to-b from-violet-950/10 to-transparent border border-white/[0.04]"
+          >
+            <div className="w-16 h-16 rounded-full bg-violet-500/10 ring-1 ring-violet-400/20 flex items-center justify-center mx-auto mb-5">
+              <Headphones className="w-7 h-7 text-violet-300/80" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-1.5">This playlist is empty</h3>
+            <p className="text-zinc-500 text-sm max-w-sm mx-auto mb-6">
+              Browse podcasts, then tap the menu on any episode and choose
+              <span className="text-zinc-300"> Add to Playlist</span> to start
+              building your queue.
+            </p>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <Button
+                onClick={() => navigate(createPageUrl('Discover'))}
+                className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white px-5 py-2 rounded-full inline-flex items-center gap-2 text-sm font-semibold shadow-lg shadow-violet-500/15 border border-violet-400/10"
+              >
+                <Compass className="w-4 h-4" />
+                Discover episodes
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => navigate(createPageUrl('Library'))}
+                className="px-5 py-2 rounded-full text-sm text-zinc-300 hover:text-white hover:bg-white/[0.05]"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Browse my library
+              </Button>
+            </div>
+          </motion.div>
+        ) : sortOrder === 'Custom' ? (
+          // Custom order is the only mode that makes sense to drag —
+          // sorting by date overrides whatever order the user picks.
+          <PlaylistSortableList
             episodes={sortedEpisodes}
-            onPlay={doPlay}
-            onRemoveFromPlaylist={handleRemoveFromPlaylist}
+            exitingId={exitingId}
             removingEpisodeId={removingEpisodeId}
+            onPlay={doPlay}
+            onReorder={handleReorder}
+            onRemoveFromPlaylist={handleRemoveFromPlaylist}
             onAddToPlaylist={handleOpenAddToPlaylist}
           />
+        ) : (
+          <AnimatePresence initial={false}>
+            <EpisodesTable
+              episodes={sortedEpisodes.filter(e => e.id !== exitingId)}
+              onPlay={doPlay}
+              onRemoveFromPlaylist={handleRemoveFromPlaylist}
+              removingEpisodeId={removingEpisodeId}
+              onAddToPlaylist={handleOpenAddToPlaylist}
+            />
+          </AnimatePresence>
         )}
       </div>
 
-      {/* Add to Playlist Modal */}
+      {/* Add to Playlist Modal — the shared one. Multi-select &
+          motion confirmation handled inside; we just need to merge
+          the resulting playlist(s) into local + global state. */}
       <AddToPlaylistModal
         isOpen={showAddModal}
         episode={episodeToAdd}
         playlists={playlists}
         onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
-        onAdded={(pl) => {
-          updatePlaylist(pl);
-          setShowAddModal(false);
-          setEpisodeToAdd(null);
+        onAdded={({ playlist: pl, action }) => {
+          if (action === 'updated' && pl?.id) updatePlaylist(pl);
+          // 'created' is also possible from the Add modal's "create
+          // a new playlist" path; PlaylistContext.addPlaylist is
+          // already called inside the modal, so we just close here.
         }}
+      />
+
+      {/* Rename / Delete modals (now reachable from the detail page) */}
+      <PlaylistRenameModal
+        isOpen={showRenameModal}
+        playlist={playlist}
+        onClose={() => setShowRenameModal(false)}
+        onRenamed={handleRenamed}
+      />
+      <PlaylistDeleteModal
+        isOpen={showDeleteModal}
+        playlist={playlist}
+        onClose={() => setShowDeleteModal(false)}
+        onDeleted={handleDeleted}
       />
     </div>
   );

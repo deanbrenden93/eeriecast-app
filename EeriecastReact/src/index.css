@@ -611,6 +611,106 @@ body::-webkit-scrollbar,
   will-change: transform;
 }
 
+/* ───────────────────────────────────────────────────────────────────
+   "Pop" modal entrance / exit — used by the Add-to-Playlist modal
+   (and any other surface that opts in via .ec-pop-modal).
+
+   Entrance has a slight overshoot that lands on scale 1, paired with
+   a small upward float. The cubic-bezier here is the classic
+   back-out curve — its second control point is >1 so the panel
+   visually "sticks the landing" without ever doing a bounce-out
+   wobble that would feel cartoonish on a serious app.
+
+   Exit is faster and pulls the panel slightly upward as it shrinks
+   so the focal point flows toward the dismiss action; this is what
+   reads as "snappy" rather than "delayed".
+
+   `!important` is necessary on the `animation` shorthand because it
+   has to override the `tailwindcss-animate` plugin's own
+   `data-[state=open]:animate-in` / `animate-out` shorthand that
+   Radix's DialogContent ships with by default. We keep the
+   translate(-50%, -50%) anchor that Radix relies on for centering.
+   ─────────────────────────────────────────────────────────────────── */
+@keyframes ec-pop-modal-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 14px)) scale(0.88);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, calc(-50% - 2px)) scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ec-pop-modal-out {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 8px)) scale(0.94);
+  }
+}
+
+@keyframes ec-pop-overlay-in {
+  0% { opacity: 0; backdrop-filter: blur(0px); }
+  100% { opacity: 1; backdrop-filter: blur(6px); }
+}
+
+@keyframes ec-pop-overlay-out {
+  0% { opacity: 1; backdrop-filter: blur(6px); }
+  100% { opacity: 0; backdrop-filter: blur(0px); }
+}
+
+.ec-pop-modal[data-state="open"] {
+  animation: ec-pop-modal-in 360ms cubic-bezier(0.34, 1.4, 0.64, 1) both !important;
+  will-change: transform, opacity;
+}
+
+.ec-pop-modal[data-state="closed"] {
+  animation: ec-pop-modal-out 180ms cubic-bezier(0.4, 0, 1, 1) both !important;
+  will-change: transform, opacity;
+}
+
+.ec-pop-overlay[data-state="open"] {
+  animation: ec-pop-overlay-in 260ms ease-out both !important;
+}
+
+.ec-pop-overlay[data-state="closed"] {
+  animation: ec-pop-overlay-out 160ms ease-in both !important;
+}
+
+/* Reduce-motion users get a clean fade with no scale/translate so
+   the panel never "jumps" — animation distance collapses to zero. */
+@media (prefers-reduced-motion: reduce) {
+  .ec-pop-modal[data-state="open"],
+  .ec-pop-modal[data-state="closed"] {
+    animation-duration: 120ms !important;
+    animation-timing-function: ease-out !important;
+  }
+  .ec-pop-modal[data-state="open"] {
+    animation-name: ec-pop-modal-in-reduced !important;
+  }
+  .ec-pop-modal[data-state="closed"] {
+    animation-name: ec-pop-modal-out-reduced !important;
+  }
+}
+
+@keyframes ec-pop-modal-in-reduced {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes ec-pop-modal-out-reduced {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
 /* Hero gold spark rising particles — bottom-right to top-left with twirl */
 @keyframes hero-spark-rise {
   0%   {

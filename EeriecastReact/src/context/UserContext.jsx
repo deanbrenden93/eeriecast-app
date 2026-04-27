@@ -223,10 +223,17 @@ const UserProvider = ({ children }) => {
       const list = Array.isArray(resp) ? resp : (resp?.results || []);
       const map = new Map();
       for (const item of list) {
-        const eid = Number(item?.episode?.id || item?.episode_id || item?.id);
+        // Django serializer returns the FK as a bare integer in `episode` and
+        // the nested object under `episode_detail`. Prefer those before the
+        // history-row id so the map is keyed by episode id, not row id.
+        const eid = Number(
+          item?.episode_detail?.id
+          ?? (typeof item?.episode === 'object' ? item?.episode?.id : item?.episode)
+          ?? item?.episode_id
+        );
         if (!Number.isFinite(eid)) continue;
         const progress = Number(item?.progress) || 0;
-        const duration = Number(item?.duration || item?.episode?.duration) || 0;
+        const duration = Number(item?.duration || item?.episode_detail?.duration || item?.episode?.duration) || 0;
         const completed = item?.completed === true || (duration > 0 && progress >= duration * 0.95);
         map.set(eid, { progress, duration, completed });
       }
@@ -706,25 +713,11 @@ const UserProvider = ({ children }) => {
   }, [removeFavorite, setFavorite, refreshFavorites]);
   // --- End favorite helpers ---
 
-  // Remove episode from a playlist helper
-  const removeEpisodeFromPlaylist = useCallback(async (playlistId, episodeId) => {
-    if (!Number.isFinite(Number(playlistId)) || !Number.isFinite(Number(episodeId))) return false;
-    try {
-      // Use Playlist entity service for consistency
-      const { Playlist } = await import('@/api/entities');
-      const pl = await Playlist.get(playlistId);
-      if (!pl) return false;
-      const current = Array.isArray(pl.episodes) ? pl.episodes : [];
-      if (!current.length) return false; // nothing to remove
-      const next = current.filter(id => Number(id) !== Number(episodeId));
-      if (next.length === current.length) return false; // id not found
-      await Playlist.update(playlistId, { episodes: next });
-      return true;
-    } catch (e) {
-      console.warn('Failed to remove episode from playlist', e);
-      return false;
-    }
-  }, []);
+  // NOTE: `removeEpisodeFromPlaylist` previously lived here. It was
+  // moved into `PlaylistContext` so the playlist optimistic store,
+  // server response merging (which carries the freshly recalculated
+  // `approximate_length_minutes`), and rollback-on-failure live in
+  // one place. Callers should use `usePlaylistContext()` instead.
 
   return (
     <UserContext.Provider
@@ -781,7 +774,6 @@ const UserProvider = ({ children }) => {
         refreshNotifications,
         markNotificationRead,
         markAllNotificationsRead,
-        removeEpisodeFromPlaylist,
         // listening history / episode progress
         episodeProgressMap,
         refreshHistory,

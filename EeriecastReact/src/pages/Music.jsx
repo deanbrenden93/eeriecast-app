@@ -23,6 +23,7 @@ import { useUser } from "@/context/UserContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useToast } from "@/components/ui/use-toast";
 import ShowCard from "@/components/discover/ShowCard";
+import ScrollingTitle from "@/components/common/ScrollingTitle";
 import ShowGrid from "@/components/ui/ShowGrid";
 import { Episode as EpisodeApi } from "@/api/entities";
 import { qk } from "@/lib/queryClient";
@@ -246,9 +247,9 @@ export default function Music() {
                         <button
                           type="button"
                           onClick={() => handleTrackPlay(ep)}
-                          className="block w-full text-left text-sm font-medium text-white/90 hover:text-white truncate"
+                          className="block w-full text-left text-sm font-medium text-white/90 hover:text-white"
                         >
-                          {ep.title}
+                          <ScrollingTitle as="span" text={ep.title} />
                         </button>
                         <Link
                           to={

@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
-import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { Heart, X, Plus, Settings2, UserPlus, UserCheck, Share2, GripVertical, Trash2 } from "lucide-react";
 import { shareEpisode } from "@/lib/share";
@@ -26,7 +25,7 @@ import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext.jsx";
-import { Podcast, Episode, UserLibrary, Playlist } from "@/api/entities";
+import { Podcast, Episode, UserLibrary } from "@/api/entities";
 import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +37,8 @@ import { createPageUrl } from "@/utils";
 import { isAudiobook } from "@/lib/utils";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 import HoldToShuffleButton from "@/components/common/HoldToShuffleButton";
+import ScrollingTitle from "@/components/common/ScrollingTitle";
+import AddToPlaylistModal from "@/components/library/AddToPlaylistModal";
 import { Capacitor } from '@capacitor/core';
 
 // Feature flag: offline downloads are an app-only feature. The player's
@@ -112,213 +113,13 @@ const ClockIcon = () => (
   </svg>
 );
 
-// Inline modal that overlays within the ExpandedPlayer container (no portals)
-function InlineAddToPlaylistModal({ open, episode, onClose, playlists = [], onAdded, resolving = false }) {
-  const [selectedId, setSelectedId] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [duplicateInfo, setDuplicateInfo] = useState(null);
-
-  useEffect(() => {
-    if (open) {
-      setSelectedId(null);
-      setCreating(false);
-      setNewName("");
-      setError(null);
-      setSubmitting(false);
-      setDuplicateInfo(null);
-    }
-  }, [open, episode?.id]);
-
-  const canSubmit = (() => {
-    if (submitting) return false;
-    if (resolving) return false;
-    if (!episode?.id) return false;
-    if (creating) return !!newName.trim();
-    return !!selectedId;
-  })();
-
-  const extractErrorMessage = (e) => {
-    const data = e?.data || e?.response?.data;
-    if (data) {
-      if (typeof data.detail === 'string') return data.detail;
-      if (typeof data.message === 'string') return data.message;
-      if (typeof data === 'object') {
-        for (const [, msgs] of Object.entries(data)) {
-          const msg = Array.isArray(msgs) ? msgs[0] : msgs;
-          if (typeof msg === 'string') {
-            if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('unique'))
-              return 'A playlist with this name already exists. Please choose a different name.';
-            return msg;
-          }
-        }
-      }
-    }
-    return e?.message || 'Something went wrong. Please try again.';
-  };
-
-  const handleSubmit = async (e) => {
-    e?.preventDefault?.();
-    if (!episode?.id) return;
-    try {
-      setSubmitting(true);
-      setError(null);
-      if (creating) {
-        const created = await Playlist.create({ name: newName.trim(), episodes: [episode.id] });
-        onAdded && onAdded({ playlist: created, action: 'created' });
-        onClose && onClose();
-      } else {
-        const id = selectedId;
-        if (!id) return;
-        const pl = await Playlist.get(id);
-        const currentRaw = Array.isArray(pl.episodes) ? pl.episodes : [];
-        const currentIds = currentRaw.map((x) => (x && typeof x === 'object' ? x.id : x)).filter(Boolean);
-        if (currentIds.includes(episode.id)) {
-          setDuplicateInfo(pl.name || 'this playlist');
-          setSubmitting(false);
-          return;
-        }
-        const nextIds = Array.from(new Set([...currentIds, episode.id]));
-        const updated = await Playlist.update(id, { episodes: nextIds });
-        onAdded && onAdded({ playlist: updated, action: 'updated' });
-        onClose && onClose();
-      }
-    } catch (e) {
-      setError(extractErrorMessage(e));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (!open) return null;
-
-  // Portal to document.body to escape the ExpandedPlayer's motion.div stacking context (z-10100)
-  return createPortal(
-    <div className="fixed inset-0 z-[10200] flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70" onClick={() => !submitting && onClose && onClose()} />
-      {/* Panel */}
-      <div className="relative z-[1] w-[92vw] max-w-[560px] bg-gradient-to-br from-black via-[#121316] to-[#1f2128] text-white border border-red-600/40 shadow-2xl shadow-red-900/40 rounded-lg overflow-hidden">
-        <div className="relative p-6 md:p-8">
-          <button
-            type="button"
-            onClick={() => !submitting && onClose && onClose()}
-            className="absolute right-4 top-4 text-white/70 hover:text-white"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <div className="absolute -top-24 -right-24 w-64 h-64 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold tracking-wide">Add to Playlist</h2>
-            <p className="text-sm text-gray-400 mt-1">{episode?.title ? `Choose a playlist for “${episode.title}”.` : 'Choose a playlist.'}</p>
-          </div>
-
-          {resolving && (
-            <div className="mb-3 text-sm text-gray-300">Preparing episode…</div>
-          )}
-
-          {/* Mode toggle */}
-          <div className="flex items-center gap-2 mb-4">
-            <button
-              type="button"
-              onClick={() => setCreating(false)}
-              disabled={submitting || resolving}
-              className={`px-3 py-1.5 rounded-full text-xs border ${!creating ? 'bg-red-600 border-red-600 text-white' : 'border-gray-700 text-gray-300 hover:text-white'} ${submitting || resolving ? 'opacity-60 cursor-not-allowed' : ''}`}
-            >
-              Select Existing
-            </button>
-            <button
-              type="button"
-              onClick={() => setCreating(true)}
-              disabled={submitting || resolving}
-              className={`px-3 py-1.5 rounded-full text-xs border ${creating ? 'bg-red-600 border-red-600 text-white' : 'border-gray-700 text-gray-300 hover:text-white'} ${submitting || resolving ? 'opacity-60 cursor-not-allowed' : ''}`}
-            >
-              Create New
-            </button>
-          </div>
-
-          {!episode?.id && !resolving && (
-            <p className="text-xs text-yellow-400 mb-2">Episode data is still loading; playlist selection is disabled until it’s ready.</p>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!creating ? (
-              <div className={`max-h-56 overflow-y-auto rounded-md border border-gray-800 divide-y divide-gray-800 ${resolving ? 'opacity-60 pointer-events-none' : ''}`}>
-                {playlists.length === 0 ? (
-                  <div className="p-4 text-sm text-gray-400">You don’t have any playlists yet. Create one instead.</div>
-                ) : (
-                  playlists.map(pl => (
-                    <label key={pl.id} className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="playlist"
-                        value={pl.id}
-                        checked={selectedId === pl.id}
-                        onChange={() => { setSelectedId(pl.id); setDuplicateInfo(null); }}
-                        className="accent-red-600"
-                        disabled={submitting || resolving || !episode?.id}
-                      />
-                      <div className="flex-1">
-                        <div className="text-sm text-white font-medium">{pl.name}</div>
-                        <div className="text-xs text-gray-400">{Array.isArray(pl.episodes) ? pl.episodes.length : 0} items{typeof pl.approximate_length_minutes === 'number' ? ` \u2022 ~${pl.approximate_length_minutes}m` : ''}</div>
-                      </div>
-                    </label>
-                  ))
-                )}
-              </div>
-            ) : (
-              <div className={`space-y-3 ${resolving ? 'opacity-60 pointer-events-none' : ''}`}>
-                <div>
-                  <label className="text-xs uppercase tracking-wider font-medium text-gray-400 mb-1 block">Playlist Name</label>
-                  <Input
-                    autoFocus
-                    placeholder="My Queue"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="bg-[#1b1d23] border-gray-700 focus-visible:ring-red-600"
-                    disabled={submitting || resolving}
-                  />
-                </div>
-                <p className="text-xs text-gray-400">We’ll create the playlist and add this episode to it.</p>
-              </div>
-            )}
-
-            {duplicateInfo && (
-              <p className="text-amber-300 text-sm bg-amber-950/30 border border-amber-700/40 rounded px-3 py-2">
-                This episode is already in <span className="font-semibold text-amber-200">&quot;{duplicateInfo}&quot;</span>. Choose a different playlist or close.
-              </p>
-            )}
-
-            {error && (
-              <p className="text-red-400 text-sm bg-red-950/30 border border-red-800/40 rounded px-3 py-2">{error}</p>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button type="button" variant="ghost" onClick={onClose} className="text-gray-300 hover:text-white" disabled={submitting}>Cancel</Button>
-              <Button type="submit" className="bg-red-600 hover:bg-red-500" disabled={!canSubmit}>
-                {submitting ? 'Saving…' : (creating ? 'Create and Add' : 'Add to Playlist')}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-InlineAddToPlaylistModal.propTypes = {
-  open: PropTypes.bool.isRequired,
-  episode: PropTypes.object,
-  onClose: PropTypes.func.isRequired,
-  playlists: PropTypes.array,
-  onAdded: PropTypes.func,
-  resolving: PropTypes.bool,
-};
+// NOTE: The inline `InlineAddToPlaylistModal` previously defined here
+// has been retired. The whole app — including the player — now uses
+// the shared `AddToPlaylistModal` from `@/components/library/...`.
+// Its mosaic thumbnails, multi-select, search, "already in" badges,
+// and success animation work identically here. The Radix Dialog
+// renders into a high-z portal so player z-stacking is no longer an
+// issue.
 
 /** Strips HTML tags to plain text for description preview. */
 function stripHtmlToText(html) {
@@ -358,74 +159,11 @@ function sanitizeShowNotes(html) {
   return str.trim();
 }
 
-/** Small scrolling marquee for compact card titles. */
-function MarqueeText({ text, className = '' }) {
-  const containerRef = useRef(null);
-  const textRef = useRef(null);
-  const [needsScroll, setNeedsScroll] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  useEffect(() => {
-    const check = () => {
-      if (containerRef.current && textRef.current) {
-        const cw = containerRef.current.clientWidth;
-        setContainerWidth(cw);
-        setNeedsScroll(textRef.current.scrollWidth > cw + 2);
-      }
-    };
-    check();
-    const tid = setTimeout(check, 500);
-    return () => clearTimeout(tid);
-  }, [text]);
-
-  return (
-    <div ref={containerRef} className="relative w-full overflow-hidden">
-      <span
-        ref={textRef}
-        className={`whitespace-nowrap ${needsScroll ? 'animate-marquee inline-block' : ''} ${className}`}
-        style={needsScroll ? { '--marquee-container': `${containerWidth}px` } : undefined}
-      >
-        {text}
-      </span>
-    </div>
-  );
-}
-MarqueeText.propTypes = { text: PropTypes.string, className: PropTypes.string };
-
-/** Scrolling marquee for episode titles that overflow a single line. */
-function MarqueeTitle({ text, suffix }) {
-  const containerRef = useRef(null);
-  const textRef = useRef(null);
-  const [needsScroll, setNeedsScroll] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  useEffect(() => {
-    const checkOverflow = () => {
-      if (containerRef.current && textRef.current) {
-        const cw = containerRef.current.clientWidth;
-        setContainerWidth(cw);
-        setNeedsScroll(textRef.current.scrollWidth > cw + 2);
-      }
-    };
-    checkOverflow();
-    const tid = setTimeout(checkOverflow, 500);
-    return () => clearTimeout(tid);
-  }, [text, suffix]);
-
-  return (
-    <div ref={containerRef} className="relative w-full overflow-hidden">
-      <h1
-        ref={textRef}
-        className={`text-white text-2xl font-bold whitespace-nowrap ${needsScroll ? 'animate-marquee inline-block' : 'text-center'}`}
-        style={needsScroll ? { '--marquee-container': `${containerWidth}px` } : undefined}
-      >
-        {text}
-        {suffix && <span className="text-[11px] font-normal text-white/30 tracking-wide ml-3 align-middle">{suffix}</span>}
-      </h1>
-    </div>
-  );
-}
-MarqueeTitle.propTypes = { text: PropTypes.string, suffix: PropTypes.string };
+// Marquee helpers (`MarqueeText` / `MarqueeTitle`) used to live here.
+// They were promoted to the shared `ScrollingTitle` primitive at
+// `@/components/common/ScrollingTitle` so every surface in the app
+// (episode tables, home rows, the mini player, the queue, search,
+// history, etc.) gets the same overflow-detected ping-pong scroll.
 
 /** Expandable episode show-notes block with basic rich formatting preserved. */
 function ExpandableShowNotes({ html }) {
@@ -563,7 +301,11 @@ const SortableQueueItem = memo(function SortableQueueItem({ id, index, item, pod
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-white text-sm font-semibold truncate mb-0.5 group-hover:text-[#ff0040] transition-colors">{ep?.title || 'Episode'}</div>
+          <ScrollingTitle
+            as="div"
+            text={ep?.title || 'Episode'}
+            className="text-white text-sm font-semibold mb-0.5 group-hover:text-[#ff0040] transition-colors"
+          />
           <div className="text-white/40 text-xs truncate uppercase tracking-wider">{pd?.title || ''}</div>
         </div>
       </button>
@@ -891,14 +633,12 @@ export default function ExpandedPlayer({
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [openingAdd, setOpeningAdd] = useState(false);
-  const [resolvingAdd, setResolvingAdd] = useState(false);
 
   // Generic "Add to Playlist" handler for any episode (used by EpisodeMenu in sub-sections)
   const handleAddAnyToPlaylist = (ep) => {
     if (!isAuthenticated) { openAuth('login'); return; }
     if (!isPremium) { window.location.assign('/Premium'); return; }
     setEpisodeToAdd(ep);
-    setResolvingAdd(false);
     setShowAddModal(true);
   };
 
@@ -976,15 +716,19 @@ export default function ExpandedPlayer({
   }, [podcast?.id, episode?.id, isPremium]);
 
 
-  // Resolve an episode just like EpisodeCard/Show flows before opening modal
+  // Resolve an episode just like EpisodeCard/Show flows BEFORE opening
+  // the modal. Previously the modal opened immediately and showed a
+  // "Preparing episode…" placeholder; with the shared `AddToPlaylistModal`
+  // (which already feels rich the moment it appears) it's a much better
+  // UX to block on the resolve and open the polished modal in one beat.
+  // The resolve itself is fast — most paths hit either a primed
+  // `episode` prop or the cached `Episode.get`.
   const handleOpenAddToPlaylist = async () => {
     if (!isAuthenticated) { openAuth('login'); return; }
     // Playlists are a premium feature
     if (!isPremium) { window.location.assign('/Premium'); return; }
     if (openingAdd) return;
     setOpeningAdd(true);
-    setShowAddModal(true);
-    setResolvingAdd(true);
     setEpisodeToAdd(null);
     try {
       let ep = episode;
@@ -992,7 +736,6 @@ export default function ExpandedPlayer({
 
       // If episode missing, try to resolve from podcast detail and resume
       if (!ep?.id && pd?.id) {
-        // ensure episodes
         try {
           const detail = await Podcast.get(pd.id);
           if (detail) pd = { ...pd, ...detail };
@@ -1005,7 +748,6 @@ export default function ExpandedPlayer({
             if (detail2) pd = { ...pd, ...detail2 };
           } catch {/* ignore */}
         }
-        // prefer resume
         try {
           const resume = await UserLibrary.resumeForPodcast(pd.id);
           if (resume?.episode_detail) {
@@ -1038,10 +780,12 @@ export default function ExpandedPlayer({
         } catch {/* ignore */}
       }
 
-      if (!ep?.id) { setResolvingAdd(false); setOpeningAdd(false); return; }
+      if (!ep?.id) return;
+      // Episode is ready — flip the modal open in a single batch with
+      // the resolved episode so users never see a blank placeholder.
       setEpisodeToAdd(ep);
+      setShowAddModal(true);
     } finally {
-      setResolvingAdd(false);
       setOpeningAdd(false);
     }
   };
@@ -1193,9 +937,15 @@ export default function ExpandedPlayer({
               <span>{isFollowing ? 'Following' : 'Follow'}</span>
             </button>
           </div>
-          <MarqueeTitle
+          <ScrollingTitle
+            as="h1"
             text={episode?.title || ''}
-            suffix={formatDate(episode?.published_at || episode?.created_date || episode?.release_date)}
+            className="text-white text-2xl font-bold text-center"
+            suffix={
+              <span className="text-[11px] font-normal text-white/30 tracking-wide ml-3 align-middle">
+                {formatDate(episode?.published_at || episode?.created_date || episode?.release_date)}
+              </span>
+            }
           />
         </div>
 
@@ -1404,7 +1154,11 @@ export default function ExpandedPlayer({
                     </div>
                     {/* Title + Show */}
                     <div className="w-28 cursor-pointer" onClick={() => handlePlayFromQueue(item, absoluteIndex)}>
-                      <MarqueeText text={ep?.title || 'Episode'} className="text-xs font-semibold text-white/90" />
+                      <ScrollingTitle
+                        as="span"
+                        text={ep?.title || 'Episode'}
+                        className="text-xs font-semibold text-white/90"
+                      />
                       <p className="text-[10px] text-white/40 mt-0.5 truncate">{pd?.title || ''}</p>
                     </div>
                   </div>
@@ -1448,7 +1202,11 @@ export default function ExpandedPlayer({
                         }
                       }}
                     >
-                      <div className="text-sm font-semibold text-white/90 truncate group-hover:text-white transition-colors">{rec.title}</div>
+                      <ScrollingTitle
+                        as="div"
+                        text={rec.title}
+                        className="text-sm font-semibold text-white/90 group-hover:text-white transition-colors"
+                      />
                       <div className="text-[11px] text-white/35 truncate mt-0.5">{recPod.title || ''}</div>
                     </div>
                     <div onClick={(e) => e.stopPropagation()}>
@@ -1535,7 +1293,11 @@ export default function ExpandedPlayer({
                         }
                       }}
                     >
-                      <div className="text-xs font-semibold text-white/80 truncate group-hover:text-white transition-colors">{ep.title}</div>
+                      <ScrollingTitle
+                        as="div"
+                        text={ep.title}
+                        className="text-xs font-semibold text-white/80 group-hover:text-white transition-colors"
+                      />
                       <div className="text-[10px] text-white/30 mt-0.5 truncate">{ep.published_at ? formatDate(ep.published_at) : ''}</div>
                     </div>
                     <div onClick={(e) => e.stopPropagation()}>
@@ -1763,12 +1525,15 @@ export default function ExpandedPlayer({
         )}
       </AnimatePresence>
 
-      {/* Add to Playlist Modal (inline) */}
-      <InlineAddToPlaylistModal
-        open={showAddModal}
+      {/* Add to Playlist Modal — shared component, same one the
+          Library and Playlist screens use. Episode is resolved in
+          `handleOpenAddToPlaylist` *before* the modal opens, so the
+          previously-needed in-modal "Preparing episode…" state is
+          gone. */}
+      <AddToPlaylistModal
+        isOpen={showAddModal && !!episodeToAdd?.id}
         episode={episodeToAdd}
         playlists={playlists}
-        resolving={resolvingAdd}
         onClose={() => { setShowAddModal(false); setEpisodeToAdd(null); }}
         onAdded={({ playlist: pl, action }) => {
           if (action === 'created') addPlaylist(pl);
@@ -1827,7 +1592,11 @@ export default function ExpandedPlayer({
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-white text-base font-bold truncate mb-1">{episode?.title}</div>
+                          <ScrollingTitle
+                            as="div"
+                            text={episode?.title || ''}
+                            className="text-white text-base font-bold mb-1"
+                          />
                           <div className="text-white/60 text-sm truncate">{podcast?.title}</div>
                         </div>
                         <div className="pr-2">

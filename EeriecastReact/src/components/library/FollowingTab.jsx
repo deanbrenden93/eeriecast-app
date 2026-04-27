@@ -150,7 +150,10 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
             {sortOrder === 'unplayed' ? 'Unplayed Episodes' : 'Latest Episodes'}
           </h3>
-          <div className="flex items-center gap-3">
+          {/* flex-wrap so a long selected show title can never push the
+              Sort dropdown off-screen on mobile — controls drop to a
+              second line instead of clipping. */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
             {/* Play All — only meaningful when there are episodes to queue.
                 Surfaced more prominently when the listener is on the
                 "Unplayed" sort because that's the moment they're most
@@ -171,22 +174,28 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
               </Button>
             )}
 
-            {/* Filter by show — pill-styled dropdown matching Discover */}
+            {/* Filter by show — pill-styled dropdown matching Discover.
+                Capped width (with the SelectTrigger's built-in
+                line-clamp-1) so a long show title truncates with an
+                ellipsis instead of expanding the trigger. */}
             <FilterDropdown
               value={selectedShow}
               onChange={setSelectedShow}
               placeholder="Show"
+              className="max-w-[10rem] sm:max-w-[14rem]"
               options={[
                 { value: "all", label: "All Shows" },
                 ...showOptions.map((s) => ({ value: String(s.id), label: s.title })),
               ]}
             />
 
-            {/* Sort dropdown — Newest / Oldest / Unplayed */}
+            {/* Sort dropdown — Newest / Oldest / Unplayed.
+                shrink-0 keeps it intact when the row wraps tight. */}
             <FilterDropdown
               value={sortOrder}
               onChange={setSortOrder}
               placeholder="Sort"
+              className="shrink-0"
               options={sortOptions}
             />
           </div>

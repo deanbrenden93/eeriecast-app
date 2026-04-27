@@ -12,6 +12,7 @@ import { formatDate } from '@/lib/utils';
 import { FREE_FAVORITE_LIMIT } from '@/lib/freeTier';
 import { toast } from '@/components/ui/use-toast';
 import EpisodeMenu from '@/components/podcasts/EpisodeMenu';
+import ScrollingTitle from '@/components/common/ScrollingTitle';
 
 
 function formatDuration(secondsOrString) {
@@ -161,16 +162,16 @@ export default function EpisodesTable({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h3
-                    className={`font-semibold text-base truncate cursor-pointer ${
+                  <ScrollingTitle
+                    as="h3"
+                    text={ep.title}
+                    onClick={() => onPlay && onPlay(ep)}
+                    className={`font-semibold text-base cursor-pointer ${
                       isChapterLocked
                         ? 'text-zinc-500'
                         : 'text-white hover:text-blue-400'
                     }`}
-                    onClick={() => onPlay && onPlay(ep)}
-                  >
-                    {ep.title}
-                  </h3>
+                  />
                   {isFreeSample && !isPremium && (
                     <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400/90 bg-emerald-500/10 border border-emerald-400/[0.08] px-1.5 py-0.5 rounded flex-shrink-0">
                       <Play className="w-2.5 h-2.5 fill-current" />
