@@ -370,7 +370,9 @@ export default function Podcasts() {
       {/* Music — rendered as individual track chips (not artist cards),
           so listeners can kick off a specific song with one tap rather
           than drilling through an artist page first. Up to 40 tracks
-          are surfaced in a two-row horizontal grid. */}
+          are surfaced in a two-row horizontal grid. "View all" routes
+          into the Discover screen's Music tab so the music browse
+          experience lives alongside the rest of the show categories. */}
       {!isLoading && podcasts.some(p => isMusic(p)) && (
         <div className="w-full px-2.5 lg:px-10 py-3">
           <MusicTracksRow
@@ -379,7 +381,7 @@ export default function Podcasts() {
                 Music
               </h2>
             }
-            viewAllTo={createPageUrl('Music')}
+            viewAllTo={`${createPageUrl('Discover')}?tab=Music`}
             maxItems={40}
             onAddToPlaylist={openAddToPlaylist}
           />

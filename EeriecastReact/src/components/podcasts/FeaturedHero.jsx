@@ -30,6 +30,21 @@ const HERO_SLIDES = [
     // No artwork — uses ambient background only
   },
   {
+    // Fractured Reality — brand-new members-only Darkness Prevails
+    // series. The accent borrows the icy electric cyan we already use
+    // for the show in `lib/showColors.js` so the hero, show page, and
+    // any badges all read as the same identity.
+    slug: 'fractured-reality',
+    badge: 'New from Darkness Prevails',
+    title: 'Fractured\nReality',
+    description:
+      'Darkness Prevails hosts a brand new members-only series about real people who have experienced real glitches in reality.',
+    ctaText: 'Listen Now',
+    secondaryCta: { text: 'View Show' },
+    accent: '#22d3ee',
+    accentAlt: '#0891b2',
+  },
+  {
     slug: 'night-watchers',
     // Night Watchers is tagged Mature on the backend — flag the slide so we
     // skip it entirely for users who have mature content turned off.

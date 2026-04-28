@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { ChevronLeft, ChevronRight, Play, Pause, Crown, Music } from "lucide-react";
@@ -71,6 +71,13 @@ export default function MusicTracksRow({
   const { loadAndPlay, episode: currentEpisode, isPlaying, toggle } = useAudioPlayerContext();
   const { isAuthenticated, episodeProgressMap } = useUser() || {};
 
+  // Per-mount seed so the row re-shuffles whenever the user revisits
+  // the home screen (different lineup every time) but stays stable
+  // while they're scrolling through it. Without this, a stable
+  // `useMemo` over the podcast list would lock the same random ordering
+  // for the whole session.
+  const [shuffleSeed] = useState(() => Math.random());
+
   const tracks = useMemo(() => {
     const out = [];
     for (const p of podcasts || []) {
@@ -92,11 +99,18 @@ export default function MusicTracksRow({
         });
       }
     }
-    const toTs = (t) =>
-      new Date(t.episode?.published_at || t.episode?.created_date || t.episode?.release_date || 0).getTime();
-    out.sort((a, b) => toTs(b) - toTs(a));
+    // Random selection rather than newest-first. Music is
+    // discovery-oriented on the home screen — "what should I listen to
+    // right now?" — so a fresh sample of the catalog every visit beats
+    // an unchanging chronological list. Reference the seed so React's
+    // lint sees we depend on it.
+    void shuffleSeed;
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
     return out.slice(0, maxItems);
-  }, [podcasts, maxItems]);
+  }, [podcasts, maxItems, shuffleSeed]);
 
   const scroll = useCallback((direction) => {
     const el = scrollRef.current;

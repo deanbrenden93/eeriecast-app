@@ -202,8 +202,12 @@ function InfiniteScrollSentinel({ onVisible }) {
 export default function Discover() {
   const location = useLocation();
   const navigate = useNavigate();
+  // Tab order: personal → catalog → niche surfaces → discovery
+  // helpers. "Music" sits right after "Podcasts" so the two media
+  // categories live next to each other (and so the home-screen Music
+  // row's "View all" lands one step into the same surface).
   const tabs = [
-    "Recommended", "Podcasts", "Members-Only", "Free", "Newest", "Categories", "Trending"
+    "Recommended", "Podcasts", "Music", "Members-Only", "Free", "Newest", "Categories", "Trending"
   ];
   const queryTab = (() => {
     try {
@@ -638,16 +642,27 @@ export default function Discover() {
     );
   };
 
-  const renderShowList = (shows, heading, emptyMessage = "No shows found.") => {
-    const filtered = filterShows(shows, showFilters);
+  // `showCategoryFilter` opts a tab out of the Category dropdown +
+  // active-filter chip. Single-category surfaces (e.g. Music, where
+  // every artist is tagged "Music") have nothing meaningful to filter
+  // by, and showing the dropdown there just adds visual noise.
+  const renderShowList = (
+    shows,
+    heading,
+    emptyMessage = "No shows found.",
+    { showCategoryFilter = true } = {},
+  ) => {
+    const filtered = showCategoryFilter ? filterShows(shows, showFilters) : shows;
     return (
       <div>
         <SectionHeader title={heading} count={filtered.length} countLabel="shows">
-          <ShowFilterBar
-            categories={categories}
-            filters={showFilters}
-            onFilterChange={setShowFilters}
-          />
+          {showCategoryFilter && (
+            <ShowFilterBar
+              categories={categories}
+              filters={showFilters}
+              onFilterChange={setShowFilters}
+            />
+          )}
         </SectionHeader>
         {filtered.length === 0 ? (
           <div className="text-center py-16 text-zinc-500">{emptyMessage}</div>
@@ -892,6 +907,18 @@ export default function Discover() {
           podcasts.filter(p => !isAudiobook(p) && !isMusic(p)),
           "All Podcasts",
           "No podcasts found.",
+        );
+      case "Music":
+        // Music artists list mirrors the rest of the show-grid tabs
+        // so the layout stays consistent. The home-screen "Music"
+        // row's "View all" deep-links here directly. Category filter
+        // is suppressed — every artist on this surface is tagged
+        // "Music", so a category dropdown wouldn't refine anything.
+        return renderShowList(
+          podcasts.filter(p => isMusic(p)),
+          "Music",
+          "No music available yet — artists are coming.",
+          { showCategoryFilter: false },
         );
       case "Members-Only": {
         // Audiobooks live behind the member paywall alongside exclusive

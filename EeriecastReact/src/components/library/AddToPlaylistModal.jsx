@@ -231,24 +231,37 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
           exit (see `index.css`). */}
       <DialogContent
         hideClose
+        // The combination of `w-[94vw]` + `max-w-[560px]` clamps the
+        // modal to the viewport on phones — but only works if every
+        // shrinkable flex child inside ALSO has `min-w-0`, otherwise
+        // the intrinsic width of a long episode title or playlist name
+        // forces the panel wider than the viewport and it flows off
+        // the right edge in portrait. The `min-w-0` cleanups below
+        // (header left group, title block, footer hint) are what
+        // actually fix the overflow; this just keeps the cap.
         className="ec-pop-modal w-[94vw] max-w-[560px] bg-gradient-to-br from-[#0c0d12] via-[#11121a] to-[#1a1726] text-white border border-violet-500/30 shadow-2xl shadow-violet-900/40 p-0 overflow-hidden z-[10200]"
       >
-        <div className="relative">
+        <div className="relative max-w-full">
           {/* Atmospheric glow — same identity color as the Playlist
               detail screen and Library cards. */}
           <div className="absolute -top-32 -right-24 w-72 h-72 bg-violet-500/20 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-32 -left-20 w-64 h-64 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
 
           {/* ── Header ─────────────────────────────────────────── */}
-          <div className="relative px-6 pt-6 pb-4 md:px-8 md:pt-7">
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-violet-500/15 ring-1 ring-violet-400/30 flex items-center justify-center">
+          <div className="relative px-4 pt-5 pb-3 sm:px-6 sm:pt-6 sm:pb-4 md:px-8 md:pt-7">
+            <div className="flex items-start justify-between gap-2 sm:gap-3 mb-1">
+              {/* `min-w-0` is critical on the left group: without it the
+                  flex child can't shrink below the intrinsic width of the
+                  longest child (an episode title, in our case), which
+                  forced the whole header — and therefore the dialog
+                  panel — wider than the viewport on portrait phones. */}
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="w-9 h-9 rounded-full bg-violet-500/15 ring-1 ring-violet-400/30 flex items-center justify-center flex-shrink-0">
                   <Sparkles className="w-4 h-4 text-violet-300" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold tracking-wide">Add to Playlist</h2>
-                  <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[20rem]">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base sm:text-lg font-semibold tracking-wide truncate">Add to Playlist</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5 truncate">
                     {episode?.title ? `"${episode.title}"` : 'Pick playlists for this episode.'}
                   </p>
                 </div>
@@ -272,7 +285,7 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
 
           {/* ── Content ────────────────────────────────────────── */}
           <form onSubmit={handleSubmit}>
-            <div className="relative px-6 md:px-8">
+            <div className="relative px-4 sm:px-6 md:px-8">
               {/* Mode toggle / search row */}
               {!creating ? (
                 <div className="flex items-center gap-2 mb-3">
@@ -345,10 +358,10 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
                           >
                             <PlaylistRowThumb firstEpisodeId={firstEpId} />
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-white font-medium truncate">{pl.name}</span>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm text-white font-medium truncate min-w-0">{pl.name}</span>
                                 {already && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-violet-300 bg-violet-500/15 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-violet-300 bg-violet-500/15 px-1.5 py-0.5 rounded flex-shrink-0">
                                     <Check className="w-2.5 h-2.5" />
                                     Added
                                   </span>
@@ -430,15 +443,19 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
             </div>
 
             {/* ── Footer ───────────────────────────────────────── */}
-            <div className="relative flex items-center justify-between gap-3 px-6 md:px-8 py-4 mt-4 border-t border-white/[0.04] bg-black/20">
-              <div className="text-[11px] text-zinc-500">
+            <div className="relative flex items-center justify-between gap-2 sm:gap-3 px-4 sm:px-6 md:px-8 py-3 sm:py-4 mt-4 border-t border-white/[0.04] bg-black/20">
+              {/* Hint text shrinks on tight widths so the action
+                  buttons on the right always stay visible — on iPhone-SE
+                  with "Add to N playlists" selected, the hint used to
+                  push the buttons off the right edge of the panel. */}
+              <div className="text-[11px] text-zinc-500 min-w-0 truncate hidden sm:block">
                 {creating
                   ? 'A new playlist is one tap away.'
                   : selectedIds.size === 0
                     ? 'Pick one or more playlists.'
                     : `${selectedIds.size} selected`}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 ml-auto">
                 <Button
                   type="button"
                   variant="ghost"
@@ -450,7 +467,7 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
                 </Button>
                 <Button
                   type="submit"
-                  className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-900/30 px-5 disabled:opacity-50"
+                  className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-900/30 px-3.5 sm:px-5 disabled:opacity-50 text-xs sm:text-sm whitespace-nowrap"
                   disabled={!canSubmit}
                 >
                   {submitLabel}
