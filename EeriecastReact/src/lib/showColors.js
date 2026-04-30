@@ -47,6 +47,10 @@ const SHOW_COLORS = {
   'alone-in-the-woods':        { primary: '#6b8e6b', darker: '#3d5c3d', shadow: '#6b8e6b33' },
   // Drakenblud: The Malformed King — ember orange / fire glow
   'drakenblud-the-malformed-king': { primary: '#f97316', darker: '#c2410c', shadow: '#f9731633' },
+  // Westfall — dusty amber sunset glow through misty pines (cover's
+  // central horizon light). Stays distinct from Drakenblud's vivid
+  // ember orange and Break Room's rust amber by leaning gold-warm.
+  'westfall':                      { primary: '#e8a44a', darker: '#a86419', shadow: '#e8a44a33' },
   // LORE – A Folklore Horror Novel — dark desaturated teal / ancient wood
   'lore-a-folklore-horror-novel':  { primary: '#5eaaa8', darker: '#2d6a6a', shadow: '#5eaaa833' },
   // Dogwood — dusty crimson rose (flower petals)
