@@ -5,9 +5,10 @@ import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
 import { useMediaSession } from '@/hooks/use-media-session';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
-import { getEpisodeAudioUrl, isAudiobook, hasCategory, isMaturePodcast } from '@/lib/utils';
+import { getEpisodeAudioUrl, isAudiobook, isMusic, hasCategory, isMaturePodcast } from '@/lib/utils';
 import { getSetting } from '@/hooks/use-settings';
 import { useUser } from '@/context/UserContext.jsx';
+import { usePodcasts } from '@/context/PodcastContext.jsx';
 import { canAccessChapter, canAccessExclusiveEpisode, FREE_LISTEN_CHAPTER_LIMIT } from '@/lib/freeTier';
 import { createPageUrl } from '@/utils';
 import MobilePlayer from '@/components/podcasts/MobilePlayer';
@@ -19,6 +20,194 @@ const AudioPlayerContext = createContext();
 
 // Routes where the mini player should never appear
 const PLAYER_HIDDEN_ROUTES = new Set(['/', '/home', '/premium']);
+
+// ─── End-of-queue autoplay fallback ────────────────────────────────
+// Resolves what to play after the queue has been exhausted, based on
+// the user's per-content-type autoplay preference. Returns either a
+// `{ podcast, episode }` pair to play next or `null` to stop.
+//
+// Safety filters applied to every candidate:
+//   • Free-tier: locked exclusive non-samples, audiobook chapters past
+//     the free limit, and bonus `is_premium` episodes are excluded so
+//     autoplay can never silently trip the paywall.
+//   • Mature content: skipped for users who haven't opted in
+//     (random_any only — same-show fallbacks stay on the show the
+//     user is already listening to, which they've already cleared).
+//   • Audio availability: episodes with no playable URL are skipped
+//     so we never queue a track that just sits there silent.
+
+const epDate = (e) =>
+  new Date(
+    e?.created_date || e?.published_at || e?.release_date || 0,
+  ).getTime();
+
+// Detail payloads come back two ways depending on which serializer the
+// backend used: either a flat array or a paginated `{ results: [...] }`
+// envelope. Normalize so callers always get a real array.
+function getEpisodeArray(podcast) {
+  const raw = podcast?.episodes;
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.results)) return raw.results;
+  return [];
+}
+
+function hasPlayableAudio(ep) {
+  try {
+    return !!getEpisodeAudioUrl(ep);
+  } catch {
+    return false;
+  }
+}
+
+function isEpisodeAccessibleToFree(podcast, episode, isAudiobookContent) {
+  if (!episode) return false;
+  if (isAudiobookContent) {
+    // Chapter-based gating: caller must check by index. We can only
+    // approve "this is a chapter" here; index check happens upstream.
+    return true;
+  }
+  if (podcast?.is_exclusive) {
+    return canAccessExclusiveEpisode(episode, podcast, false);
+  }
+  if (episode.is_premium) return false;
+  return true;
+}
+
+async function resolveAutoplayFallback({
+  mode,
+  currentPodcast,
+  currentEpisode,
+  isAudiobookContent,
+  isMusicContent,
+  isPremium,
+  canViewMature,
+  ensureDetail,
+  catalog,
+}) {
+  if (!mode || mode === 'none') return null;
+  if (!currentPodcast?.id || !currentEpisode?.id) return null;
+  if (typeof ensureDetail !== 'function') return null;
+
+  // ── Audiobook: only meaningful fallback is "next chapter of same book"
+  if (isAudiobookContent) {
+    if (mode !== 'next_chapter') return null;
+    const detail = await ensureDetail(currentPodcast.id).catch(() => null);
+    const eps = getEpisodeArray(detail)
+      .slice()
+      .sort((a, b) => epDate(a) - epDate(b)); // chapter order = oldest-first
+    const i = eps.findIndex(
+      (e) => Number(e?.id) === Number(currentEpisode.id),
+    );
+    if (i < 0 || i + 1 >= eps.length) return null;
+    const next = eps[i + 1];
+    if (!hasPlayableAudio(next)) return null;
+    // Free users can't roll past the free chapter limit
+    if (!isPremium && !canAccessChapter(i + 1, false, FREE_LISTEN_CHAPTER_LIMIT)) {
+      return null;
+    }
+    return { podcast: detail || currentPodcast, episode: next };
+  }
+
+  // ── Random from any matching show in the catalog
+  if (mode === 'random_any') {
+    const pool = (catalog || []).filter((p) => {
+      if (!p?.id) return false;
+      if (Number(p.id) === Number(currentPodcast.id)) return false; // exclude current show
+      // Mature gate: never autoplay-roll into mature content for a
+      // listener who hasn't opted in.
+      if (!canViewMature && isMaturePodcast(p)) return false;
+      const pAudio = isAudiobook(p);
+      const pMusic = isMusic(p);
+      const pPodcast = !pAudio && !pMusic;
+      if (isMusicContent) return pMusic;
+      return pPodcast; // regular podcasts only
+    });
+    if (!pool.length) return null;
+    // Try up to 6 different shows; some catalog entries are list-payload
+    // shells with no episodes hydrated yet, in which case ensureDetail
+    // brings back the full set on demand.
+    const shuffled = pool.slice().sort(() => Math.random() - 0.5);
+    for (const candidate of shuffled.slice(0, 6)) {
+      // Free users: skip exclusive shows entirely — even if a few
+      // sample episodes exist, surprise-rolling into a members-only
+      // show right after a free episode ends feels like a bait
+      // switch. Random-any should stay on shows the user can binge.
+      if (!isPremium && candidate.is_exclusive) continue;
+      const detail = await ensureDetail(candidate.id).catch(() => null);
+      if (!detail) continue;
+      const allEps = getEpisodeArray(detail);
+      const playable = allEps.filter((e) => {
+        if (!e?.id) return false;
+        if (!hasPlayableAudio(e)) return false;
+        if (!isPremium && !isEpisodeAccessibleToFree(detail, e, false)) return false;
+        return true;
+      });
+      if (!playable.length) continue;
+      const next = playable[Math.floor(Math.random() * playable.length)];
+      return { podcast: detail, episode: next };
+    }
+    return null;
+  }
+
+  // ── Same-show fallbacks (next-newest / next-oldest / random_same_show)
+  const detail = await ensureDetail(currentPodcast.id).catch(() => null);
+  const allEps = getEpisodeArray(detail);
+  const playable = allEps.filter((e) => {
+    if (!e?.id) return false;
+    if (!hasPlayableAudio(e)) return false;
+    if (isPremium) return true;
+    return isEpisodeAccessibleToFree(detail || currentPodcast, e, false);
+  });
+  const others = playable.filter(
+    (e) => Number(e.id) !== Number(currentEpisode.id),
+  );
+  if (!others.length) return null;
+
+  if (mode === 'random_same_show') {
+    const next = others[Math.floor(Math.random() * others.length)];
+    return { podcast: detail || currentPodcast, episode: next };
+  }
+
+  const curDate = epDate(currentEpisode);
+
+  if (mode === 'next_newest_same_show') {
+    // The episode whose release date is just newer than the current one
+    let target = null;
+    let targetDate = Infinity;
+    for (const ep of others) {
+      const d = epDate(ep);
+      if (d > curDate && d < targetDate) {
+        target = ep;
+        targetDate = d;
+      }
+    }
+    return target ? { podcast: detail || currentPodcast, episode: target } : null;
+  }
+
+  if (mode === 'next_oldest_same_show') {
+    // The episode whose release date is just older than the current one
+    let target = null;
+    let targetDate = -Infinity;
+    for (const ep of others) {
+      const d = epDate(ep);
+      if (d < curDate && d > targetDate) {
+        target = ep;
+        targetDate = d;
+      }
+    }
+    return target ? { podcast: detail || currentPodcast, episode: target } : null;
+  }
+
+  return null;
+}
+
+// Cap the queue when rolling autoplay keeps appending fallbacks during
+// long listening sessions. We trim from the front so the user can still
+// scrub backward through the most recent items via the prev button,
+// but we don't grow the queue array — and the Up Next UI — without
+// bound. 200 entries ≈ ~150+ hours of listening at typical episode
+// lengths, which comfortably outlasts any realistic single session.
+const ROLLING_QUEUE_CAP = 200;
 
 export const AudioPlayerProvider = ({ children }) => {
   const navigate = useNavigate();
@@ -134,9 +323,22 @@ export const AudioPlayerProvider = ({ children }) => {
   // ─── User Context (for real-time progress tracking + smart resume) ─
   const { updateEpisodeProgress, episodeProgressMap, isPremium, canViewMature } = useUser() || {};
 
+  // ─── Podcast catalog (for end-of-queue autoplay fallback) ──────────
+  // The audio context is mounted inside <PodcastProvider> (see main.jsx),
+  // so we can safely pull the full show list and the per-show detail
+  // hydrator. Both go through refs so the auto-advance closure always
+  // reaches the latest values without forcing the context to rebuild.
+  const { podcasts: podcastsCatalog, ensureDetail } = usePodcasts() || {};
+  const podcastsCatalogRef = useRef(podcastsCatalog);
+  const ensureDetailRef = useRef(ensureDetail);
+  useEffect(() => { podcastsCatalogRef.current = podcastsCatalog; }, [podcastsCatalog]);
+  useEffect(() => { ensureDetailRef.current = ensureDetail; }, [ensureDetail]);
+
   // ─── Free-tier chapter gating ──────────────────────────────────────
   const premiumRef = useRef(isPremium);
   useEffect(() => { premiumRef.current = isPremium; }, [isPremium]);
+  const canViewMatureRef = useRef(canViewMature);
+  useEffect(() => { canViewMatureRef.current = canViewMature; }, [canViewMature]);
   const navigateRef = useRef(navigate);
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
@@ -341,7 +543,85 @@ export const AudioPlayerProvider = ({ children }) => {
         setQueueIndex(nextIndex);
         await loader({ podcast: item.podcast, episode: item.episode, resume: item.resume });
       }
+      return;
     }
+
+    // ── Queue exhausted: per-content-type autoplay fallback ──
+    // The user finished the last item in the queue (single-item launch
+    // from history/search, or worked through every episode of a show).
+    // Pick a follow-up based on their Settings preference for this
+    // content type. Free users are gated inside resolveAutoplayFallback
+    // so we never silently bounce into a locked episode.
+    const current = list[idx];
+    const currentEpisode = current?.episode;
+    let currentPodcast = current?.podcast;
+    if (!currentPodcast || !currentEpisode) return;
+
+    // Hydrate the show's full detail before classifying. Queue items
+    // launched from history / search can carry only `{ id, title }`,
+    // which is enough to play but leaves `categories` empty — so
+    // isAudiobook/isMusic would misfire and we'd consult the wrong
+    // per-type setting. ensureDetail caches per session so this is
+    // cheap for items that were already hydrated upstream.
+    try {
+      if (ensureDetailRef.current && currentPodcast.id != null) {
+        const detail = await ensureDetailRef.current(currentPodcast.id);
+        if (detail) currentPodcast = { ...currentPodcast, ...detail };
+      }
+    } catch { /* fall through with whatever we have */ }
+
+    const isAudio = isAudiobook(currentPodcast);
+    const isMus = !isAudio && isMusic(currentPodcast);
+    const fallbackMode = isAudio
+      ? getSetting('audiobookAutoplay')
+      : isMus
+        ? getSetting('musicAutoplay')
+        : getSetting('podcastAutoplay');
+    if (!fallbackMode || fallbackMode === 'none') return;
+
+    let fallback = null;
+    try {
+      fallback = await resolveAutoplayFallback({
+        mode: fallbackMode,
+        currentPodcast,
+        currentEpisode,
+        isAudiobookContent: isAudio,
+        isMusicContent: isMus,
+        isPremium: !!premiumRef.current,
+        canViewMature: !!canViewMatureRef.current,
+        ensureDetail: ensureDetailRef.current,
+        catalog: podcastsCatalogRef.current,
+      });
+    } catch (err) {
+      if (typeof console !== 'undefined') console.debug('autoplay fallback failed', err);
+      return;
+    }
+    if (!fallback?.podcast || !fallback?.episode) return;
+
+    // Append the fallback to the queue so:
+    //   • the user sees what's playing now in the Up Next UI
+    //   • the prev button can take them back to the just-finished item
+    //   • the next end-of-track triggers another fallback resolve from
+    //     the appended item's vantage point (rolling autoplay)
+    //
+    // To keep long listening sessions from growing the queue without
+    // bound, trim the oldest entries once we exceed ROLLING_QUEUE_CAP.
+    // The just-played item and the new fallback are always retained.
+    const newItem = {
+      podcast: fallback.podcast,
+      episode: fallback.episode,
+      resume: { progress: 0 },
+    };
+    setQueue(prev => {
+      const grown = [...prev, newItem];
+      if (grown.length <= ROLLING_QUEUE_CAP) return grown;
+      return grown.slice(grown.length - ROLLING_QUEUE_CAP);
+    });
+    // The new item lands at the end of the queue regardless of trimming.
+    // Fallback only fires when prev was already at the last index, so the
+    // new last index is at most prev + 1 (and clamped at the cap).
+    setQueueIndex(prev => Math.min(prev + 1, ROLLING_QUEUE_CAP - 1));
+    await loader(newItem);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

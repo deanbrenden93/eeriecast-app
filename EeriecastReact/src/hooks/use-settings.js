@@ -12,6 +12,35 @@ const DEFAULTS = {
   // Defaults to the classic podcast 10s increment.
   skipBackwardSeconds: 10,
   skipForwardSeconds: 10,
+  // ─── End-of-queue autoplay fallbacks ──────────────────────────────
+  // What to play when the user reaches the end of the current playback
+  // queue (e.g. they finished a single-episode launch from history, or
+  // they listened through every queued episode of a show). The master
+  // `autoplay` toggle above is still respected — flipping it off
+  // disables both within-queue advancement AND these fallbacks.
+  //
+  // Allowed values:
+  //   podcastAutoplay / musicAutoplay:
+  //     'none'                    — stop, do nothing
+  //     'next_newest_same_show'   — play the episode/track just newer
+  //                                 than the one that ended
+  //     'next_oldest_same_show'   — play the episode/track just older
+  //                                 than the one that ended (default
+  //                                 for podcasts: continues a typical
+  //                                 newest-first browse forward)
+  //     'random_same_show'        — pick a random other episode/track
+  //                                 from the same show (default for
+  //                                 music: shuffle-within-artist)
+  //     'random_any'              — pick a random episode/track from
+  //                                 any matching show in the catalog
+  //   audiobookAutoplay:
+  //     'none'                    — stop at the end of a chapter
+  //     'next_chapter'            — play the next chapter of the same
+  //                                 audiobook (default; never rolls
+  //                                 into a different book)
+  podcastAutoplay: 'next_oldest_same_show',
+  musicAutoplay: 'random_same_show',
+  audiobookAutoplay: 'next_chapter',
 };
 
 /** Read all settings from localStorage (plain function, no React needed) */

@@ -14,8 +14,18 @@ import {
   ShieldAlert,
   Rewind,
   FastForward,
+  Mic,
+  Music as MusicIcon,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSettings } from '@/hooks/use-settings';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
@@ -115,6 +125,76 @@ const SkipIntervalControl = ({ value, onChange }) => {
     </div>
   );
 };
+
+/* ─── Settings dropdown row ────────────────────────────────────────── */
+// Used for the per-content-type "what to play after the queue ends"
+// preferences. Mirrors the label-on-top / control-below rhythm of the
+// surrounding Skip Backward / Skip Forward / Default Speed controls.
+const SettingsSelect = ({ icon: Icon, label, hint, value, onChange, options }) => (
+  <div className="mb-5">
+    <label className="flex items-center gap-2 text-sm font-medium text-zinc-400 mb-1.5">
+      {Icon && <Icon className="w-3.5 h-3.5" />}
+      {label}
+    </label>
+    {hint && <p className="text-[11px] text-zinc-600 mb-2.5 ml-5">{hint}</p>}
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-full h-11 rounded-xl bg-black/40 border-white/[0.06] text-sm text-zinc-200 hover:bg-white/[0.05] hover:border-white/[0.1] focus:ring-0 focus:ring-offset-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="border-white/[0.08] bg-[#18181f] shadow-xl shadow-black/40 rounded-lg">
+        {options.map((opt) => (
+          <SelectItem
+            key={opt.value}
+            value={opt.value}
+            className="text-sm text-zinc-300 focus:bg-white/[0.06] focus:text-white rounded-md cursor-pointer"
+          >
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+);
+
+SettingsSelect.propTypes = {
+  icon: PropTypes.elementType,
+  label: PropTypes.node.isRequired,
+  hint: PropTypes.node,
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  options: PropTypes.arrayOf(
+    PropTypes.shape({
+      value: PropTypes.string.isRequired,
+      label: PropTypes.node.isRequired,
+    }),
+  ).isRequired,
+};
+
+/* ─── End-of-queue autoplay option lists ───────────────────────────── */
+// Surfaced as dropdowns under Playback. The wording mirrors how each
+// content type talks about its own units (episode for podcasts, track
+// for music, chapter for audiobooks) so the choice reads naturally
+// regardless of which kind of show the listener is on.
+const PODCAST_AUTOPLAY_OPTIONS = [
+  { value: 'none',                    label: 'Nothing — stop' },
+  { value: 'next_newest_same_show',   label: 'Next-newest episode of the same show' },
+  { value: 'next_oldest_same_show',   label: 'Next-oldest episode of the same show' },
+  { value: 'random_same_show',        label: 'Random episode of the same show' },
+  { value: 'random_any',              label: 'Random episode from any podcast' },
+];
+
+const MUSIC_AUTOPLAY_OPTIONS = [
+  { value: 'none',                    label: 'Nothing — stop' },
+  { value: 'next_newest_same_show',   label: 'Next-newest track from the same artist' },
+  { value: 'next_oldest_same_show',   label: 'Next-oldest track from the same artist' },
+  { value: 'random_same_show',        label: 'Random track from the same artist' },
+  { value: 'random_any',              label: 'Random track from any artist' },
+];
+
+const AUDIOBOOK_AUTOPLAY_OPTIONS = [
+  { value: 'none',                    label: 'Nothing — stop' },
+  { value: 'next_chapter',            label: 'Play the next chapter of the audiobook' },
+];
 
 /* ─── Main Settings Page ───────────────────────────────────────────── */
 
@@ -252,8 +332,8 @@ export default function Settings() {
           </div>
           <SettingsToggle
             icon={ListEnd}
-            label="Autoplay next episode"
-            description="Automatically play the next episode when one finishes"
+            label="Autoplay next episode in queue"
+            description="Automatically advance to the next episode, track, or chapter in your current queue when one finishes"
             checked={settings.autoplay}
             onCheckedChange={val => updateSetting('autoplay', val)}
           />
@@ -264,6 +344,43 @@ export default function Settings() {
             checked={settings.rememberPosition}
             onCheckedChange={val => updateSetting('rememberPosition', val)}
           />
+
+          {/* ── End-of-queue autoplay fallbacks ── */}
+          {/* The "Autoplay next episode" toggle above governs whether
+              the player advances WITHIN a queue. When the queue runs
+              dry (a single-episode launch from history, or you've
+              listened through every queued episode of a show), these
+              per-content-type preferences decide what plays next. */}
+          <div className="mt-6 pt-5 border-t border-white/[0.04]">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500 mb-1.5">
+              When the queue ends
+            </h3>
+            <p className="text-xs text-zinc-600 mb-5">
+              Choose what to play after the last queued item finishes — separately for each kind of show.
+            </p>
+
+            <SettingsSelect
+              icon={Mic}
+              label="Podcast Autoplay"
+              value={settings.podcastAutoplay}
+              onChange={val => updateSetting('podcastAutoplay', val)}
+              options={PODCAST_AUTOPLAY_OPTIONS}
+            />
+            <SettingsSelect
+              icon={MusicIcon}
+              label="Music Autoplay"
+              value={settings.musicAutoplay}
+              onChange={val => updateSetting('musicAutoplay', val)}
+              options={MUSIC_AUTOPLAY_OPTIONS}
+            />
+            <SettingsSelect
+              icon={BookOpen}
+              label="Audiobook Autoplay"
+              value={settings.audiobookAutoplay}
+              onChange={val => updateSetting('audiobookAutoplay', val)}
+              options={AUDIOBOOK_AUTOPLAY_OPTIONS}
+            />
+          </div>
         </SettingsCard>
 
         {/* Notifications */}
