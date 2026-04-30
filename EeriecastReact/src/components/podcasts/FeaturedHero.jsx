@@ -404,7 +404,7 @@ export default function FeaturedHero({ onPlay }) {
               <img
                 src={coverImage}
                 alt=""
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-cover lg:[object-position:center_25%]"
                 style={{
                   transform: 'rotate(2.5deg) scale(1.12)',
                   transformOrigin: 'center',

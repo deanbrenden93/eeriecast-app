@@ -429,7 +429,7 @@ export default function Playlist() {
         {/* Full-bleed background from first episode artwork */}
         {heroImage && (
           <div
-            className="absolute inset-0 bg-no-repeat bg-cover bg-center"
+            className="absolute inset-0 bg-no-repeat bg-cover bg-center lg:[background-position:center_25%]"
             style={{ backgroundImage: `url(${heroImage})`, opacity: 0.14 }}
           />
         )}

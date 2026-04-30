@@ -191,7 +191,7 @@ export default function CreatorEpisodes() {
       {/* Hero Section */}
       <div className="relative pt-16 pb-8 md:pb-12 px-2.5 lg:px-10">
         <div
-          className="absolute inset-0 bg-no-repeat bg-cover bg-center opacity-10"
+          className="absolute inset-0 bg-no-repeat bg-cover bg-center lg:[background-position:center_25%] opacity-10"
           style={{ backgroundImage: `url(${heroImage})` }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />

@@ -82,7 +82,31 @@ export default function Episodes() {
   const [followAnim, setFollowAnim] = useState(null); // 'followed' | 'unfollowed' | null
   const [showReader, setShowReader] = useState(false);
 
-  const goToPremium = () => navigate(createPageUrl('Premium'));
+  const goToPremium = () => {
+    // If this page was reached via a deep-link to a gated episode
+    // (`?ep=...&t=...`), strip those params off the underlying show
+    // URL before pushing /Premium on top. Otherwise the Premium page's
+    // Back/X (which calls navigate(-1)) returns to the dirty URL, the
+    // auto-play effect immediately re-detects the locked episode, and
+    // bounces the user right back to /Premium — making the modal look
+    // like it's snapping shut and reopening on every tap.
+    const hasDeepLinkParams = !!(
+      deepLinkEpId ||
+      query.get('episode') ||
+      query.get('t') ||
+      query.get('start')
+    );
+    if (hasDeepLinkParams) {
+      const cleaned = new URLSearchParams();
+      if (idParam) cleaned.set('id', idParam);
+      const search = cleaned.toString();
+      navigate(
+        `${createPageUrl('Episodes')}${search ? `?${search}` : ''}`,
+        { replace: true },
+      );
+    }
+    navigate(createPageUrl('Premium'));
+  };
 
   const safeGoBack = useSafeBack();
 
@@ -568,7 +592,7 @@ export default function Episodes() {
         {/* Full-bleed cover background — high opacity, dramatic */}
         {show?.cover_image && (
           <div
-            className="absolute inset-0 bg-no-repeat bg-cover bg-center"
+            className="absolute inset-0 bg-no-repeat bg-cover bg-center lg:[background-position:center_25%]"
             style={{ backgroundImage: `url(${show.cover_image})`, opacity: 0.18 }}
           />
         )}

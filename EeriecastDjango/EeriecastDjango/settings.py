@@ -346,20 +346,35 @@ CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://redis:6
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
-# Celery beat schedule - run daily at 03:00 UTC
+# Celery beat schedule - run 4x daily at 8am/12pm/4pm/8pm Eastern (EDT = UTC-4)
 try:
     from celery.schedules import crontab
 
     CELERY_BEAT_SCHEDULE = {
-        'sync-all-feeds-daily': {
+        'sync-feeds-8am-et': {
             'task': 'podcasts.sync_all_feeds',
-            'schedule': crontab(hour=3, minute=0),
-            'options': {'time_limit': 60 * 60},  # 1 hour time limit safety
+            'schedule': crontab(hour=12, minute=0),  # 8am EDT / 1pm EST
+            'options': {'time_limit': 60 * 60},
+        },
+        'sync-feeds-12pm-et': {
+            'task': 'podcasts.sync_all_feeds',
+            'schedule': crontab(hour=16, minute=0),  # 12pm EDT / 11am EST
+            'options': {'time_limit': 60 * 60},
+        },
+        'sync-feeds-4pm-et': {
+            'task': 'podcasts.sync_all_feeds',
+            'schedule': crontab(hour=20, minute=0),  # 4pm EDT / 3pm EST
+            'options': {'time_limit': 60 * 60},
+        },
+        'sync-feeds-8pm-et': {
+            'task': 'podcasts.sync_all_feeds',
+            'schedule': crontab(hour=0, minute=0),   # 8pm EDT / 7pm EST
+            'options': {'time_limit': 60 * 60},
         },
         'send-renewal-reminders-daily': {
             'task': 'apps.emails.tasks.send_renewal_reminder_7_days',
-            'schedule': crontab(hour=3, minute=15),
-            'options': {'time_limit': 10 * 60},  # 10 minute safety
+            'schedule': crontab(hour=12, minute=15),  # shortly after 8am ET run
+            'options': {'time_limit': 10 * 60},
         },
     }
 except ModuleNotFoundError:  # pragma: no cover
