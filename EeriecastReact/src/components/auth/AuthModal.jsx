@@ -95,8 +95,6 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const [showLoginPw, setShowLoginPw] = useState(false);
   const [showRegPw, setShowRegPw] = useState(false);
   const [showRegConfirmPw, setShowRegConfirmPw] = useState(false);
-  const [successState, setSuccessState] = useState(null);
-  const successTimerRef = useRef(null);
 
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -111,11 +109,11 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const prevAuthRef = useRef(isAuthenticated);
 
   useEffect(() => {
-    if (!prevAuthRef.current && isAuthenticated && isOpen && !afterLoginAction?.fn && !successState) {
+    if (!prevAuthRef.current && isAuthenticated && isOpen && !afterLoginAction?.fn) {
       onClose();
     }
     prevAuthRef.current = isAuthenticated;
-  }, [isAuthenticated, isOpen, onClose, afterLoginAction, successState]);
+  }, [isAuthenticated, isOpen, onClose, afterLoginAction]);
 
   useEffect(() => {
     setTab(defaultTab);
@@ -124,27 +122,28 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setForgotSubmitted(false);
     setShowImportedWelcome(false);
     setImportedUserEmail('');
-    setSuccessState(null);
     setLocalError(null);
-    if (successTimerRef.current) clearTimeout(successTimerRef.current);
   }, [defaultTab, isOpen]);
 
+  // Login mirrors `handleRegister`: close immediately on success, fire the
+  // toast, and let the data layer refetch in the background. PodcastContext
+  // listens to `user?.id` and silently re-pulls the catalog so premium URLs
+  // and unlock states reflect the authenticated identity. Favorites,
+  // followings, notifications and history are already auto-refreshed by
+  // UserContext's per-user effects. No artificial delay, no page reload.
   const handleLogin = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setLocalError(null);
     const result = await login(loginForm);
     if (result.success) {
-      setSuccessState('login');
-      toast({ title: 'Welcome back!', description: 'You\'re now signed in.', variant: 'success' });
-      successTimerRef.current = setTimeout(() => { setSuccessState(null); onClose(); window.location.reload(); }, 1500);
+      toast({ title: 'Welcome back!', description: "You're now signed in.", variant: 'success' });
+      onClose();
+    } else if (result.code === 'imported_user_welcome') {
+      setImportedUserEmail(result.email || loginForm.email);
+      setShowImportedWelcome(true);
     } else {
-      if (result.code === 'imported_user_welcome') {
-        setImportedUserEmail(result.email || loginForm.email);
-        setShowImportedWelcome(true);
-      } else {
-        setLocalError(result.error || 'Invalid credentials');
-      }
+      setLocalError(result.error || 'Invalid credentials');
     }
     setSubmitting(false);
   };
@@ -220,7 +219,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                     alt="EERIECAST"
                     className="h-8 sm:h-9 mb-3 invert opacity-95"
                   />
-                  {!successState && !showImportedWelcome && (
+                  {!showImportedWelcome && (
                     <>
                       <h2 className="text-[22px] sm:text-[26px] font-bold tracking-tight text-white">
                         {isLogin ? 'Welcome back' : 'Create your account'}
@@ -232,21 +231,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                   )}
                 </div>
 
-                {successState ? (
-                  <div className="flex flex-col items-center py-10 animate-in fade-in zoom-in-95 duration-300">
-                    <div className="w-16 h-16 rounded-full bg-emerald-500/[0.12] flex items-center justify-center mb-5 ring-1 ring-emerald-500/30">
-                      <CheckCircle className="w-8 h-8 text-emerald-400" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2 text-white">
-                      {successState === 'login' ? 'Welcome back!' : 'Welcome to EERIECAST'}
-                    </h3>
-                    <p className="text-sm text-zinc-400 text-center max-w-[280px]">
-                      {successState === 'login'
-                        ? "You're signed in. Enjoy the show."
-                        : 'Your account is ready. Let the nightmares begin.'}
-                    </p>
-                  </div>
-                ) : showImportedWelcome ? (
+                {showImportedWelcome ? (
                   <div className="flex flex-col items-center py-6 text-center animate-in fade-in duration-300">
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600/20 to-red-500/10 flex items-center justify-center mb-4 ring-2 ring-red-600/30">
                       <CheckCircle className="w-8 h-8 text-red-500" />

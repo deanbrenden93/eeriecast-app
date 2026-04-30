@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { UserLibrary } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, ChevronLeft, Headphones, Heart, Loader2, Share2, Sparkles, Feather } from 'lucide-react';
+import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, ChevronLeft, Headphones, Heart, Loader2, Share2, Sparkles, Feather, ArrowUpRight } from 'lucide-react';
 import { sharePodcast } from '@/lib/share';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
@@ -21,6 +21,7 @@ import { Episode } from '@/api/entities';
 import { AnimatePresence } from 'framer-motion';
 import EReader from '@/components/podcasts/EReader';
 import { findBookForShow } from '@/data/books';
+import { getAudiobookPurchaseLink } from '@/data/audiobookPurchaseLinks';
 import { getShowDescription } from '@/data/show-descriptions';
 import MatureContentModal from '@/components/MatureContentModal';
 import { STORY_SUBMISSION_CATEGORY, STORY_SUBMISSION_SHOWS } from '@/pages/Help';
@@ -206,6 +207,10 @@ export default function Episodes() {
   // Whether this audiobook has a matching entry in the ebook catalog.
   // Drives the "Read Book" vs "Ebook coming soon" CTA in the hero.
   const hasBook = useMemo(() => (isBook && !!findBookForShow(show)), [isBook, show]);
+  // External "Buy Physical" link (Amazon etc.) for audiobooks that have
+  // a print/hardcover edition. Null when there isn't one yet — the
+  // CTA simply isn't rendered, no placeholder needed.
+  const purchaseLink = useMemo(() => (isBook ? getAudiobookPurchaseLink(show) : null), [isBook, show]);
 
   // Shows that accept listener story submissions get a CTA in the hero
   // that deep-links into the Help screen's contact form with the
@@ -681,11 +686,38 @@ export default function Episodes() {
               </div>
 
               {/* Title */}
-              <h1 className={`font-bold leading-[1.1] tracking-tight mb-3 text-3xl sm:text-4xl md:text-5xl ${
-                isBook ? 'italic' : ''
+              <h1 className={`font-bold leading-[1.1] tracking-tight text-3xl sm:text-4xl md:text-5xl ${
+                isBook ? 'italic mb-2' : 'mb-3'
               }`}>
                 {show?.title || show?.name || 'Podcast'}
               </h1>
+
+              {/* Buy Physical — sits directly beneath the audiobook title
+                  as a refined inline link. Pure typography, no pill or
+                  fill: readable sans-serif at link size with a clearly
+                  visible default underline (so the affordance is
+                  immediate), an outgoing-arrow that nudges on hover, and
+                  a soft transition into the show's accent color via a
+                  per-instance CSS custom property — Westfall amber,
+                  Drakenblud ember, Lore teal — so each title's link
+                  feels woven into its own palette. */}
+              {isBook && purchaseLink && (
+                <a
+                  href={purchaseLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Buy a physical copy of ${show?.title || 'this book'} on ${purchaseLink.retailer}`}
+                  title={`Buy on ${purchaseLink.retailer}`}
+                  className="group inline-flex items-center gap-1.5 mb-5 text-[13px] font-medium text-zinc-300 hover:text-[color:var(--buy-accent)] transition-colors duration-300"
+                  style={{ '--buy-accent': showColors.hero.primary }}
+                >
+                  <span className="relative">
+                    Buy Physical
+                    <span className="absolute -bottom-0.5 left-0 right-0 h-px bg-current opacity-50 group-hover:opacity-100 group-hover:-bottom-1 transition-all duration-300" />
+                  </span>
+                  <ArrowUpRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </a>
+              )}
 
               {/* Meta pills */}
               <div className="flex items-center gap-2.5 mb-4 flex-wrap">

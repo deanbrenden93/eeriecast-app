@@ -7,7 +7,7 @@ import { filterMaturePodcasts, isMaturePodcast } from '@/lib/utils';
 const PodcastContext = React.createContext(null);
 
 export function PodcastProvider({ children }) {
-  const { isPremium, canViewMature } = useUser();
+  const { user, loading: userLoading, isPremium, canViewMature } = useUser();
   const [allPodcasts, setAllPodcasts] = useState([]);
   const [byId, setById] = useState({});
   const [featuredCreators, setFeaturedCreators] = useState([]);
@@ -245,6 +245,33 @@ export function PodcastProvider({ children }) {
       window.removeEventListener('focus', onFocus);
     };
   }, []);
+
+  // Re-fetch the podcast list silently whenever the auth identity changes
+  // (login or logout). Without this, podcasts loaded as a guest keep
+  // their guest-tier audio URLs and locked-content flags even after
+  // the user authenticates — which is why the post-login flow used to
+  // hard-reload the page. We use `softRefreshIfStale(0)` so it forces
+  // a refresh without flipping `isLoading` (no skeleton flash) and
+  // also clears the per-show hydration cache so any subsequent
+  // `ensureDetail` call rehydrates with the right premium/free variant.
+  //
+  // We track "settled" user state via the loading flag so the very
+  // first user resolution after mount doesn't double-fetch on top of
+  // `loadAllOnce`. After the first settle, any change to `user?.id`
+  // (null → id, id → null, id → other id) triggers the silent refetch.
+  const lastSettledUserIdRef = useRef(undefined);
+  useEffect(() => {
+    if (userLoading) return;
+    const uid = user?.id ?? null;
+    if (lastSettledUserIdRef.current === undefined) {
+      lastSettledUserIdRef.current = uid;
+      return;
+    }
+    if (lastSettledUserIdRef.current !== uid) {
+      lastSettledUserIdRef.current = uid;
+      softRefreshRef.current(0);
+    }
+  }, [user, userLoading]);
 
   const value = useMemo(() => ({
     podcasts,
