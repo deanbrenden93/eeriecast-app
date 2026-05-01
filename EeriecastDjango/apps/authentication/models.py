@@ -59,6 +59,14 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Last time we saw a request authenticated as this user. Distinct from
+    # Django's ``last_login`` (which only updates at the moment of
+    # authentication) and from ``updated_at`` (which fires on every model
+    # save). Bumped by ActivityTrackingMiddleware on each authenticated
+    # request, throttled via cache to one DB write per minute per user.
+    # Powers the admin "Active in last 24h" KPI.
+    last_seen_at = models.DateTimeField(blank=True, null=True, db_index=True)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
 

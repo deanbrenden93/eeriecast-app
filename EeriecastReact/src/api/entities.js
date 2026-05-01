@@ -521,12 +521,64 @@ export const Playlist = {
 // from the Django analytics app.
 export const Analytics = {
   // Fetch the aggregated dashboard summary. Pass either `range`
-  // ('24h' | '7d' | '30d' | '90d' | '1y') or `start`/`end` ISO dates.
+  // ('24h' | '7d' | '30d' | '90d' | '1y' | 'all') or `start`/`end`
+  // ISO dates.
   async summary({ range, start, end } = {}) {
     const params = {};
     if (range) params.range = range;
     if (start) params.start = start;
     if (end) params.end = end;
     return djangoClient.get('/analytics/summary/', params);
+  },
+
+  // Full per-show stats (plays, listen time, follower count) for
+  // every show in the catalogue. Range-aware. The frontend handles
+  // sorting / filtering / pagination locally because the show count
+  // is small (~hundreds), so a single payload is cheaper than
+  // round-tripping for each sort change.
+  async shows({ range, start, end } = {}) {
+    const params = {};
+    if (range) params.range = range;
+    if (start) params.start = start;
+    if (end) params.end = end;
+    return djangoClient.get('/analytics/shows/', params);
+  },
+
+  // Paginated per-episode stats. Use `page`, `page_size`, `sort`
+  // ('plays' | 'listen' | 'completions' | 'title' | 'show'),
+  // `show_id` (filter to one show), and `q` (title search) to
+  // shape the response. Page size is clamped to 1..200 server-side.
+  async episodes({ range, start, end, page, page_size, sort, show_id, q } = {}) {
+    const params = {};
+    if (range) params.range = range;
+    if (start) params.start = start;
+    if (end) params.end = end;
+    if (page) params.page = page;
+    if (page_size) params.page_size = page_size;
+    if (sort) params.sort = sort;
+    if (show_id) params.show_id = show_id;
+    if (q) params.q = q;
+    return djangoClient.get('/analytics/episodes/', params);
+  },
+
+  // Per-episode detail — aggregate stats (range-scoped + all-time),
+  // a daily plays time-series, and a 20-bucket position-retention
+  // curve (always all-time). Powers the click-through detail
+  // modal in the admin dashboard.
+  async episodeDetail(episodeId, { range, start, end } = {}) {
+    const params = {};
+    if (range) params.range = range;
+    if (start) params.start = start;
+    if (end) params.end = end;
+    return djangoClient.get(`/analytics/episodes/${episodeId}/`, params);
+  },
+
+  // Per-audiobook completion data — listener count, completion %,
+  // and a chapter-by-chapter drop-off curve suitable for charting.
+  // Always all-time (a 30-day window makes the curve too noisy to
+  // be actionable; admins want the canonical "where do listeners
+  // stop?" answer).
+  async audiobooks() {
+    return djangoClient.get('/analytics/audiobooks/');
   },
 };

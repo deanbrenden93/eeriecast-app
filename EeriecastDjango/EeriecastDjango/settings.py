@@ -190,6 +190,10 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.common.BrokenLinkEmailsMiddleware',
     'django.middleware.common.CommonMiddleware',
+    # Activity-tracking — runs after auth so request.user is populated.
+    # Both are best-effort and self-isolating; failures are swallowed.
+    'apps.analytics.middleware.UserActivityMiddleware',
+    'apps.analytics.middleware.AnonymousActivityMiddleware',
 ]
 
 ROOT_URLCONF = 'EeriecastDjango.urls'
