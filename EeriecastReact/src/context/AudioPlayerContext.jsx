@@ -807,18 +807,25 @@ export const AudioPlayerProvider = ({ children }) => {
   }, [pause, setEpisode, setPodcast]);
 
   // ─── Auth identity watcher ─────────────────────────────────────────
-  // Defends against a logged-in user's audio leaking into a
-  // *different* logged-in user's session. We only purge when the
-  // current identity was a real user and it changed to either
-  // logged-out or a different user — NOT when an anonymous
-  // listener finishes signing in (null → id), because anon
-  // playback is a legitimate, supported flow and yanking the
-  // mini player out from under them mid-listen would be jarring.
+  // Any auth identity transition closes the mini player. This is the
+  // simplest correct behavior given that the audio URL on the loaded
+  // episode was resolved against the *previous* identity's
+  // entitlements:
+  //   • anon → signed-in: the URL the audio element holds is the
+  //     ad-filled stream the anonymous serializer returned. A premium
+  //     account is now entitled to the ad-free stream, but the
+  //     in-memory episode object doesn't have it (the ad_* fields are
+  //     write_only server-side), so silently continuing playback would
+  //     give a paid member ads. Closing the player and letting them
+  //     re-press play means the next load resolves the URL against
+  //     their new identity and they get the right stream.
+  //   • logout: don't leak a signed-in user's session into a
+  //     subsequent anonymous one.
+  //   • account switch: don't leak user A's audio into user B.
   //
   // Cases handled:
   //   • prev=null, curr=null      → no-op (still anonymous)
-  //   • prev=null, curr=id        → no-op (anon → signed in;
-  //                                  preserve their playback)
+  //   • prev=null, curr=id        → CLOSE (login)
   //   • prev=id,   curr=null      → CLOSE (logout)
   //   • prev=idA,  curr=idB       → CLOSE (account switch)
   //   • prev=undefined            → no-op (first observation)
@@ -829,7 +836,6 @@ export const AudioPlayerProvider = ({ children }) => {
     prevUserIdRef.current = curr;
     if (prev === undefined) return;        // first render
     if (prev === curr) return;              // no actual change
-    if (prev == null) return;               // anon → signed in, keep state
     handleClosePlayer();
   }, [user?.id, handleClosePlayer]);
 
