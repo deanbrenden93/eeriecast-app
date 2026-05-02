@@ -245,7 +245,8 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
       // Auto-advance to ZIP when CVC is complete
       if (value.length >= 3) focusField('zip');
     } else if (field === 'zip') {
-      value = value.replace(/\D/g, '').slice(0, 5);
+      // Accept US ZIPs plus CA/UK/AU/IE/NZ postal codes (alphanumeric + spaces/hyphens).
+      value = value.replace(/[^A-Za-z0-9 \-]/g, '').toUpperCase().slice(0, 10);
     }
 
     setForm(prev => ({ ...prev, [field]: value }));
@@ -271,7 +272,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
       if (expDate < now) errs.expiry = 'Card expired';
     }
     if (form.cvc.length < 3) errs.cvc = 'Enter CVC';
-    if (form.zip.length < 5) errs.zip = 'Enter ZIP';
+    if (form.zip.replace(/\s|-/g, '').length < 3) errs.zip = 'Enter ZIP / postal code';
     return errs;
   };
 
@@ -298,7 +299,7 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
       params.append('card[exp_year]', expYear);
       params.append('card[cvc]', form.cvc);
       params.append('card[name]', form.cardholderName);
-      params.append('card[address_zip]', form.zip);
+      params.append('card[address_zip]', form.zip.trim());
 
       const stripeRes = await fetch('https://api.stripe.com/v1/tokens', {
         method: 'POST',
@@ -505,13 +506,12 @@ export function PaymentFormModal({ open, onClose, onSuccess, mode = 'trial', pla
                     error={errors.cvc}
                   />
                   <PaymentField
-                    label="ZIP"
+                    label="ZIP / Postal"
                     name="zip"
                     value={form.zip}
                     onChange={handleChange('zip')}
                     autoComplete="postal-code"
-                    inputMode="numeric"
-                    maxLength={5}
+                    maxLength={10}
                     error={errors.zip}
                   />
                 </div>
