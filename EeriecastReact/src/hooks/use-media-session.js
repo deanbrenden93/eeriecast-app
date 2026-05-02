@@ -1,4 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
+import { audioTimeStore } from '@/hooks/use-audio-time';
 
 /**
  * Syncs playback state to the Media Session API, providing:
@@ -13,8 +14,6 @@ export function useMediaSession({
   episode,
   podcast,
   isPlaying,
-  currentTime,
-  duration,
   playbackRate,
   onPlay,
   onPause,
@@ -23,6 +22,12 @@ export function useMediaSession({
   onSeek,
   onSkip,
 }) {
+  // currentTime and duration are deliberately not parameters. They
+  // come straight from `audioTimeStore` (the same source as the
+  // in-app player UI) so the OS Now-Playing position update doesn't
+  // have to ride React state. Keeping them out of the param list
+  // also means React doesn't have to re-run this hook 4×/sec for the
+  // 1 Hz position-state push the OS actually wants.
   // ── Guard: bail out if browser doesn't support Media Session ──
   const supported = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 
@@ -117,33 +122,41 @@ export function useMediaSession({
     } catch { /* */ }
   }, [supported, isPlaying]);
 
-  // ── Sync position state (throttled to avoid excessive calls) ───────
-  const lastPositionUpdateRef = useRef(0);
-
-  const updatePositionState = useCallback(() => {
-    if (!supported) return;
-    // Only update once per second to avoid performance issues
-    const now = Date.now();
-    if (now - lastPositionUpdateRef.current < 1000) return;
-    lastPositionUpdateRef.current = now;
-
-    // setPositionState requires valid finite values; skip if not ready
-    if (!duration || !Number.isFinite(duration) || duration <= 0) return;
-    const pos = Number.isFinite(currentTime) ? Math.max(0, Math.min(currentTime, duration)) : 0;
-    const rate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
-
-    try {
-      navigator.mediaSession.setPositionState({
-        duration,
-        playbackRate: rate,
-        position: pos,
-      });
-    } catch {
-      // Some browsers throw if position > duration due to rounding
-    }
-  }, [supported, currentTime, duration, playbackRate]);
+  // ── Sync position state (subscribed directly to the time store,
+  //     throttled to ~1 Hz so we never trip the OS rate limiter) ────
+  // Keep `playbackRate` in a ref so the subscription closure always
+  // sees the latest value without having to re-bind on every change.
+  const playbackRateRef = useRef(playbackRate);
+  useEffect(() => { playbackRateRef.current = playbackRate; }, [playbackRate]);
 
   useEffect(() => {
-    updatePositionState();
-  }, [updatePositionState]);
+    if (!supported) return undefined;
+    let lastPushed = 0;
+    const push = () => {
+      const now = Date.now();
+      if (now - lastPushed < 1000) return;
+      const { currentTime, duration } = audioTimeStore.getState();
+      if (!duration || !Number.isFinite(duration) || duration <= 0) return;
+      lastPushed = now;
+      const pos = Number.isFinite(currentTime)
+        ? Math.max(0, Math.min(currentTime, duration))
+        : 0;
+      const rateRaw = playbackRateRef.current;
+      const rate = Number.isFinite(rateRaw) && rateRaw > 0 ? rateRaw : 1;
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: rate,
+          position: pos,
+        });
+      } catch {
+        // Some browsers throw if position > duration due to rounding
+      }
+    };
+    // Push once on mount so the OS has an initial position (e.g.
+    // when the user resumes a saved session and never moves the
+    // play head in the first second).
+    push();
+    return audioTimeStore.subscribe(push);
+  }, [supported]);
 }

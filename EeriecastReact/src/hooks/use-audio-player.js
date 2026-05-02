@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getEpisodeAudioUrl } from '@/lib/utils';
 import { UserLibrary, Episode as EpisodeApi } from '@/api/entities';
+import { audioTimeStore } from '@/hooks/use-audio-time';
 
 function getDeviceId() {
   try {
@@ -62,8 +63,14 @@ export function useAudioPlayer({ onEnd } = {}) {
   const [episode, setEpisode] = useState(null);
   const [podcast, setPodcast] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  // currentTime / duration deliberately do NOT live in React state.
+  // They tick up to 4×/sec while audio plays, and routing them
+  // through state was forcing every consumer of `AudioPlayerContext`
+  // (effectively the entire player surface) to re-render at 4 Hz —
+  // the root cause of the player-screen scroll/swipe stutter. They
+  // now live in `audioTimeStore` and components that need them
+  // subscribe via the `useAudioTime` hook, which scopes re-renders
+  // to the specific element that displays time.
   const [volume, setVolumeState] = useState(0.7); // Default 70% volume
   const [playbackRate, setPlaybackRateState] = useState(() => {
     try { return parseFloat(localStorage.getItem('eeriecast_playback_rate')) || 1; } catch { return 1; }
@@ -87,11 +94,12 @@ export function useAudioPlayer({ onEnd } = {}) {
       const now = Date.now();
       if (now - lastTimeUpdate < 250) return;
       lastTimeUpdate = now;
-      setCurrentTime(audio.currentTime || 0);
+      audioTimeStore.setCurrentTime(audio.currentTime || 0);
     };
-    const onMeta = () => setDuration(audio.duration || 0);
+    const onMeta = () => audioTimeStore.setDuration(audio.duration || 0);
     const onPlay = async () => {
       setIsPlaying(true);
+      audioTimeStore.setIsPlaying(true);
       if (episode?.id) {
         try {
           await UserLibrary.updateProgress(episode.id, {
@@ -110,6 +118,7 @@ export function useAudioPlayer({ onEnd } = {}) {
     };
     const onPause = async () => {
       setIsPlaying(false);
+      audioTimeStore.setIsPlaying(false);
       stopHeartbeat();
       if (episode?.id) {
         try {
@@ -129,6 +138,7 @@ export function useAudioPlayer({ onEnd } = {}) {
     const onEnded = async () => {
       stopHeartbeat();
       setIsPlaying(false);
+      audioTimeStore.setIsPlaying(false);
       if (episode?.id) {
         try {
           await UserLibrary.updateProgress(episode.id, {
@@ -256,7 +266,12 @@ export function useAudioPlayer({ onEnd } = {}) {
       try { audio.removeAttribute('src'); } catch (e) { /* ignore remove src error */ }
       try { audio.load(); } catch (e) { /* ignore load reset error */ }
 
-      // Swap in the new source and resume position
+      // Swap in the new source and resume position. Reset the
+      // external time store so the UI doesn't flash the previous
+      // episode's elapsed/total time during the brief window before
+      // the new media's `loadedmetadata` / first `timeupdate` fires.
+      audioTimeStore.setCurrentTime(Math.max(0, Math.floor(resume?.progress || 0)));
+      audioTimeStore.setDuration(0);
       audio.src = url;
       // Apply playback rate: prefer per-show memory (so audiobooks stay at 1x
       // while podcasts remember 1.5x), then fall back to the global default.
@@ -382,8 +397,11 @@ export function useAudioPlayer({ onEnd } = {}) {
     episode,
     podcast,
     isPlaying,
-    currentTime,
-    duration,
+    // currentTime / duration are intentionally NOT returned here —
+    // see `audioTimeStore` / `useAudioTime` in
+    // `@/hooks/use-audio-time`. Anything that needs to display
+    // playback time should subscribe through the store so a
+    // 4 Hz tick doesn't cascade through `AudioPlayerContext`.
     volume,
     setVolume,
     playbackRate,

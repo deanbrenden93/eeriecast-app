@@ -25,6 +25,7 @@ import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
 import { useAuthModal } from "@/context/AuthModalContext.jsx";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext.jsx";
+import { useAudioTime } from "@/hooks/use-audio-time";
 import { Podcast, Episode, UserLibrary } from "@/api/entities";
 import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
@@ -437,27 +438,34 @@ QueueDragList.propTypes = {
   onPlay: PropTypes.func.isRequired,
 };
 
-export default function ExpandedPlayer({ 
-  podcast, 
-  episode, 
-  isPlaying, 
-  currentTime = 0, 
-  duration = 0, 
-  onToggle, 
-  onCollapse, 
-  onSeek, 
+function ExpandedPlayer({
+  podcast,
+  episode,
+  onToggle,
+  onCollapse,
+  onSeek,
   onSkip,
   onNext,
   onPrev,
-  isShuffling, 
-  repeatMode, 
-  onShuffleToggle, 
+  isShuffling,
+  repeatMode,
+  onShuffleToggle,
   onRepeatToggle,
   queue = [],
   queueIndex = -1,
   playQueueIndex,
   loadAndPlay
 }) {
+  // currentTime / duration / isPlaying come from the external audio
+  // time store rather than props so the parent provider doesn't have
+  // to re-render this entire tree on every `timeupdate` event. We
+  // pull all three via a single subscription to keep it cheap; the
+  // store de-duplicates updates so this component only re-renders
+  // when one of these three primitives actually changes.
+  const audioTime = useAudioTime();
+  const currentTime = audioTime.currentTime;
+  const duration = audioTime.duration;
+  const isPlaying = audioTime.isPlaying;
   const navigate = useNavigate();
   const [isLiked, setIsLiked] = useState(false);
   const { isAuthenticated, user, refreshFavorites, favoriteEpisodeIds, isPremium, followedPodcastIds, refreshFollowings } = useUser();
@@ -481,6 +489,25 @@ export default function ExpandedPlayer({
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
+  // Defer rendering of the atmospheric blur orbs until after the
+  // open slide-up has finished. Each orb is a 70-80 px-radius
+  // backdrop blur over a 25-40 rem element — that's a meaningful
+  // amount of GPU work to commit on the very first frame of the
+  // slide, on top of laying out and painting the rest of the player
+  // tree for the first time. Holding them back by ~one slide
+  // duration shifts that cost out of the user-visible animation
+  // window so the open feels snappier; the orbs then fade in once
+  // the player is at rest.
+  const [orbsReady, setOrbsReady] = useState(false);
+  useEffect(() => {
+    // 380 ms ≈ slightly longer than the wrapper's 360 ms slide so
+    // we don't accidentally paint orbs into the last keyframe of
+    // the slide. setTimeout (rather than onAnimationComplete) keeps
+    // ExpandedPlayer self-contained — it doesn't have to know
+    // anything about the wrapper's animation timing.
+    const id = window.setTimeout(() => setOrbsReady(true), 380);
+    return () => window.clearTimeout(id);
+  }, []);
   // Tracks a just-completed like-toggle for the player heart's
   // celebration animation. Mirrors the `followAnim` state machine
   // used by the Follow capsule below — `'liked'` triggers the
@@ -1056,47 +1083,88 @@ export default function ExpandedPlayer({
       className="fixed inset-0 z-[3000] flex flex-col"
       style={{ background: '#0a0a0f' }}
     >
-      {/* Animated atmospheric background */}
-      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-        {/* Slow-drifting gradient orbs */}
-        <div className="absolute w-[40rem] h-[40rem] rounded-full blur-[160px] opacity-[0.07]"
-          style={{
-            background: 'radial-gradient(circle, #dc2626, transparent 70%)',
-            top: '-10%', left: '-15%',
-            animation: 'ep-drift-1 25s ease-in-out infinite alternate',
-          }}
-        />
-        <div className="absolute w-[35rem] h-[35rem] rounded-full blur-[140px] opacity-[0.05]"
-          style={{
-            background: 'radial-gradient(circle, #7c3aed, transparent 70%)',
-            bottom: '-10%', right: '-10%',
-            animation: 'ep-drift-2 30s ease-in-out infinite alternate',
-          }}
-        />
-        <div className="absolute w-[25rem] h-[25rem] rounded-full blur-[120px] opacity-[0.04]"
-          style={{
-            background: 'radial-gradient(circle, #0ea5e9, transparent 70%)',
-            top: '40%', left: '50%',
-            animation: 'ep-drift-3 20s ease-in-out infinite alternate',
-          }}
-        />
-        {/* Subtle noise texture overlay */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
-      </div>
+      {/* Animated atmospheric background.
+          Gated on `orbsReady` so the heavy first-frame blur work
+          doesn't compete with the player's open slide-up — see the
+          `orbsReady` declaration at the top of this component for
+          the rationale. The orbs use a brief CSS opacity fade-in so
+          they don't pop in jarringly when they finally render.
 
-      {/* Keyframes for background animation */}
+          Each orb is a heavily-blurred radial gradient — the visual
+          cost is the blur, which the GPU caches as a bitmap on a
+          dedicated compositor layer. Two important perf invariants
+          for these orbs:
+            1. The CSS keyframes only animate `translate`, never
+               `scale` (or anything that changes the element's
+               intrinsic size). Scaling forces the browser to
+               re-rasterize and re-blur the orb on every keyframe
+               step; pure translation lets it just composite the
+               cached bitmap at a different position. The previous
+               keyframes scaled to 1.15× / 1.10× / 1.20×, which is
+               why open/close (and any other big animation that
+               happened to coincide with a keyframe boundary) was
+               stuttering.
+            2. Blur radius is capped at ~80px. The eye doesn't see
+               the difference between blur(80px) and blur(160px) on
+               an opacity-0.05 colour wash, but the GPU work scales
+               with radius². 80px is ~25% of the cost of 160px.
+            3. `will-change: transform` keeps the layer alive across
+               the keyframe so the bitmap doesn't get evicted
+               between cycles.                              */}
+      {orbsReady && (
+        <div
+          className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+          style={{ animation: 'ep-orbs-fade-in 320ms ease-out both' }}
+        >
+          <div className="absolute w-[40rem] h-[40rem] rounded-full blur-[80px] opacity-[0.07]"
+            style={{
+              background: 'radial-gradient(circle, #dc2626, transparent 70%)',
+              top: '-10%', left: '-15%',
+              animation: 'ep-drift-1 25s ease-in-out infinite alternate',
+              willChange: 'transform',
+            }}
+          />
+          <div className="absolute w-[35rem] h-[35rem] rounded-full blur-[80px] opacity-[0.05]"
+            style={{
+              background: 'radial-gradient(circle, #7c3aed, transparent 70%)',
+              bottom: '-10%', right: '-10%',
+              animation: 'ep-drift-2 30s ease-in-out infinite alternate',
+              willChange: 'transform',
+            }}
+          />
+          <div className="absolute w-[25rem] h-[25rem] rounded-full blur-[70px] opacity-[0.04]"
+            style={{
+              background: 'radial-gradient(circle, #0ea5e9, transparent 70%)',
+              top: '40%', left: '50%',
+              animation: 'ep-drift-3 20s ease-in-out infinite alternate',
+              willChange: 'transform',
+            }}
+          />
+          {/* Subtle noise texture overlay */}
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '128px 128px' }} />
+        </div>
+      )}
+
+      {/* Keyframes for background animation. Translate-only — see
+          the orb comment block above for why scale is forbidden.
+          `ep-orbs-fade-in` runs once on the orb container after the
+          deferred mount, so the orbs ease in instead of popping. */}
       <style>{`
         @keyframes ep-drift-1 {
-          0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(60px, 40px) scale(1.15); }
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(60px, 40px); }
         }
         @keyframes ep-drift-2 {
-          0% { transform: translate(0, 0) scale(1); }
-          100% { transform: translate(-50px, -30px) scale(1.1); }
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(-50px, -30px); }
         }
         @keyframes ep-drift-3 {
-          0% { transform: translate(-50%, -50%) scale(1); }
-          100% { transform: translate(calc(-50% + 40px), calc(-50% - 30px)) scale(1.2); }
+          0% { transform: translate(-50%, -50%); }
+          100% { transform: translate(calc(-50% + 40px), calc(-50% - 30px)); }
+        }
+        @keyframes ep-orbs-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `}</style>
 
@@ -1211,12 +1279,14 @@ export default function ExpandedPlayer({
             whole screen. Halo only renders when we have a real cover
             image — fallback art doesn't get a glow.
         */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.94, y: 8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ type: 'spring', damping: 22, stiffness: 180 }}
-          className="relative mx-auto mb-5"
-        >
+        {/* Cover art hero. The mount animation that used to live
+            here (spring-scale + opacity + y) was firing
+            simultaneously with the wrapper's slide-up, doubling up
+            paint work for the whole player tree on the very frames
+            where the GPU was already busy compositing the slide.
+            Dropping it makes opening the player feel snappier — the
+            slide is enough visual feedback. */}
+        <div className="relative mx-auto mb-5">
           {cover && (
             <div
               aria-hidden="true"
@@ -1235,6 +1305,8 @@ export default function ExpandedPlayer({
                 src={cover}
                 alt={episode?.title || 'Episode cover'}
                 className="w-full h-full object-cover"
+                loading="eager"
+                decoding="async"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center">
@@ -1242,7 +1314,7 @@ export default function ExpandedPlayer({
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
 
         {/* Track Info
             ──────────
@@ -1263,12 +1335,12 @@ export default function ExpandedPlayer({
             META" header reads cleanly and doesn't ask the eye to make
             two stops the way a separate badge row did.
         */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.08, ease: [0.25, 0.1, 0.25, 1] }}
-          className="mb-4 text-center w-full max-w-md overflow-hidden"
-        >
+        {/* Metadata block (date / rating cap, title, show capsule).
+            Mount-time fade-and-rise was removed for the same reason
+            as the cover-art block above — it stacked on top of the
+            wrapper's slide-up and forced extra paint work during
+            the only frames where the GPU was already maxed out. */}
+        <div className="mb-4 text-center w-full max-w-md overflow-hidden">
           {/* 1. Released-date + rating cap line */}
           {(() => {
             const releaseDate = episode?.published_at || episode?.created_date || episode?.release_date;
@@ -1438,7 +1510,7 @@ export default function ExpandedPlayer({
               </AnimatePresence>
             </motion.button>
           </motion.div>
-        </motion.div>
+        </div>
 
         {/* Action buttons — compact icon-only row. Download lives in Options modal. */}
         <div className="player-controls-section">
@@ -2262,9 +2334,8 @@ export default function ExpandedPlayer({
 ExpandedPlayer.propTypes = {
   podcast: PropTypes.object,
   episode: PropTypes.object,
-  isPlaying: PropTypes.bool,
-  currentTime: PropTypes.number,
-  duration: PropTypes.number,
+  // isPlaying / currentTime / duration are pulled from `useAudioTime`,
+  // not props — see `@/hooks/use-audio-time`.
   onToggle: PropTypes.func,
   onCollapse: PropTypes.func,
   onSeek: PropTypes.func,
@@ -2280,3 +2351,11 @@ ExpandedPlayer.propTypes = {
   playQueueIndex: PropTypes.func,
   loadAndPlay: PropTypes.func,
 };
+
+// Memoise the player so the parent provider's other state changes
+// (sleep timer ticks, queue mutations, isShuffling toggles, etc.)
+// don't force a fresh render of this entire 2 000-line tree when its
+// own props are unchanged. Time-driven UI subscribes to
+// `audioTimeStore` directly, so memoisation here is a pure win.
+const MemoExpandedPlayer = memo(ExpandedPlayer);
+export default MemoExpandedPlayer;

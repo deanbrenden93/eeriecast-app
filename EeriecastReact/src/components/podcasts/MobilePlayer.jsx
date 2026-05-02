@@ -1,8 +1,9 @@
 import PropTypes from "prop-types";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { ListMusic, Headphones, Shuffle, Repeat, X, ChevronDown } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
+import { useAudioTime } from "@/hooks/use-audio-time";
 import { AnimatePresence, motion } from "framer-motion";
 import ScrollingTitle from "@/components/common/ScrollingTitle";
 
@@ -64,12 +65,9 @@ PressableIconButton.propTypes = {
   children: PropTypes.node,
 };
 
-export default function MobilePlayer({
+function MobilePlayer({
   podcast,
   episode,
-  isPlaying,
-  currentTime = 0,
-  duration = 0,
   onToggle,
   onExpand,
   onSkip,
@@ -89,6 +87,13 @@ export default function MobilePlayer({
   onMinimize,
   onRestore,
 }) {
+  // currentTime / duration / isPlaying come from `audioTimeStore` so
+  // the parent provider's render cycle is not coupled to 4 Hz time
+  // updates. See `@/hooks/use-audio-time` for the rationale.
+  const audioTime = useAudioTime();
+  const currentTime = audioTime.currentTime;
+  const duration = audioTime.duration;
+  const isPlaying = audioTime.isPlaying;
   const [localShuffle, setLocalShuffle] = useState(false);
   const [localRepeatMode, setLocalRepeatMode] = useState('off');
   const [showQueue, setShowQueue] = useState(false);
@@ -178,7 +183,14 @@ export default function MobilePlayer({
 
   return (
     <>
-      <AnimatePresence mode="wait">
+      {/* `initial={false}` skips the inner enter animation on first
+          mount of MobilePlayer — the wrapper in AudioPlayerContext
+          already handles the slide-up, so this AnimatePresence is
+          purely for the *minimize ↔ restore* (pill ↔ full-width)
+          transition. Skipping the redundant initial animation is
+          what got rid of the stacked dual-slide that was making
+          open/close feel sloppy. */}
+      <AnimatePresence mode="wait" initial={false}>
         {isMinimized ? (
           /* ─── Minimized Pill ─────────────────────────────────────── */
           /* Full-viewport boundary keeps the pill on screen when dragged */
@@ -264,18 +276,35 @@ export default function MobilePlayer({
           </motion.div>
         ) : (
           /* ─── Full Mini Player ──────────────────────────────────── */
+          /* This is the full-width mini player. The mount/unmount
+             slide animation lives on the wrapper provided by
+             AudioPlayerContext (a transform-only slide on a
+             full-viewport `position: fixed` parent). The internal
+             motion props here are scoped to the
+             *minimize ↔ restore* transition only — `initial={false}`
+             on the parent AnimatePresence prevents this from
+             replaying on first mount of MobilePlayer, which would
+             otherwise stack two slide animations on top of each
+             other and cause exactly the dual-animation jank the
+             user reported. The exit is kept short and
+             transform-only (no opacity, no scale) so it doesn't
+             cause a backdrop-filter recomposite. */
           <motion.div
             key="mini-full"
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 60, opacity: 0, scale: 0.9 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            initial={{ y: 12 }}
+            animate={{ y: 0 }}
+            exit={{ y: 12 }}
+            transition={{ type: 'tween', duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
+            // pointer-events-auto: the AudioPlayerContext wrapper is
+            // pointer-events-none (so it doesn't swallow taps on
+            // page content behind the mini player); we re-enable
+            // them here for the actual interactive surface.
             // See "Z-INDEX POLICY" comment on the minimized pill
             // above for the full reasoning. Same rule applies here:
             // sit below all modals/overlays in normal mode, above
             // the e-reader specifically so playback stays
             // controllable while reading.
-            className={`fixed left-0 right-0 ${eReaderOpen ? 'z-[10080]' : 'z-40'} ${
+            className={`fixed left-0 right-0 pointer-events-auto ${eReaderOpen ? 'z-[10080]' : 'z-40'} ${
               eReaderOpen ? 'bottom-0' : 'max-[1000px]:bottom-[calc(var(--bottom-nav-h,70px)_+_env(safe-area-inset-bottom,0px))] min-[1001px]:bottom-0'
             }`}
           >
@@ -485,9 +514,8 @@ export default function MobilePlayer({
 MobilePlayer.propTypes = {
   podcast: PropTypes.object,
   episode: PropTypes.object,
-  isPlaying: PropTypes.bool,
-  currentTime: PropTypes.number,
-  duration: PropTypes.number,
+  // isPlaying / currentTime / duration are sourced from `useAudioTime`,
+  // not props — see `@/hooks/use-audio-time`.
   onToggle: PropTypes.func,
   onExpand: PropTypes.func,
   onSkip: PropTypes.func,
@@ -507,3 +535,9 @@ MobilePlayer.propTypes = {
   onMinimize: PropTypes.func,
   onRestore: PropTypes.func,
 };
+
+// Memoised — see ExpandedPlayer.jsx for the rationale. Time-driven
+// UI subscribes to `audioTimeStore` directly, so re-rendering this
+// tree on every parent state change is wasted work.
+const MemoMobilePlayer = memo(MobilePlayer);
+export default MemoMobilePlayer;

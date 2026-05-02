@@ -401,7 +401,13 @@ FollowShowsStep.propTypes = { onContinue: PropTypes.func.isRequired, onSkip: Pro
 // ---------------------------------------------------------------------------
 function PremiumUpsellStep({ onComplete }) {
   const [showPayment, setShowPayment] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('monthly');
+  // Yearly is the default selection — it's the better deal for the
+  // user (~27% off) and the better unit-economics outcome for us, so
+  // it's the one we lead with on the upsell. Users who'd rather pay
+  // monthly can still tap the monthly card; the visual treatment
+  // makes both cards unambiguously clickable while still nudging
+  // toward the annual plan.
+  const [selectedPlan, setSelectedPlan] = useState('yearly');
   const { fetchUser } = useUser();
 
   const perks = [
@@ -465,34 +471,81 @@ function PremiumUpsellStep({ onComplete }) {
         ))}
       </div>
 
+      {/* Plan picker — proper tappable cards instead of flat text
+          toggles. Each card has a real border, padding, and a
+          hover state so they read as buttons even when unselected.
+          Yearly is rendered first and ships pre-selected; the
+          "BEST VALUE" pill, the amber accent ring on the
+          selected state, and the per-month savings line all push
+          toward yearly without making monthly look like a
+          second-class citizen. */}
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.7 }}
-        className="flex items-center gap-2 mb-6"
+        className="w-full max-w-xs grid grid-cols-2 gap-2.5 mb-6"
+        role="radiogroup"
+        aria-label="Choose a billing period"
       >
+        {/* Yearly — recommended */}
         <button
           type="button"
-          onClick={() => setSelectedPlan('monthly')}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-            selectedPlan === 'monthly'
-              ? 'bg-white/[0.08] text-white border border-white/[0.12]'
-              : 'text-zinc-500 hover:text-zinc-400 border border-transparent'
-          }`}
-        >
-          $7.99/mo
-        </button>
-        <button
-          type="button"
+          role="radio"
+          aria-checked={selectedPlan === 'yearly'}
           onClick={() => setSelectedPlan('yearly')}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+          className={`relative text-left rounded-xl px-3 pt-3 pb-2.5 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${
             selectedPlan === 'yearly'
-              ? 'bg-white/[0.08] text-white border border-white/[0.12]'
-              : 'text-zinc-500 hover:text-zinc-400 border border-transparent'
+              ? 'bg-amber-500/[0.10] border border-amber-400/60 shadow-[0_0_0_3px_rgba(251,191,36,0.12)]'
+              : 'bg-white/[0.03] border border-white/[0.10] hover:bg-white/[0.05] hover:border-white/[0.18]'
           }`}
         >
-          $69.96/yr
-          <span className="ml-1.5 text-[10px] text-emerald-400 font-normal">Save 27%</span>
+          <span
+            className={`absolute -top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase ${
+              selectedPlan === 'yearly'
+                ? 'bg-amber-400 text-zinc-900'
+                : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+            }`}
+          >
+            Best Value
+          </span>
+          <div className={`text-[10px] font-semibold tracking-[0.14em] uppercase ${
+            selectedPlan === 'yearly' ? 'text-amber-300' : 'text-zinc-400'
+          }`}>
+            Yearly
+          </div>
+          <div className="mt-1 text-white text-base font-bold leading-none">
+            $69.96<span className="text-zinc-500 text-xs font-medium">/yr</span>
+          </div>
+          <div className={`mt-1 text-[11px] leading-tight ${
+            selectedPlan === 'yearly' ? 'text-emerald-300' : 'text-emerald-400/80'
+          }`}>
+            $5.83/mo · Save 27%
+          </div>
+        </button>
+
+        {/* Monthly */}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={selectedPlan === 'monthly'}
+          onClick={() => setSelectedPlan('monthly')}
+          className={`relative text-left rounded-xl px-3 pt-3 pb-2.5 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
+            selectedPlan === 'monthly'
+              ? 'bg-white/[0.08] border border-white/[0.30] shadow-[0_0_0_3px_rgba(255,255,255,0.06)]'
+              : 'bg-white/[0.03] border border-white/[0.10] hover:bg-white/[0.05] hover:border-white/[0.18]'
+          }`}
+        >
+          <div className={`text-[10px] font-semibold tracking-[0.14em] uppercase ${
+            selectedPlan === 'monthly' ? 'text-white' : 'text-zinc-400'
+          }`}>
+            Monthly
+          </div>
+          <div className="mt-1 text-white text-base font-bold leading-none">
+            $7.99<span className="text-zinc-500 text-xs font-medium">/mo</span>
+          </div>
+          <div className="mt-1 text-[11px] leading-tight text-zinc-500">
+            Billed monthly
+          </div>
         </button>
       </motion.div>
 

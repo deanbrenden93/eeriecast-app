@@ -1,8 +1,9 @@
 /* eslint-disable no-undef, no-unused-vars */
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAudioPlayer } from '@/hooks/use-audio-player';
+import { audioTimeStore } from '@/hooks/use-audio-time';
 import { useMediaSession } from '@/hooks/use-media-session';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { getEpisodeAudioUrl, isAudiobook, isMusic, hasCategory, isMaturePodcast } from '@/lib/utils';
@@ -20,6 +21,67 @@ const AudioPlayerContext = createContext();
 
 // Routes where the mini player should never appear
 const PLAYER_HIDDEN_ROUTES = new Set(['/', '/home', '/premium']);
+
+// ─── Hoisted motion variants for the player wrappers ──────────────────
+// Hoisted so framer-motion sees stable prop identities across renders.
+//
+// IMPORTANT: these animations animate **transform only** (`y`) — not
+// opacity — for two reasons:
+//
+//   1. Both player surfaces sit on `backdrop-filter: blur()` (the
+//      mini player's `.eeriecast-glass`, the pill's
+//      `backdrop-blur-xl`, the expanded player's blurred orbs and
+//      any glassy header chrome). Animating opacity on a
+//      backdrop-blurred element forces the browser to re-blur the
+//      underlying layer every frame at the new alpha — one of the
+//      most expensive operations in modern browsers and the cause
+//      of the open/close stutter the user reported.
+//
+//   2. A pure-transform slide is GPU-composited from a cached
+//      bitmap. The work per frame is essentially constant
+//      regardless of how heavy the player content is.
+//
+// We add `willChange: 'transform'` to the inline style so the
+// browser pre-commits a compositor layer for these surfaces and
+// doesn't have to discover one mid-animation.
+const EXPANDED_PLAYER_INITIAL = { y: '100%' };
+const EXPANDED_PLAYER_ANIMATE = { y: 0 };
+const EXPANDED_PLAYER_EXIT = { y: '100%' };
+const EXPANDED_PLAYER_TRANSITION = {
+  type: 'tween',
+  duration: 0.36,
+  ease: [0.32, 0.72, 0, 1],
+};
+const EXPANDED_PLAYER_STYLE = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 10100,
+  willChange: 'transform',
+};
+
+const MOBILE_PLAYER_INITIAL = { y: '110%' };
+const MOBILE_PLAYER_ANIMATE = { y: 0 };
+const MOBILE_PLAYER_EXIT = { y: '110%' };
+const MOBILE_PLAYER_TRANSITION = {
+  type: 'tween',
+  duration: 0.28,
+  ease: [0.32, 0.72, 0, 1],
+};
+// The wrapper must span the full viewport so the `position:fixed`
+// elements inside MobilePlayer stay correctly anchored once a
+// transform is applied to it (CSS spec: a transformed ancestor
+// becomes the containing block for any `position:fixed`
+// descendants). `pointer-events: none` keeps the otherwise-empty
+// surface from swallowing clicks; the actual interactive bits
+// inside MobilePlayer add `pointer-events: auto` for themselves.
+// `willChange: transform` promotes a compositor layer up front so
+// the first animation frame doesn't pay the cost of layer creation.
+const MOBILE_PLAYER_STYLE = {
+  position: 'fixed',
+  inset: 0,
+  pointerEvents: 'none',
+  willChange: 'transform',
+};
 
 // ─── End-of-queue autoplay fallback ────────────────────────────────
 // Resolves what to play after the queue has been exhausted, based on
@@ -235,8 +297,6 @@ export const AudioPlayerProvider = ({ children }) => {
     episode,
     podcast,
     isPlaying,
-    currentTime,
-    duration,
     volume,
     setVolume,
     playbackRate,
@@ -250,6 +310,11 @@ export const AudioPlayerProvider = ({ children }) => {
     setEpisode,
     setPodcast,
   } = audioPlayer;
+  // currentTime / duration are deliberately NOT destructured. They
+  // live in `audioTimeStore` (see `@/hooks/use-audio-time`) and are
+  // consumed by leaf components via `useAudioTime`. Keeping them out
+  // of this provider's render path is what prevents the 4 Hz timeupdate
+  // tick from re-rendering the entire player tree.
 
   // Mark state setters as referenced for ESLint in environments where closures confuse the analyzer
   useEffect(() => { /* no-op to reference setQueue */ }, [setQueue]);
@@ -275,11 +340,16 @@ export const AudioPlayerProvider = ({ children }) => {
     const save = () => {
       try {
         const audio = audioRef?.current;
+        // Read time straight off the audio element (or the time
+        // store as a fallback) — currentTime / duration no longer
+        // live in React state in this provider so we can't
+        // reference them as variables here.
+        const t = audioTimeStore.getState();
         const state = {
           episode,
           podcast,
-          currentTime: audio ? audio.currentTime : currentTime,
-          duration: audio ? (audio.duration || duration) : duration,
+          currentTime: audio ? audio.currentTime : t.currentTime,
+          duration: audio ? (audio.duration || t.duration) : t.duration,
           queue: queue.slice(0, 50),
           queueIndex,
           savedAt: Date.now(),
@@ -302,19 +372,30 @@ export const AudioPlayerProvider = ({ children }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episode?.id, podcast?.id, queue.length, queueIndex]);
 
-  // Also save on pause and before unload to capture the latest position
+  // Also save on `beforeunload` to capture the latest position. We
+  // funnel every dependency through a single ref so the listener is
+  // bound exactly once for the lifetime of the provider — putting
+  // `currentTime` (which ticks 4×/sec via the audio element's
+  // timeupdate listener) in this effect's deps array used to re-bind
+  // the listener 4 times per second during playback, which was a
+  // major source of background CPU work and a contributor to scroll
+  // / swipe stutter on the player surfaces.
+  const saveStateRef = useRef({});
+  saveStateRef.current = { episode, podcast, queue, queueIndex };
   useEffect(() => {
     const saveNow = () => {
-      if (!episode?.id || !podcast?.id) return;
+      const snap = saveStateRef.current;
+      if (!snap.episode?.id || !snap.podcast?.id) return;
       try {
         const audio = audioRef?.current;
+        const t = audioTimeStore.getState();
         const state = {
-          episode,
-          podcast,
-          currentTime: audio ? audio.currentTime : currentTime,
-          duration: audio ? (audio.duration || duration) : duration,
-          queue: queue.slice(0, 50),
-          queueIndex,
+          episode: snap.episode,
+          podcast: snap.podcast,
+          currentTime: audio ? audio.currentTime : t.currentTime,
+          duration: audio ? (audio.duration || t.duration) : t.duration,
+          queue: snap.queue.slice(0, 50),
+          queueIndex: snap.queueIndex,
           savedAt: Date.now(),
           userId: userIdRef.current,
         };
@@ -323,7 +404,8 @@ export const AudioPlayerProvider = ({ children }) => {
     };
     window.addEventListener('beforeunload', saveNow);
     return () => window.removeEventListener('beforeunload', saveNow);
-  }, [episode, podcast, currentTime, duration, queue, queueIndex, audioRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // (Session rehydration lives further down, AFTER loadAndPlaySmart
   //  is declared — see the "Session Rehydration" block below
@@ -747,10 +829,14 @@ export const AudioPlayerProvider = ({ children }) => {
   // queued callbacks from freezing the UI when the user returns.
   useEffect(() => {
     if (!episode?.id || !updateEpisodeProgress) return;
-    // Update immediately when the episode changes
+    // Update immediately when the episode changes. Time data is
+    // sourced from the audio element / time store rather than React
+    // state so this effect's dep array doesn't have to listen to
+    // 4 Hz time ticks.
     const audio = audioRef?.current;
-    const ct = audio ? audio.currentTime : currentTime;
-    const dur = audio ? (audio.duration || duration) : duration;
+    const t0 = audioTimeStore.getState();
+    const ct = audio ? audio.currentTime : t0.currentTime;
+    const dur = audio ? (audio.duration || t0.duration) : t0.duration;
     if (dur > 0) updateEpisodeProgress(episode.id, ct, dur);
 
     let intervalId = null;
@@ -759,7 +845,7 @@ export const AudioPlayerProvider = ({ children }) => {
       intervalId = setInterval(() => {
         const a = audioRef?.current;
         if (!a || a.paused) return;
-        const d = a.duration || duration;
+        const d = a.duration || audioTimeStore.getState().duration;
         if (d > 0) updateEpisodeProgress(episode.id, a.currentTime, d);
       }, 3000);
     };
@@ -981,12 +1067,14 @@ export const AudioPlayerProvider = ({ children }) => {
   });
 
   // ─── Lock Screen / Media Session ─────────────────────────────────
+  // currentTime / duration are NOT passed here — `useMediaSession`
+  // subscribes to `audioTimeStore` directly with its own throttle so
+  // the OS Now-Playing position updates don't piggyback on React's
+  // 4 Hz timeupdate cycle.
   useMediaSession({
     episode,
     podcast,
     isPlaying,
-    currentTime,
-    duration,
     playbackRate,
     onPlay: play,
     onPause: pause,
@@ -1114,62 +1202,106 @@ export const AudioPlayerProvider = ({ children }) => {
     setRepeatMode((m) => (m === 'off' ? 'all' : m === 'all' ? 'one' : 'off'));
   }, []);
 
+  // Memoised context value. `currentTime` / `duration` are NOT in
+  // here — they live in `audioTimeStore` and consumers subscribe via
+  // `useAudioTime`. Without that exclusion the value object would
+  // change identity 4×/sec and every consumer of
+  // `useAudioPlayerContext()` would re-render on every timeupdate,
+  // which is exactly what was making scrolling and gestures stutter.
+  const contextValue = useMemo(() => ({
+    episode,
+    podcast,
+    isPlaying,
+    volume,
+    setVolume,
+    playbackRate,
+    setPlaybackRate,
+    loadAndPlay: loadAndPlaySmart,
+    toggle,
+    play,
+    pause,
+    seek,
+    skip,
+    setEpisode,
+    setPodcast,
+    showPlayer,
+    setShowPlayer,
+    showExpandedPlayer,
+    setShowExpandedPlayer,
+    // queue api
+    queue,
+    queueIndex,
+    setPlaybackQueue,
+    playQueueIndex,
+    // playback mode api
+    isShuffling,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeat,
+    // track navigation
+    playNext,
+    playPrev,
+    // queue manipulation
+    addToQueue,
+    addNext,
+    removeFromQueue,
+    reorderQueue,
+    shuffleUpNext,
+    clearQueue,
+    // sleep timer api
+    sleepTimerRemaining,
+    sleepTimerEndTime,
+    setSleepTimer,
+    cancelSleepTimer,
+    // audio element ref (for Web Audio API waveform)
+    audioRef,
+    // mature content gate
+    matureModalOpen,
+    setMatureModalOpen,
+  }), [
+    episode,
+    podcast,
+    isPlaying,
+    volume,
+    setVolume,
+    playbackRate,
+    setPlaybackRate,
+    loadAndPlaySmart,
+    toggle,
+    play,
+    pause,
+    seek,
+    skip,
+    setEpisode,
+    setPodcast,
+    showPlayer,
+    showExpandedPlayer,
+    queue,
+    queueIndex,
+    setPlaybackQueue,
+    playQueueIndex,
+    isShuffling,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeat,
+    playNext,
+    playPrev,
+    addToQueue,
+    addNext,
+    removeFromQueue,
+    reorderQueue,
+    shuffleUpNext,
+    clearQueue,
+    sleepTimerRemaining,
+    sleepTimerEndTime,
+    setSleepTimer,
+    cancelSleepTimer,
+    audioRef,
+    matureModalOpen,
+  ]);
+
   return (
-    <AudioPlayerContext.Provider
-      value={{
-        episode,
-        podcast,
-        isPlaying,
-        currentTime,
-        duration,
-        volume,
-        setVolume,
-        playbackRate,
-        setPlaybackRate,
-        loadAndPlay: loadAndPlaySmart,
-        toggle,
-        play,
-        pause,
-        seek,
-        skip,
-        setEpisode,
-        setPodcast,
-        showPlayer,
-        setShowPlayer,
-        showExpandedPlayer,
-        setShowExpandedPlayer,
-        // queue api
-        queue,
-        queueIndex,
-        setPlaybackQueue,
-        playQueueIndex,
-        // playback mode api
-        isShuffling,
-        repeatMode,
-        toggleShuffle,
-        cycleRepeat,
-        // track navigation
-        playNext,
-        playPrev,
-        // queue manipulation
-        addToQueue,
-        addNext,
-        removeFromQueue,
-        reorderQueue,
-        shuffleUpNext,
-        clearQueue,
-        // sleep timer api
-        sleepTimerRemaining,
-        sleepTimerEndTime,
-        setSleepTimer,
-        cancelSleepTimer,
-        // audio element ref (for Web Audio API waveform)
-        audioRef,
-        // mature content gate
-        matureModalOpen,
-        setMatureModalOpen,
-      }}
-    >
+    <AudioPlayerContext.Provider value={contextValue}>
       {children}
 
       {/* Mature Content Warning Modal */}
@@ -1185,23 +1317,23 @@ export const AudioPlayerProvider = ({ children }) => {
       />
 
 
-      {/* Expanded Player - shows when user expands (slide-up enter/exit) */}
+      {/* Expanded Player - shows when user expands (slide-up enter/exit).
+          Note: currentTime / duration are NOT passed as props — the
+          player subscribes to them via `useAudioTime` so timeupdate
+          ticks don't force a full re-render of this entire subtree. */}
       <AnimatePresence onExitComplete={handleExpandedExitComplete}>
         {showExpandedPlayer && !hidePlayer && episode && podcast && (
           <motion.div
             key="expanded-player"
-            initial={{ opacity: 0, y: '100%' }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: '100%' }}
-            transition={{ type: 'tween', duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-            style={{ position: 'fixed', inset: 0, zIndex: 10100 }}
+            initial={EXPANDED_PLAYER_INITIAL}
+            animate={EXPANDED_PLAYER_ANIMATE}
+            exit={EXPANDED_PLAYER_EXIT}
+            transition={EXPANDED_PLAYER_TRANSITION}
+            style={EXPANDED_PLAYER_STYLE}
           >
             <ExpandedPlayer
               podcast={podcast}
               episode={episode}
-              isPlaying={isPlaying}
-              currentTime={currentTime}
-              duration={duration}
               onToggle={toggle}
               onCollapse={handleCollapsePlayer}
               onClose={handleClosePlayer}
@@ -1231,22 +1363,22 @@ export const AudioPlayerProvider = ({ children }) => {
           animation finishes so the CSS enter animation is visible.
           NOTE: The wrapper uses opacity-only exit (no transform) because
           transform on a parent breaks position:fixed inside MobilePlayer.
-          The enter animation is a CSS @keyframes on MobilePlayer's own root. */}
+          The enter animation is a CSS @keyframes on MobilePlayer's own root.
+          currentTime / duration / isPlaying are read from `audioTimeStore`
+          via `useAudioTime` — see ExpandedPlayer note above. */}
       <AnimatePresence>
         {showPlayer && !showExpandedPlayer && !hidePlayer && miniPlayerReady && episode && podcast && (
           <motion.div
             key="mobile-player"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            initial={MOBILE_PLAYER_INITIAL}
+            animate={MOBILE_PLAYER_ANIMATE}
+            exit={MOBILE_PLAYER_EXIT}
+            transition={MOBILE_PLAYER_TRANSITION}
+            style={MOBILE_PLAYER_STYLE}
           >
             <MobilePlayer
               podcast={podcast}
               episode={episode}
-              isPlaying={isPlaying}
-              currentTime={currentTime}
-              duration={duration}
               volume={volume}
               onToggle={toggle}
               onExpand={handleExpandPlayer}
