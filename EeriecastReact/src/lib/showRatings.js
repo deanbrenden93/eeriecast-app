@@ -45,6 +45,7 @@ const BY_SLUG = {
   'dogwood-a-southern-gothic-body-horror-novel': 'PG-13',
   'lore-a-folklore-horror-novel': 'PG-13',
   'drakenblud-the-malformed-king': 'PG-13',
+  'westfall': 'PG-13',
   // "Unexplained Encounters AFTER HOURS" — the spinoff inherits the
   // parent show's rating. If a dedicated slug gets created later, it
   // should still land here.
@@ -83,6 +84,7 @@ const BY_TITLE = {
   'lore - a folklore horror novel': 'PG-13',
   'drakenblud': 'PG-13',
   'drakenblud: the malformed king': 'PG-13',
+  'westfall': 'PG-13',
   // After Hours spinoff carries the parent rating; include every
   // reasonable casing/variant we've seen in catalog data so a
   // slug-less feed still resolves correctly.

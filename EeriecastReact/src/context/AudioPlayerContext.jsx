@@ -74,6 +74,17 @@ const MOBILE_PLAYER_TRANSITION = {
 // descendants). `pointer-events: none` keeps the otherwise-empty
 // surface from swallowing clicks; the actual interactive bits
 // inside MobilePlayer add `pointer-events: auto` for themselves.
+//
+// `z-40` (and the `[html.ereader-active_&]:z-[10080]` arbitrary
+// variant on the wrapper className below) live here on the
+// **wrapper**, not on the inner mini-full / pill, because
+// `position: fixed` AND `will-change: transform` both create a new
+// stacking context — that means any `z-index` on a descendant is
+// scoped *inside* this wrapper rather than competing globally.
+// Without the explicit z on the wrapper, the wrapper itself ended
+// up at z-auto and got painted **below** home-screen card menus
+// that use `z-[5]`, which is exactly the regression the user saw.
+//
 // `willChange: transform` promotes a compositor layer up front so
 // the first animation frame doesn't pay the cost of layer creation.
 const MOBILE_PLAYER_STYLE = {
@@ -324,7 +335,7 @@ export const AudioPlayerProvider = ({ children }) => {
   // blob can be tagged with the owning user's id. That tag is what
   // lets the rehydration logic refuse to restore another account's
   // playback if a different user logs into the same browser.
-  const { user, updateEpisodeProgress, episodeProgressMap, isPremium, canViewMature } = useUser() || {};
+  const { user, loading: userLoading, updateEpisodeProgress, episodeProgressMap, isPremium, canViewMature } = useUser() || {};
   const userIdRef = useRef(user?.id ?? null);
   useEffect(() => { userIdRef.current = user?.id ?? null; }, [user?.id]);
 
@@ -893,10 +904,9 @@ export const AudioPlayerProvider = ({ children }) => {
   }, [pause, setEpisode, setPodcast]);
 
   // ─── Auth identity watcher ─────────────────────────────────────────
-  // Any auth identity transition closes the mini player. This is the
-  // simplest correct behavior given that the audio URL on the loaded
-  // episode was resolved against the *previous* identity's
-  // entitlements:
+  // Any *deliberate* auth identity transition closes the mini player.
+  // We close on these because the audio URL on the loaded episode was
+  // resolved against the previous identity's entitlements:
   //   • anon → signed-in: the URL the audio element holds is the
   //     ad-filled stream the anonymous serializer returned. A premium
   //     account is now entitled to the ad-free stream, but the
@@ -909,21 +919,41 @@ export const AudioPlayerProvider = ({ children }) => {
   //     subsequent anonymous one.
   //   • account switch: don't leak user A's audio into user B.
   //
-  // Cases handled:
+  // The critical subtlety: on a fresh page load `useUser()` reports
+  // `{ user: null, loading: true }` until `fetchUser()` resolves. If
+  // we treated that initial null → user.id transition as a "login",
+  // we'd nuke the persisted player state on every reload — which is
+  // exactly the bug the user reported (mini player not coming back
+  // for an already-signed-in user after refresh). The fix is to
+  // ignore everything until UserContext signals it's done loading,
+  // and only THEN start tracking transitions.
+  //
+  // Cases handled (after `userLoading` first goes false):
   //   • prev=null, curr=null      → no-op (still anonymous)
-  //   • prev=null, curr=id        → CLOSE (login)
+  //   • prev=null, curr=id        → CLOSE (genuine login)
   //   • prev=id,   curr=null      → CLOSE (logout)
   //   • prev=idA,  curr=idB       → CLOSE (account switch)
-  //   • prev=undefined            → no-op (first observation)
-  const prevUserIdRef = useRef(undefined);
+  const authBootstrappedRef = useRef(false);
+  const prevUserIdRef = useRef(null);
   useEffect(() => {
-    const prev = prevUserIdRef.current;
+    // Ignore everything until the very first time UserContext
+    // reports `loading: false`. That's our "auth resolved" signal.
+    if (userLoading) return;
     const curr = user?.id ?? null;
+    if (!authBootstrappedRef.current) {
+      // First post-bootstrap observation: snapshot the resolved
+      // identity as our baseline and DO NOT close. This is the path
+      // that lets a signed-in user reload the page and find the
+      // mini player still rehydrated to wherever they left off.
+      authBootstrappedRef.current = true;
+      prevUserIdRef.current = curr;
+      return;
+    }
+    const prev = prevUserIdRef.current;
     prevUserIdRef.current = curr;
-    if (prev === undefined) return;        // first render
-    if (prev === curr) return;              // no actual change
+    if (prev === curr) return; // no actual change
     handleClosePlayer();
-  }, [user?.id, handleClosePlayer]);
+  }, [userLoading, user?.id, handleClosePlayer]);
 
   // Auto-close the player when mature content is disabled and the
   // currently playing podcast is mature.
@@ -1375,6 +1405,12 @@ export const AudioPlayerProvider = ({ children }) => {
             exit={MOBILE_PLAYER_EXIT}
             transition={MOBILE_PLAYER_TRANSITION}
             style={MOBILE_PLAYER_STYLE}
+            // z-40 by default, escalates to z-[10080] only when the
+            // e-reader / comic reader is active so playback stays
+            // controllable while reading. The arbitrary variant
+            // matches the global rule: `<html class="ereader-active">`
+            // is toggled on/off by EReader.jsx and ComicReader.jsx.
+            className="z-40 [html.ereader-active_&]:z-[10080]"
           >
             <MobilePlayer
               podcast={podcast}
