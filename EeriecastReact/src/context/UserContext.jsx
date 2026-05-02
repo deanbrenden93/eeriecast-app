@@ -333,7 +333,15 @@ const UserProvider = ({ children }) => {
       }
     } catch { /* no-op */ }
 
+    // Per-user local data — wipe on logout so a different user
+    // signing in on the same browser never inherits the previous
+    // session's player state, recently-played list, or stored DOB.
+    // The audio player rehydration logic also defends against this
+    // via a userId match check, but clearing here is the cleaner
+    // first line of defense.
     try { localStorage.removeItem('eeriecast_user_dob'); } catch { /* */ }
+    try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
+    try { localStorage.removeItem('recentlyPlayed'); } catch { /* */ }
 
     window.location.replace('/');
   }, []);

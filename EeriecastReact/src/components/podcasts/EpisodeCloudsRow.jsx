@@ -379,13 +379,23 @@ export default function EpisodeCloudsRow({ onAddToPlaylist: _unused }) {
         }
         .ec-float-bubble {
           animation: ec-float 5.5s ease-in-out infinite;
-          will-change: transform;
         }
         .ec-paused .ec-float-bubble {
           animation-play-state: paused;
         }
+        /* Layout + style containment is a real perf win for the row
+           (5 cards, isolated bbox + style invalidation). Paint
+           containment is intentionally NOT included: combined with
+           framer-motion transforms on the parent and the bubble's
+           own compositor layer, paint-contained cards can latch a
+           stale layer snapshot from the motion.div's initial state
+           (opacity:0, scale:0.15) and never repaint once the spring
+           resolves — leaving the bubble blank until any hover /
+           scroll / focus forces a layer invalidation. Dropping
+           "paint" from contain lets nested paints propagate
+           correctly without sacrificing the layout/style isolation. */
         .ec-card {
-          contain: layout paint style;
+          contain: layout style;
         }
         @media (prefers-reduced-motion: reduce) {
           .ec-float-bubble { animation: none; }
@@ -804,40 +814,49 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
                         : `0 6px 18px -8px rgba(0,0,0,0.6)`,
                     }}
                   >
-                    {/* Cover.
-                        NOTE: do NOT use loading="lazy" here. These
-                        bubbles live inside framer-motion's animated
-                        transform layers, and Chromium has a
-                        long-standing quirk where lazy-loaded images
-                        inside a transformed / animated parent can
-                        fail their initial in-viewport check and stay
-                        blank until something forces a layout
-                        reevaluation (a hover, a scroll, a window
-                        resize). The Random Cravings row is hero
-                        content above the fold — only ~5 small
-                        thumbnails per card — so the right call is to
-                        load eagerly and keep `decoding="async"` so we
-                        still get off-thread decode without the
-                        viewport-detection footgun. */}
-                    {item.cover_image ? (
-                      <img
-                        src={item.cover_image}
-                        alt=""
-                        decoding="async"
-                        width={pos.size}
-                        height={pos.size}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="w-full h-full flex items-center justify-center"
-                        style={{
-                          background: `linear-gradient(135deg, ${theme.accent}88, ${theme.accent}22)`,
-                        }}
-                      >
-                        <Icon className="w-5 h-5 text-white/80" />
-                      </div>
-                    )}
+                    {/* Cover — rendered as a background-image on a div
+                        rather than an <img> element. Why: every other
+                        episode-card surface in the app uses <img> and
+                        renders fine, but those covers don't sit inside
+                        framer-motion's animated transform layer + the
+                        ec-float CSS keyframe transform layer + a button
+                        that gains its own compositor layer on hover.
+                        With that stacked layer hierarchy, an async
+                        <img> decode can finish AFTER the parent layer
+                        has gone "stable" (transform stops changing,
+                        spring resolves), and the layer caches a
+                        snapshot taken before the bitmap arrived. The
+                        image data is in memory, but the cached layer
+                        paint doesn't include it — which is why a
+                        hover (forcing a transform/box-shadow change
+                        and a fresh composite) makes the cover suddenly
+                        appear. Painting the cover as a background-
+                        image on the same element that owns the layer
+                        avoids the cross-layer decode coordination
+                        entirely: the cover is part of the parent's
+                        own paint, so its arrival invalidates the same
+                        layer that displays it. */}
+                    <div
+                      className="absolute inset-0 w-full h-full"
+                      style={
+                        item.cover_image
+                          ? {
+                              backgroundImage: `url("${item.cover_image}")`,
+                              backgroundSize: "cover",
+                              backgroundPosition: "center",
+                              backgroundRepeat: "no-repeat",
+                            }
+                          : {
+                              background: `linear-gradient(135deg, ${theme.accent}88, ${theme.accent}22)`,
+                            }
+                      }
+                    >
+                      {!item.cover_image && (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Icon className="w-5 h-5 text-white/80" />
+                        </div>
+                      )}
+                    </div>
 
                     {/* Hover scrim + play glyph on the active / featured cover */}
                     <div

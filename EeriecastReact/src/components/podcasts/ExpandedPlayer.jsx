@@ -19,7 +19,7 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useDragControls, useMotionValue, useTransform, animate } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/context/UserContext.jsx";
 import { usePlaylistContext } from "@/context/PlaylistContext.jsx";
@@ -165,10 +165,20 @@ function sanitizeShowNotes(html) {
 // (episode tables, home rows, the mini player, the queue, search,
 // history, etc.) gets the same overflow-detected ping-pong scroll.
 
-/** Expandable episode show-notes block with basic rich formatting preserved. */
+/** Expandable episode show-notes block with basic rich formatting preserved.
+ *
+ * Open/close is animated via Framer Motion so the "Show more" reveal feels
+ * physical rather than a hard CSS snap. We measure the inner content with
+ * a `ResizeObserver` and animate `height` between the collapsed cap
+ * (`COLLAPSED_HEIGHT`) and the measured `contentHeight`. Animating to a
+ * pixel value (rather than `auto`) lets us cross-fade the gradient mask
+ * during the same beat without the browser short-circuiting the
+ * transition.
+ */
+const COLLAPSED_NOTES_HEIGHT = 140;
 function ExpandableShowNotes({ html }) {
   const [expanded, setExpanded] = useState(false);
-  const [overflows, setOverflows] = useState(false);
+  const [contentHeight, setContentHeight] = useState(0);
   const bodyRef = useRef(null);
 
   const sanitized = useMemo(() => sanitizeShowNotes(html), [html]);
@@ -178,38 +188,81 @@ function ExpandableShowNotes({ html }) {
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
-    // Detect overflow against the collapsed max-height (matches style below)
-    setOverflows(el.scrollHeight > 150);
+    const measure = () => setContentHeight(el.scrollHeight);
+    measure();
+    // Re-measure on viewport / font / image-load size changes so the
+    // expanded panel always animates to the correct full height.
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [sanitized, plainText, html]);
 
   if (!plainText) return null;
+
+  // We only show the toggle once the body is meaningfully taller than
+  // the collapsed cap. Using a 10px buffer prevents a flicker where a
+  // body that's a hair over 140px shows a useless "Show more" button.
+  const overflows = contentHeight > COLLAPSED_NOTES_HEIGHT + 10;
+  const targetHeight = expanded
+    ? Math.max(contentHeight, COLLAPSED_NOTES_HEIGHT)
+    : Math.min(COLLAPSED_NOTES_HEIGHT, contentHeight || COLLAPSED_NOTES_HEIGHT);
 
   return (
     <div className="w-full max-w-2xl mt-6">
       <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-3">Show Notes</h3>
       <div className="relative rounded-xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
-        <div
-          ref={bodyRef}
-          className="p-4 overflow-hidden text-sm text-white/75 leading-relaxed show-notes-body"
-          style={{ maxHeight: expanded ? 'none' : 140 }}
+        <motion.div
+          initial={false}
+          animate={{ height: contentHeight ? targetHeight : COLLAPSED_NOTES_HEIGHT }}
+          transition={{ duration: 0.42, ease: [0.25, 0.1, 0.25, 1] }}
+          style={{ overflow: 'hidden' }}
         >
-          {looksLikeHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: sanitized }} />
-          ) : (
-            <p className="whitespace-pre-line">{plainText}</p>
+          <div
+            ref={bodyRef}
+            className="p-4 text-sm text-white/75 leading-relaxed show-notes-body"
+          >
+            {looksLikeHtml ? (
+              <div dangerouslySetInnerHTML={{ __html: sanitized }} />
+            ) : (
+              <p className="whitespace-pre-line">{plainText}</p>
+            )}
+          </div>
+        </motion.div>
+        <AnimatePresence>
+          {!expanded && overflows && (
+            <motion.div
+              key="fade"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/80 to-transparent pointer-events-none"
+            />
           )}
-        </div>
-        {!expanded && overflows && (
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/80 to-transparent pointer-events-none" />
-        )}
+        </AnimatePresence>
         {(overflows || expanded) && (
-          <div className="px-4 pb-3 relative">
+          <div className="px-4 pb-3 pt-1 relative">
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="text-[11px] font-semibold tracking-wider uppercase text-red-400 hover:text-red-300 transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase text-red-400 hover:text-red-300 transition-colors"
             >
-              {expanded ? 'Show less' : 'Show more'}
+              <span>{expanded ? 'Show less' : 'Show more'}</span>
+              <motion.svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                animate={{ rotate: expanded ? 180 : 0 }}
+                transition={{ duration: 0.32, ease: [0.25, 0.1, 0.25, 1] }}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </motion.svg>
             </button>
           </div>
         )}
@@ -428,6 +481,12 @@ export default function ExpandedPlayer({
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
+  // Tracks a just-completed like-toggle for the player heart's
+  // celebration animation. Mirrors the `followAnim` state machine
+  // used by the Follow capsule below — `'liked'` triggers the
+  // particle burst + ring pulse, `'unliked'` triggers a quieter
+  // dip, `null` is the resting state. Auto-clears after 900 ms.
+  const [likeAnim, setLikeAnim] = useState(null);
   // Custom sleep timer input (minutes)
   const [customSleepMinutes, setCustomSleepMinutes] = useState('');
   // Share-choice dialog — only shown when the listener is past the
@@ -487,6 +546,175 @@ export default function ExpandedPlayer({
     if (!Number.isFinite(fromIdx) || !Number.isFinite(toIdx)) return;
     if (typeof reorderQueue === 'function') reorderQueue(fromIdx, toIdx);
   }, [reorderQueue]);
+
+  // ──────────────────────────────────────────────────────────────────
+  // Player-level gestures
+  // ──────────────────────────────────────────────────────────────────
+  // Two coexisting gestures:
+  //
+  //   1. Swipe-down to collapse — the entire player container is a
+  //      `motion.div` with `drag="y"`, but `dragListener={false}` means
+  //      it only enters drag mode when the HEADER calls
+  //      `dragControls.start(e)`. This keeps the rest of the page
+  //      scrollable normally and stops the user from accidentally
+  //      dismissing the player while reading show notes far down the
+  //      view.
+  //
+  //   2. Horizontal swipe deck — wraps the action-buttons row, the
+  //      waveform, and the transport controls (the "interactive
+  //      zone" — roughly the bottom third of the screen, exactly
+  //      where the thumb naturally sits one-handed). A horizontal
+  //      flick or drag past the threshold triggers `onNext` / `onPrev`.
+  //      Both gestures are in entirely separate elements so they
+  //      never compete for the same pointer events.
+  //
+  // While any modal is open (Options / Add-to-Playlist / Queue /
+  // Share) the dismiss gesture is disabled so a stray drag inside a
+  // modal doesn't yank the player out from under it. The check is
+  // inlined at the JSX `drag` prop because some of those state
+  // variables are declared further down in the component body.
+  const dragControls = useDragControls();
+
+  // ── Swipe-deck horizontal motion ────────────────────────────────
+  // The horizontal swipe deck (cover + title + actions + waveform +
+  // transport controls — everything that visually represents the
+  // CURRENT track) shares a single `useMotionValue` for its `x`
+  // translation. Framer-Motion's drag writes to it during touch,
+  // and we drive it manually with `animate(...)` to play the
+  // out-then-in carousel transition when a swipe commits.
+  const deckX = useMotionValue(0);
+  // While the carousel is mid-animation we lock out drag so the
+  // user can't double-fire next/prev or fight the running tween.
+  const [isSwiping, setIsSwiping] = useState(false);
+  // Tactile feedback during drag/transition: the deck fades and
+  // shrinks slightly as it moves away from center, so the drag
+  // feels like a physical card being lifted off the surface
+  // rather than a flat translate. The 600 px range is generous
+  // enough that the carousel exit (animate to ±innerWidth) fades
+  // the outgoing deck cleanly to 0 on the way out.
+  const deckOpacity = useTransform(deckX, [-600, 0, 600], [0, 1, 0]);
+  const deckScale = useTransform(deckX, [-600, 0, 600], [0.86, 1, 0.86]);
+
+  // ── One-time gesture hint ───────────────────────────────────────
+  // Originally we floated two glassy pills over the player; users
+  // (rightly) hated them — they felt detached, ugly, and noisy. The
+  // new approach is much more contextual:
+  //   • The standard iOS drag-handle bar at the very top is the
+  //     "swipe down to dismiss" affordance. No words needed.
+  //   • On first open, the swipe deck performs a quick "wiggle"
+  //     that visually demonstrates the swipe-to-skip gesture using
+  //     the actual UI element it applies to. The wiggle plays
+  //     once, then the localStorage flag is set so returning users
+  //     never see it again.
+  const HINT_STORAGE_KEY = 'eeriecast_player_gesture_hint_shown';
+  const wigglePlayedRef = useRef(false);
+
+  useEffect(() => {
+    if (wigglePlayedRef.current) return;
+    try {
+      if (localStorage.getItem(HINT_STORAGE_KEY) === '1') {
+        wigglePlayedRef.current = true;
+        return;
+      }
+    } catch { /* localStorage unavailable — show the hint anyway */ }
+    // Wait long enough for the player's own entrance animation to
+    // settle so the wiggle reads as a deliberate hint, not part of
+    // the entrance.
+    const t = setTimeout(() => {
+      if (wigglePlayedRef.current) return;
+      wigglePlayedRef.current = true;
+      // Damped oscillation: -28, +14, -16, settle. Keyframes timed
+      // unevenly so it feels like a quick flick + bounce-back, not
+      // a metronome. Total ~1.1 s.
+      animate(deckX, [0, -28, 14, -16, 0], {
+        duration: 1.1,
+        ease: [0.25, 0.1, 0.25, 1],
+        times: [0, 0.28, 0.55, 0.78, 1],
+        onComplete: () => {
+          try { localStorage.setItem(HINT_STORAGE_KEY, '1'); } catch { /* ignore */ }
+        },
+      });
+    }, 700);
+    return () => clearTimeout(t);
+  }, [deckX]);
+
+  const dismissGestureHint = useCallback(() => {
+    wigglePlayedRef.current = true;
+    try { localStorage.setItem(HINT_STORAGE_KEY, '1'); } catch { /* ignore */ }
+  }, []);
+
+  const handlePlayerDragEnd = useCallback((_, info) => {
+    // Any drag means the user has discovered the gesture — no need
+    // to keep teasing it.
+    dismissGestureHint();
+    // 120 px or a clearly downward flick (>600 px/s) commits the
+    // dismiss. Anything less elastic-snaps back to position.
+    if (info.offset.y > 120 || info.velocity.y > 600) {
+      onCollapse?.();
+    }
+  }, [onCollapse, dismissGestureHint]);
+
+  const handleHeaderPointerDown = useCallback((e) => {
+    // Tapping the X / queue button shouldn't initiate a drag — the
+    // button's own onClick still needs to fire cleanly.
+    if (e.target instanceof HTMLElement && e.target.closest('button')) return;
+    dragControls.start(e);
+  }, [dragControls]);
+
+  const handleSwipeDeckEnd = useCallback((_, info) => {
+    dismissGestureHint();
+    // Commit threshold tuned for "tap won't fire it but a confident
+    // flick will". 80 px works on phones; the velocity branch
+    // catches users who flick fast over a smaller distance.
+    const SWIPE_DISTANCE = 80;
+    const SWIPE_VELOCITY = 500;
+    const dx = info.offset.x;
+    const vx = info.velocity.x;
+    if (Math.abs(dx) <= SWIPE_DISTANCE && Math.abs(vx) <= SWIPE_VELOCITY) {
+      // Below threshold — let dragElastic snap back naturally.
+      return;
+    }
+    // If a previous transition is still mid-flight, ignore the new
+    // swipe so we don't end up in a stacked-animation race.
+    if (isSwiping) return;
+
+    setIsSwiping(true);
+    // direction: -1 = swipe left = onNext (next track comes from
+    // the right), +1 = swipe right = onPrev (previous track comes
+    // from the left). The exiting deck CONTINUES in the swipe
+    // direction; the new deck arrives from the OPPOSITE side. Get
+    // these signs wrong (as the previous version did) and the
+    // animation reads as "rubber-band fling" instead of "card
+    // swipe".
+    const direction = dx < 0 ? -1 : 1;
+    const screenWidth = (typeof window !== 'undefined' ? window.innerWidth : 480);
+    // Exit: same sign as the swipe — finger went left, card
+    // continues left to off-screen.
+    const exitX = direction * screenWidth;
+    // Incoming: the OPPOSITE side from the exit, since the new
+    // card slides in from where the user just opened space.
+    const incomingX = -direction * screenWidth;
+
+    animate(deckX, exitX, {
+      duration: 0.22,
+      ease: [0.32, 0.0, 0.67, 0.0], // accelerate-out
+      onComplete: () => {
+        // Fire the track change so the new episode hydrates
+        // while the deck is still off-screen.
+        if (direction < 0) onNext?.();
+        else onPrev?.();
+        // Jump to the opposite side (no animation — this is the
+        // "incoming" start position).
+        deckX.set(incomingX);
+        // Slide the new card in to center.
+        animate(deckX, 0, {
+          duration: 0.34,
+          ease: [0.16, 1, 0.3, 1], // decelerate-in (cubic-bezier "ease-out-quint")
+          onComplete: () => setIsSwiping(false),
+        });
+      },
+    });
+  }, [onNext, onPrev, deckX, isSwiping, dismissGestureHint]);
 
   // (Header menu state removed — favorite & playlist moved to toolbar)
 
@@ -615,6 +843,12 @@ export default function ExpandedPlayer({
     try {
       setFavLoading(true);
       setIsLiked(!alreadyLiked);
+      // Fire the celebration animation IMMEDIATELY on click — users
+      // get instant feedback even if the network round-trip takes a
+      // beat. Auto-clears after the longest individual sub-animation
+      // (~700 ms) plus a small breathing buffer.
+      setLikeAnim(alreadyLiked ? 'unliked' : 'liked');
+      window.setTimeout(() => setLikeAnim(null), 900);
       if (alreadyLiked) {
         await UserLibrary.removeFavorite('episode', eid);
       } else {
@@ -623,6 +857,10 @@ export default function ExpandedPlayer({
       await refreshFavorites();
     } catch (err) {
       setIsLiked(alreadyLiked);
+      // Cancel a celebration mid-flight if the API rejected the
+      // toggle — otherwise we'd briefly cheer for an action the
+      // server didn't actually accept.
+      setLikeAnim(null);
       if (typeof console !== 'undefined') console.debug('episode favorite toggle failed', err);
     } finally {
       setFavLoading(false);
@@ -791,9 +1029,35 @@ export default function ExpandedPlayer({
   };
 
   return (
-    <div className="fixed inset-0 z-[3000] flex flex-col overflow-y-auto overscroll-contain touch-pan-y" style={{ background: '#0a0a0f' }}>
+    <motion.div
+      // ── Outer container: drag-y SURFACE only ─────────────────────
+      // This element handles the swipe-down-to-dismiss gesture and
+      // nothing else. CRUCIALLY it has NO `overflow-*` — putting
+      // overflow + drag on the same element causes the browser's
+      // native scroll machinery to fight Framer-Motion for pointer
+      // ownership, which is why the previous swipe-down was silently
+      // doing nothing. Scrolling now lives on the inner wrapper.
+      //
+      // `dragListener={false}` means Framer doesn't auto-bind a
+      // pointerdown listener; the drag is started imperatively from
+      // the drag-handle bar via `dragControls.start(e)`. So no other
+      // touches anywhere else in the player can begin a vertical
+      // dismiss drag — only the handle.
+      drag={(showOptionsModal || showAddModal || showQueue || shareDialogOpen || isSwiping) ? false : 'y'}
+      dragControls={dragControls}
+      dragListener={false}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      // Asymmetric elastic resistance — the container can rubber-band
+      // downward (so the user feels the drag) but resists upward
+      // travel entirely. There's no "up" semantic here; the player is
+      // already at the top of its z-stack.
+      dragElastic={{ top: 0, bottom: 0.5 }}
+      onDragEnd={handlePlayerDragEnd}
+      className="fixed inset-0 z-[3000] flex flex-col"
+      style={{ background: '#0a0a0f' }}
+    >
       {/* Animated atmospheric background */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         {/* Slow-drifting gradient orbs */}
         <div className="absolute w-[40rem] h-[40rem] rounded-full blur-[160px] opacity-[0.07]"
           style={{
@@ -836,52 +1100,254 @@ export default function ExpandedPlayer({
         }
       `}</style>
 
-      {/* Header */}
-      <div className="relative z-[2] flex items-center justify-between px-6 py-5">
-        <button 
-          onClick={onCollapse} 
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <span className="absolute left-1/2 -translate-x-1/2 text-white font-medium text-xs tracking-[0.2em] pointer-events-none select-none max-w-[calc(100%-120px)] truncate">NOW PLAYING</span>
+      {/* ─── Inner scroll container ─────────────────────────────────
+          All scrollable player content lives here. Separating
+          scroll from drag is what makes both gestures work
+          reliably: the outer `motion.div` only handles drag-y, this
+          inner `<div>` only handles overflow. `touch-pan-y` allows
+          native vertical scroll inside while leaving horizontal
+          gestures (the swipe deck below) free for Framer. */}
+      <div className="relative z-[1] flex-1 flex flex-col overflow-y-auto overscroll-contain touch-pan-y">
 
-        <div className="relative">
-          <button 
-            onClick={() => setShowQueue(true)} 
+      {/* ─── Combined header + drag-down handle ─────────────────────
+          One unified drag-actionable region: a small visual
+          handle bar at the top is the affordance, and the entire
+          row (X / NOW PLAYING / Queue) below it is the drag
+          surface. `touch-none` overrides the parent's `touch-pan-y`
+          for this region only, so vertical drags here go straight
+          to Framer's `dragControls.start(e)` instead of the
+          browser's native scroll.
+
+          The whole block lives INSIDE the scroll container so it
+          scrolls away with content when the user pulls show notes
+          / Up Next up — same behaviour as the original player; we
+          don't permanently cost any vertical real estate. The X
+          and Queue buttons each stay individually clickable
+          because `handleHeaderPointerDown` short-circuits when the
+          touch target is inside a real `<button>`. */}
+      <div
+        onPointerDown={handleHeaderPointerDown}
+        className="relative z-[2] select-none touch-none"
+        role="button"
+        aria-label="Drag down to dismiss player"
+      >
+        <div className="flex justify-center pt-2 pb-1.5">
+          <div className="w-10 h-1 rounded-full bg-white/20" />
+        </div>
+        <div className="relative flex items-center justify-between px-6 py-3">
+          <button
+            onClick={onCollapse}
             className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
-            aria-label="View Queue"
           >
-            <ListMusicIcon />
-            {upNext.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-[#ff0040] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-lg">
-                {upNext.length}
-              </span>
-            )}
+            <X className="w-5 h-5" />
           </button>
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white font-medium text-xs tracking-[0.2em] pointer-events-none select-none max-w-[calc(100%-120px)] truncate">NOW PLAYING</span>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowQueue(true)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 text-white/70 hover:text-white transition-colors"
+              aria-label="View Queue"
+            >
+              <ListMusicIcon />
+              {upNext.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#ff0040] text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center shadow-lg">
+                  {upNext.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="relative z-[1] flex-1 flex flex-col justify-start items-center px-6 pt-2 pb-4">
-        {/* Album Art */}
-        <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] mx-auto mb-3 rounded-lg overflow-hidden shadow-2xl">
-          {cover ? (
-            <img
-              src={cover}
-              alt={episode?.title || 'Episode cover'}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center">
-              <span className="text-8xl">🎧</span>
-            </div>
-          )}
-        </div>
+        {/* ═══════════════════════════════════════════════════════════
+            SWIPE DECK (horizontal)
+            ═══════════════════════════════════════════════════════════
+            Wraps EVERYTHING that visually represents the current
+            track — cover, title block, action buttons, waveform,
+            and transport controls — so the swipe-to-skip gesture
+            slides the entire "card" off-screen as a unit while the
+            new track's card slides in from the opposite side.
+            (Sliding only the controls, as it did before, was the
+            UX equivalent of changing the steering wheel and
+            leaving everything else still — felt fake.)
 
-        {/* Track Info */}
-        <div className="mb-3 text-center w-full max-w-md overflow-hidden">
-          <div className="flex items-center justify-center gap-2 mb-2">
+            Mechanics:
+              • `style={{ x: deckX }}` shares a motion value with
+                Framer's drag, so we can imperatively `animate(deckX,
+                ...)` to perform the carousel transition AND to
+                play the one-time wiggle hint on first open.
+              • Below threshold the elastic snap-back returns it to
+                center naturally.
+              • Above threshold (in `handleSwipeDeckEnd`) we
+                continue the slide off-screen, fire `onNext` /
+                `onPrev`, jump to the opposite side, and slide back.
+              • While `isSwiping` is true the drag is disabled so
+                the user can't restart a swipe mid-transition.
+
+            Vertical pointer movement inside the deck doesn't
+            trigger any drag (drag is locked to "x"), so the show
+            notes / Up Next / "More from this show" sections below
+            stay freely scrollable.
+        */}
+        <motion.div
+          drag={isSwiping ? false : 'x'}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.18}
+          dragMomentum={false}
+          onDragEnd={handleSwipeDeckEnd}
+          style={{ x: deckX, opacity: deckOpacity, scale: deckScale }}
+          className="w-full flex flex-col items-center will-change-transform"
+        >
+        {/* Album Art
+            ──────────
+            Wrapped in a `motion.div` for a soft spring entrance — gives
+            the screen a sense of "settling" instead of just popping.
+            The ambient halo behind it (a blurred, slightly larger copy
+            of the cover) adds depth without competing with the
+            atmospheric background orbs that already drift behind the
+            whole screen. Halo only renders when we have a real cover
+            image — fallback art doesn't get a glow.
+        */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ type: 'spring', damping: 22, stiffness: 180 }}
+          className="relative mx-auto mb-5"
+        >
+          {cover && (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 -m-6 rounded-[28px] opacity-50 blur-3xl pointer-events-none"
+              style={{
+                backgroundImage: `url(${cover})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                transform: 'scale(1.05)',
+              }}
+            />
+          )}
+          <div className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] rounded-2xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/[0.06]">
+            {cover ? (
+              <img
+                src={cover}
+                alt={episode?.title || 'Episode cover'}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center">
+                <span className="text-8xl">🎧</span>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Track Info
+            ──────────
+            Three-tier hierarchy with a unified show/follow capsule so
+            nothing fights for space anymore:
+              1. Released-date cap with optional content-rating chip
+              2. Episode title — the hero, gets full width to scroll
+              3. Single sleek capsule: [Show Name] | [Follow]
+                 — both halves are independently clickable; the
+                 vertical hairline divider keeps them visually
+                 distinct without spending a full row on each.
+
+            Date is no longer a `suffix` on the scrolling title (which
+            used to scroll along with the title and disappear on long
+            episode names) — it now sits as a fixed cap above the title
+            so the released date is always visible at a glance. The
+            content rating joins the cap line because a quiet "META •
+            META" header reads cleanly and doesn't ask the eye to make
+            two stops the way a separate badge row did.
+        */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.08, ease: [0.25, 0.1, 0.25, 1] }}
+          className="mb-4 text-center w-full max-w-md overflow-hidden"
+        >
+          {/* 1. Released-date + rating cap line */}
+          {(() => {
+            const releaseDate = episode?.published_at || episode?.created_date || episode?.release_date;
+            const rating = getContentRating(podcast);
+            if (!releaseDate && !rating) return null;
+            // Per-rating tone palette stays consistent with the rest
+            // of the app (Settings, EpisodeMenu, etc.).
+            const ratingTone =
+              rating === 'R'
+                ? 'text-red-300 border-red-400/35 bg-red-500/[0.12]'
+                : rating === 'PG-13'
+                  ? 'text-amber-300 border-amber-400/30 bg-amber-400/[0.10]'
+                  : rating === 'PG'
+                    ? 'text-emerald-300 border-emerald-400/30 bg-emerald-500/[0.10]'
+                    : 'text-sky-300 border-sky-400/30 bg-sky-500/[0.10]';
+            return (
+              <div className="flex items-center justify-center gap-2 mb-2">
+                {releaseDate && (
+                  <span className="text-[10px] font-semibold tracking-[0.18em] text-white/30 uppercase">
+                    {formatDate(releaseDate)}
+                  </span>
+                )}
+                {releaseDate && rating && (
+                  <span className="text-white/15 text-[10px]" aria-hidden="true">•</span>
+                )}
+                {rating && (
+                  <span
+                    title={`Rated ${rating}`}
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide leading-none select-none border ${ratingTone}`}
+                  >
+                    {rating}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* 2. Episode title — hero */}
+          <ScrollingTitle
+            as="h1"
+            text={episode?.title || ''}
+            className="text-white text-2xl sm:text-[26px] font-bold tracking-tight text-center mb-3"
+          />
+
+          {/* 3. Show + Follow capsule
+                 ────────────────────────
+                 A single pill split by a vertical hairline. Left half
+                 navigates to the show, right half toggles follow.
+                 Each half has its own hover state so the divider also
+                 functions as a visual touch-target boundary.
+
+                 Follow-toggle motion design:
+                   • Icon + label crossfade (popLayout mode) — the old
+                     state slides up & fades out while the new state
+                     slides up from below. Stable min-width on the
+                     button keeps the capsule from jittering as
+                     "Follow" (6) ↔ "Following" (9) swap.
+                   • A spring scale bounce on the right half on
+                     commit, scoped to that half so the show-name
+                     label doesn't twitch in sympathy.
+                   • A radial ring pulse expands out from the icon on
+                     a *new follow* — only on follow, never on
+                     unfollow (positive reinforcement only). Two
+                     concentric rings staggered by 80ms give it a
+                     proper "tap-impact" feel without being noisy.
+                   • Border tint transitions between neutral and
+                     red — same 300ms ease as the rest of the player
+                     so the change feels of a piece, not bolted on.
+          */}
+          <motion.div
+            animate={{
+              borderColor: isFollowing ? 'rgba(239, 68, 68, 0.35)' : 'rgba(255, 255, 255, 0.10)',
+              boxShadow: followAnim === 'followed'
+                ? '0 0 0 4px rgba(239, 68, 68, 0)'
+                : '0 0 0 0 rgba(239, 68, 68, 0)',
+            }}
+            transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+            className="inline-flex items-stretch h-8 rounded-full border bg-white/[0.04] overflow-hidden align-middle"
+          >
             <button
               type="button"
               onClick={() => {
@@ -891,67 +1357,109 @@ export default function ExpandedPlayer({
                   navigate(`/Episodes?id=${pid}`);
                 }
               }}
-              className="text-gray-400 text-sm hover:text-white transition-colors hover:underline underline-offset-2 cursor-pointer bg-transparent border-none"
+              className="px-3.5 inline-flex items-center text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/[0.05] transition-colors max-w-[55vw] truncate"
+              title={podcast?.title ? `Go to ${podcast.title}` : 'Go to show'}
             >
-              {podcast?.title || ''}
+              <span className="truncate">{podcast?.title || ''}</span>
             </button>
-            {(() => {
-              // Dynamic content-rating badge. Prior to this we hard-coded
-              // "PG-13" for every episode which was obviously wrong — now
-              // we consult the single-source-of-truth rating map. When a
-              // show isn't in the map we simply render nothing rather
-              // than invent a rating.
-              const rating = getContentRating(podcast);
-              if (!rating) return null;
-              const tone =
-                rating === 'R'
-                  ? 'text-red-300 border-red-400/35 bg-red-500/[0.12]'
-                  : rating === 'PG-13'
-                    ? 'text-amber-300 border-amber-400/30 bg-amber-400/[0.10]'
-                    : rating === 'PG'
-                      ? 'text-emerald-300 border-emerald-400/30 bg-emerald-500/[0.10]'
-                      : 'text-sky-300 border-sky-400/30 bg-sky-500/[0.10]';
-              return (
-                <span
-                  title={`Rated ${rating}`}
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide leading-none select-none border ${tone}`}
-                >
-                  {rating}
-                </span>
-              );
-            })()}
-            <button
+
+            {/* Hairline divider — inset slightly so it doesn't kiss
+                the rounded ends of the capsule. */}
+            <span className="w-px my-1.5 bg-white/10" aria-hidden="true" />
+
+            <motion.button
               type="button"
               onClick={handleFollowToggle}
               disabled={isFollowingLoading}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border transition-all duration-300 select-none ${
-                isFollowing
-                  ? 'text-red-400/90 border-red-500/30 bg-red-500/10 hover:bg-red-500/20 hover:border-red-500/40'
-                  : 'text-white/60 border-white/15 bg-white/[0.05] hover:bg-white/[0.1] hover:text-white/90 hover:border-white/25'
-              } ${isFollowingLoading ? 'opacity-60 cursor-not-allowed' : ''} ${followAnim === 'followed' ? 'animate-pulse' : ''}`}
-            >
-              {isFollowing
-                ? <UserCheck className="w-3 h-3" />
-                : <UserPlus className="w-3 h-3" />
+              animate={
+                followAnim === 'followed'
+                  ? { scale: [1, 1.06, 0.98, 1] }
+                  : followAnim === 'unfollowed'
+                    ? { scale: [1, 0.94, 1] }
+                    : { scale: 1 }
               }
-              <span>{isFollowing ? 'Following' : 'Follow'}</span>
-            </button>
-          </div>
-          <ScrollingTitle
-            as="h1"
-            text={episode?.title || ''}
-            className="text-white text-2xl font-bold text-center"
-            suffix={
-              <span className="text-[11px] font-normal text-white/30 tracking-wide ml-3 align-middle">
-                {formatDate(episode?.published_at || episode?.created_date || episode?.release_date)}
-              </span>
-            }
-          />
-        </div>
+              transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1], times: [0, 0.35, 0.7, 1] }}
+              className={`relative px-3 inline-flex items-center justify-center gap-1.5 text-[12px] font-semibold tracking-wide transition-colors duration-200 min-w-[88px] overflow-visible ${
+                isFollowing
+                  ? 'text-red-400 hover:bg-red-500/10'
+                  : 'text-white/80 hover:text-white hover:bg-white/[0.05]'
+              } ${isFollowingLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+              aria-pressed={!!isFollowing}
+              title={isFollowing ? 'Unfollow show' : 'Follow show'}
+            >
+              {/* Radial ring burst — only on follow, never on
+                  unfollow. Two staggered rings expand outward and
+                  fade so the tap reads as a positive "click". The
+                  rings live above the button text/icon (z-10) but
+                  stay non-interactive (pointer-events-none). */}
+              <AnimatePresence>
+                {followAnim === 'followed' && (
+                  <>
+                    <motion.span
+                      key="ring-1"
+                      initial={{ opacity: 0.55, scale: 0.55 }}
+                      animate={{ opacity: 0, scale: 1.55 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.7, ease: [0.25, 0.4, 0.3, 1] }}
+                      className="pointer-events-none absolute inset-0 rounded-full border border-red-500/70"
+                    />
+                    <motion.span
+                      key="ring-2"
+                      initial={{ opacity: 0.35, scale: 0.4 }}
+                      animate={{ opacity: 0, scale: 1.9 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.85, ease: [0.25, 0.4, 0.3, 1], delay: 0.08 }}
+                      className="pointer-events-none absolute inset-0 rounded-full border border-red-500/45"
+                    />
+                  </>
+                )}
+              </AnimatePresence>
+
+              {/* Icon + label crossfade. `mode="popLayout"` lets the
+                  exiting state float out of layout while the new
+                  state takes its place, so the spring scale on the
+                  parent doesn't get broken up by a measured layout
+                  swap mid-animation. */}
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                  key={isFollowing ? 'following' : 'follow'}
+                  initial={{ opacity: 0, y: 8, scale: 0.92 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.92 }}
+                  transition={{ duration: 0.24, ease: [0.25, 0.1, 0.25, 1] }}
+                  className="inline-flex items-center gap-1.5"
+                >
+                  {isFollowing
+                    ? <UserCheck className="w-3.5 h-3.5" />
+                    : <UserPlus className="w-3.5 h-3.5" />
+                  }
+                  <span>{isFollowing ? 'Following' : 'Follow'}</span>
+                </motion.span>
+              </AnimatePresence>
+            </motion.button>
+          </motion.div>
+        </motion.div>
 
         {/* Action buttons — compact icon-only row. Download lives in Options modal. */}
         <div className="player-controls-section">
           <div className="player-action-buttons">
+            {/* Like / Unlike — celebration motion design
+                   ───────────────────────────────────────
+                   On *like*:
+                     • Six small red particles radiate from the heart's
+                       center, fade as they travel (~24 px out).
+                     • A red ring pulses outward from the circle.
+                     • The heart icon bounces with a subtle rotation
+                       (`scale: 1 → 1.35 → 0.92 → 1`, `rotate ±8°`).
+                     • Label crossfades "Like" → "Liked".
+                   On *unlike*:
+                     • Quieter scale dip (`1 → 0.82 → 1`) — no
+                       particles, no ring. Negative state changes
+                       shouldn't celebrate.
+                     • Label crossfades "Liked" → "Like".
+                   Resting state plays no animation, so re-renders
+                   triggered by audio time-ticks don't re-fire it.
+            */}
             <button
               type="button"
               className={`player-action-icon-btn ${isLiked ? 'liked' : ''}`}
@@ -960,10 +1468,78 @@ export default function ExpandedPlayer({
               aria-pressed={isLiked}
               disabled={favLoading}
             >
-              <span className="pi-circle">
-                <Heart className={`w-[18px] h-[18px] ${isLiked ? 'fill-red-500' : ''}`} />
+              <span className="pi-circle relative">
+                {/* Particle burst + ring pulse — only on a fresh
+                    LIKE. AnimatePresence lets us animate them out
+                    cleanly if the user un-likes mid-animation. */}
+                <AnimatePresence>
+                  {likeAnim === 'liked' && (
+                    <>
+                      {[0, 1, 2, 3, 4, 5].map((i) => {
+                        const angle = (i / 6) * Math.PI * 2;
+                        const distance = 22;
+                        return (
+                          <motion.span
+                            key={`p-${i}`}
+                            initial={{ x: 0, y: 0, scale: 0.5, opacity: 0.95 }}
+                            animate={{
+                              x: Math.cos(angle) * distance,
+                              y: Math.sin(angle) * distance,
+                              scale: [0.5, 1, 0.4],
+                              opacity: [0.95, 0.75, 0],
+                            }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.62, ease: [0.2, 0.8, 0.3, 1] }}
+                            className="pointer-events-none absolute top-1/2 left-1/2 -mt-[2.5px] -ml-[2.5px] w-[5px] h-[5px] rounded-full bg-red-400"
+                          />
+                        );
+                      })}
+                      <motion.span
+                        key="like-ring"
+                        initial={{ opacity: 0.55, scale: 0.5 }}
+                        animate={{ opacity: 0, scale: 1.95 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.7, ease: [0.25, 0.4, 0.3, 1] }}
+                        className="pointer-events-none absolute inset-0 rounded-full border border-red-500/60"
+                      />
+                    </>
+                  )}
+                </AnimatePresence>
+
+                {/* Heart icon — bounces on like, dips on unlike.
+                    Wrapper is `inline-flex` so the transform pivots
+                    cleanly around the icon's geometric center. */}
+                <motion.span
+                  animate={
+                    likeAnim === 'liked'
+                      ? { scale: [1, 1.35, 0.92, 1], rotate: [0, -8, 5, 0] }
+                      : likeAnim === 'unliked'
+                        ? { scale: [1, 0.82, 1] }
+                        : { scale: 1, rotate: 0 }
+                  }
+                  transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1], times: [0, 0.32, 0.68, 1] }}
+                  className="inline-flex items-center justify-center"
+                >
+                  <Heart
+                    className={`w-[18px] h-[18px] transition-colors duration-200 ${isLiked ? 'fill-red-500 text-red-500' : ''}`}
+                  />
+                </motion.span>
               </span>
-              <span className="pi-label">{isLiked ? 'Liked' : 'Like'}</span>
+
+              <span className="pi-label">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.span
+                    key={isLiked ? 'liked-label' : 'unliked-label'}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                    className="inline-block"
+                  >
+                    {isLiked ? 'Liked' : 'Like'}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
             </button>
 
             <button
@@ -1089,6 +1665,8 @@ export default function ExpandedPlayer({
             </button>
           </div>
         </div>
+        </motion.div>
+        {/* /Swipe Deck */}
 
         {/* ═══════════════════════════════════════════════════════════
             BELOW-CONTROLS CONTENT SECTIONS
@@ -1322,6 +1900,8 @@ export default function ExpandedPlayer({
 
         {/* Bottom spacer for safe area */}
         <div className="h-8" />
+      </div>
+      {/* /Inner scroll container */}
       </div>
 
       {/* Player Options Modal (Sleep Timer + Playback Speed) */}
@@ -1675,7 +2255,7 @@ export default function ExpandedPlayer({
         episode={episode}
         timestampSeconds={shareDialogTs}
       />
-    </div>
+    </motion.div>
   );
 }
 

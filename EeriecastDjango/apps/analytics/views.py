@@ -1223,15 +1223,17 @@ class AnalyticsAudiobooksView(APIView):
         )
 
         # Pull every chapter for every audiobook in one query, then
-        # group + sort in Python. Sorting by created_date ASC gives
-        # us the canonical chapter-1-first ordering used by the show
-        # page; falling back to id keeps behaviour deterministic
-        # when two chapters happen to share a created_date.
+        # group + sort in Python. Sorting by published_at ASC gives
+        # us the canonical chapter-1-first ordering (Episode's default
+        # ordering is `-published_at`, so reversing it yields the
+        # release order an audiobook listener expects). Falling back
+        # to id keeps behaviour deterministic when two chapters happen
+        # to share a published_at timestamp.
         chapter_rows = list(
             Episode.objects
             .filter(podcast_id__in=audiobook_ids)
-            .values("id", "podcast_id", "created_date")
-            .order_by("podcast_id", "created_date", "id")
+            .values("id", "podcast_id", "published_at")
+            .order_by("podcast_id", "published_at", "id")
         )
         chapters_by_book: dict[int, list[int]] = {}
         for row in chapter_rows:

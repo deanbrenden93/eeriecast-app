@@ -189,7 +189,19 @@ export default function MobilePlayer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-[10050] pointer-events-none flex justify-center"
+            // Z-INDEX POLICY (mini player layer)
+            // ─────────────────────────────────
+            // Default: `z-40` — above page content + bottom nav, but
+            // BELOW splash (z-100), onboarding (z-100), and every
+            // modal in the app (z-50 → z-[10200]). This keeps the
+            // mini from ever floating over a dialog, drawer, sheet,
+            // landing/splash, premium page, or onboarding flow.
+            // When the e-reader / comic reader takes over the
+            // viewport (z-[9999]) we deliberately bump above it so
+            // playback can still be controlled while reading. The
+            // expanded player (z-[10100]) and shadcn dialogs
+            // (z-[10200]) still sit above us in that mode.
+            className={`fixed inset-0 ${eReaderOpen ? 'z-[10080]' : 'z-40'} pointer-events-none flex justify-center`}
             style={{
               alignItems: 'flex-end',
               paddingBottom: eReaderOpen
@@ -258,7 +270,12 @@ export default function MobilePlayer({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 60, opacity: 0, scale: 0.9 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`fixed left-0 right-0 z-[10050] ${
+            // See "Z-INDEX POLICY" comment on the minimized pill
+            // above for the full reasoning. Same rule applies here:
+            // sit below all modals/overlays in normal mode, above
+            // the e-reader specifically so playback stays
+            // controllable while reading.
+            className={`fixed left-0 right-0 ${eReaderOpen ? 'z-[10080]' : 'z-40'} ${
               eReaderOpen ? 'bottom-0' : 'max-[1000px]:bottom-[calc(var(--bottom-nav-h,70px)_+_env(safe-area-inset-bottom,0px))] min-[1001px]:bottom-0'
             }`}
           >

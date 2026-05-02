@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState } from "react";
+import { useRef, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useQuery } from "@tanstack/react-query";
@@ -63,25 +63,15 @@ export default function NewReleasesRow({
   // to randomly disappear. Pull a much bigger window for "latest" so
   // there's always enough left over to fill the row.
   //
-  // For "recommended" we pull a deliberately oversized pool (4× the
-  // visible row) so the per-mount shuffle below can present a
-  // genuinely different lineup of personalized picks across visits
-  // — the backend score is deterministic, so without a wider pool
-  // the For You row would always show the same top-N on every mount.
+  // The recommended ranking is now fully deterministic server-side
+  // (follows + favorites + engagement-weighted history + category &
+  // creator overlap + recency + popularity), so this row no longer
+  // shuffles on the client. A small 2× buffer is enough to cover the
+  // backfill path when the personalized pool is thin for new users.
   const fetchLimit =
     feedType === "latest"
       ? Math.max(150, maxItems * 8)
-      : feedType === "recommended"
-        ? Math.max(80, maxItems * 4)
-        : Math.max(40, maxItems * 2);
-
-  // Per-mount seed so the "recommended" row reshuffles on every visit
-  // (homescreen → episode → back) but stays stable while the user is
-  // looking at it. Keeping it in `useState` (not `useRef` + Math.random
-  // inline) means the value is computed exactly once per component
-  // instance and is included in the `episodes` `useMemo` dependency
-  // array, which keeps React's exhaustive-deps lint quiet.
-  const [shuffleSeed] = useState(() => Math.random());
+      : Math.max(40, maxItems * 2);
 
   // Primary feed — cached by feedType+params across the whole app, so all
   // three rows on the home screen plus Discover pull from the same cache and
@@ -154,32 +144,8 @@ export default function NewReleasesRow({
       primary = [...primary, ...extras];
     }
 
-    // For "recommended" only: shuffle a wider candidate pool so the
-    // For You row feels alive across visits instead of presenting the
-    // same scored top-N every time. The shuffle is intentionally
-    // weighted toward the top of the backend's relevance ordering — a
-    // simple uniform shuffle would give the bottom-of-pool picks the
-    // same odds as the user's strongest matches, which dilutes the
-    // personalization. The weighting works by giving each candidate a
-    // priority score proportional to its rank, then sampling without
-    // replacement.
-    if (feedType === "recommended" && primary.length > maxItems) {
-      // Reference the seed so React's lint sees we depend on it.
-      void shuffleSeed;
-      const weighted = primary.map((ep, idx) => ({
-        ep,
-        // Higher weight = more likely to be picked. Linear decay
-        // keeps the top picks ~2× as likely as the bottom of the
-        // pool, which is enough variation to feel fresh without
-        // burying strong matches.
-        weight: (primary.length - idx) + Math.random() * primary.length * 0.5,
-      }));
-      weighted.sort((a, b) => b.weight - a.weight);
-      primary = weighted.map((w) => w.ep);
-    }
-
     return primary.slice(0, maxItems);
-  }, [primaryRaw, backfillRaw, podcasts, getById, categoryFilter, maxItems, needsBackfillFeed, feedType, shuffleSeed]);
+  }, [primaryRaw, backfillRaw, podcasts, getById, categoryFilter, maxItems, needsBackfillFeed]);
 
   // We treat "loading" as "no data yet". Once the cache has data, the row
   // renders immediately on subsequent mounts (no skeleton flicker).

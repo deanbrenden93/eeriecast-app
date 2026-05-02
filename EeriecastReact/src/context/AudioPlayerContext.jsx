@@ -254,6 +254,15 @@ export const AudioPlayerProvider = ({ children }) => {
   // Mark state setters as referenced for ESLint in environments where closures confuse the analyzer
   useEffect(() => { /* no-op to reference setQueue */ }, [setQueue]);
 
+  // ─── User Context ─────────────────────────────────────────────────
+  // Pulled here (above the persistence effects) so each saved state
+  // blob can be tagged with the owning user's id. That tag is what
+  // lets the rehydration logic refuse to restore another account's
+  // playback if a different user logs into the same browser.
+  const { user, updateEpisodeProgress, episodeProgressMap, isPremium, canViewMature } = useUser() || {};
+  const userIdRef = useRef(user?.id ?? null);
+  useEffect(() => { userIdRef.current = user?.id ?? null; }, [user?.id]);
+
   // ─── Session Persistence ──────────────────────────────────────────
   // Save current playback state to localStorage so it survives page refreshes.
   const STORAGE_KEY = 'eeriecast_player_state';
@@ -274,6 +283,7 @@ export const AudioPlayerProvider = ({ children }) => {
           queue: queue.slice(0, 50),
           queueIndex,
           savedAt: Date.now(),
+          userId: userIdRef.current,
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       } catch { /* storage full or unavailable */ }
@@ -306,6 +316,7 @@ export const AudioPlayerProvider = ({ children }) => {
           queue: queue.slice(0, 50),
           queueIndex,
           savedAt: Date.now(),
+          userId: userIdRef.current,
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       } catch { /* */ }
@@ -314,14 +325,10 @@ export const AudioPlayerProvider = ({ children }) => {
     return () => window.removeEventListener('beforeunload', saveNow);
   }, [episode, podcast, currentTime, duration, queue, queueIndex, audioRef]);
 
-  // Session restore is disabled — the mini player should NOT automatically
-  // appear when the user freshly opens the app. Playback state is still
-  // persisted to localStorage (above) so features like "Continue Listening"
-  // can reference it, but the player itself only appears after a deliberate
-  // user action (pressing play).
-
-  // ─── User Context (for real-time progress tracking + smart resume) ─
-  const { updateEpisodeProgress, episodeProgressMap, isPremium, canViewMature } = useUser() || {};
+  // (Session rehydration lives further down, AFTER loadAndPlaySmart
+  //  is declared — see the "Session Rehydration" block below
+  //  loadAndPlaySmart. We can't rehydrate at this point in the file
+  //  because the rehydration call uses the smart wrapper.)
 
   // ─── Podcast catalog (for end-of-queue autoplay fallback) ──────────
   // The audio context is mounted inside <PodcastProvider> (see main.jsx),
@@ -350,7 +357,7 @@ export const AudioPlayerProvider = ({ children }) => {
   useEffect(() => { episodeProgressMapRef.current = episodeProgressMap; }, [episodeProgressMap]);
 
   const loadAndPlaySmart = useCallback(async (args) => {
-    const { episode: ep, resume, ...rest } = args;
+    const { episode: ep, resume, autoplay, ...rest } = args;
 
     // Mature-content gate
     const pod = rest.podcast;
@@ -406,20 +413,106 @@ export const AudioPlayerProvider = ({ children }) => {
     let result;
     // If "remember position" is off, always start from the beginning
     if (!shouldRemember) {
-      result = await loadAndPlay({ ...rest, episode: ep, resume: { progress: 0 } });
+      result = await loadAndPlay({ ...rest, episode: ep, resume: { progress: 0 }, autoplay });
     } else if (ep && Number.isFinite(eid) && map && (!resume || resume.progress === 0 || resume.progress == null)) {
       // If resume.progress is 0 (default), check if we have saved progress
       const saved = map.get(eid);
       if (saved && saved.progress > 0 && !saved.completed) {
-        result = await loadAndPlay({ ...rest, episode: ep, resume: { progress: saved.progress } });
+        result = await loadAndPlay({ ...rest, episode: ep, resume: { progress: saved.progress }, autoplay });
       } else {
-        result = await loadAndPlay({ ...rest, episode: ep, resume });
+        result = await loadAndPlay({ ...rest, episode: ep, resume, autoplay });
       }
     } else {
-      result = await loadAndPlay({ ...rest, episode: ep, resume });
+      result = await loadAndPlay({ ...rest, episode: ep, resume, autoplay });
     }
     return result;
   }, [loadAndPlay, canViewMature]);
+
+  // ─── Session Rehydration ──────────────────────────────────────────
+  // When a logged-in user refreshes or returns to the app and their
+  // last session was a real listen, restore the mini player so they
+  // can resume with one tap. The audio is loaded paused at the
+  // saved position; we deliberately do NOT autoplay (browsers
+  // require a user gesture in most cases anyway, and a refresh
+  // suddenly blasting audio is jarring UX).
+  //
+  // Hard guards — rehydration is skipped if any of these fail:
+  //   1. User is logged in. We use the resolved `user` object (not
+  //      just the token) so we can match the saved state's userId.
+  //   2. Saved state belongs to the SAME user. Defends against a
+  //      different account logging in on a shared browser before
+  //      the previous user's state was cleared.
+  //   3. Saved state is recent (within REHYDRATE_MAX_AGE_MS).
+  //      Stale state from weeks ago is more confusing than helpful.
+  //   4. Episode + podcast both have ids. Anything less means the
+  //      blob was corrupted and the mini player would crash.
+  //
+  // The effect is gated behind a ref so it only ever runs once per
+  // mount, even if the user object reshapes during the session.
+  const REHYDRATE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+  const hasRehydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasRehydratedRef.current) return;
+    if (!user?.id) return; // wait for user data; no token = no restore
+
+    let raw;
+    try { raw = localStorage.getItem(STORAGE_KEY); } catch { return; }
+    if (!raw) return;
+
+    let saved;
+    try { saved = JSON.parse(raw); } catch {
+      // Corrupt blob — clear it so we don't keep retrying every mount.
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+      return;
+    }
+
+    if (!saved?.episode?.id || !saved?.podcast?.id) return;
+    if (typeof saved.savedAt !== 'number') return;
+    if (Date.now() - saved.savedAt > REHYDRATE_MAX_AGE_MS) {
+      // Stale — quietly drop it.
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+      return;
+    }
+    // Cross-user contamination guard. `userId` was added to the
+    // saved blob in the persistence effects above. Older blobs
+    // from before that field existed are allowed to rehydrate
+    // (`undefined` userId), since they predate the multi-user
+    // concern and the user has clearly already consented to the
+    // app on this browser.
+    if (saved.userId != null && saved.userId !== user.id) {
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+      return;
+    }
+
+    hasRehydratedRef.current = true;
+
+    // Restore queue first so playNext / playPrev have somewhere to go
+    // immediately after the user taps play.
+    if (Array.isArray(saved.queue) && saved.queue.length > 0) {
+      setQueue(saved.queue);
+      setQueueIndex(typeof saved.queueIndex === 'number' ? saved.queueIndex : 0);
+    }
+
+    // Use loadAndPlaySmart with `autoplay: false` so all the same
+    // paywall / mature gates fire if access has changed since the
+    // session was saved (e.g. premium expired). The audio element
+    // is loaded with a real `src` so the user's first tap on play
+    // actually starts the track. The smart wrapper also seeds a
+    // 1-item queue if `saved.queue` was empty, mirroring the
+    // normal play-an-episode flow.
+    loadAndPlaySmart({
+      podcast: saved.podcast,
+      episode: saved.episode,
+      resume: { progress: saved.currentTime || 0 },
+      autoplay: false,
+    }).catch(() => { /* gates / network — leave silent */ });
+  // We intentionally don't list `loadAndPlaySmart` here. The
+  // hasRehydratedRef guard makes this single-shot per mount, and
+  // including the function would force re-runs every time its
+  // identity changes (which happens on `canViewMature` flips).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Queue helpers
   const playQueueIndex = useCallback(async (index) => {
@@ -697,7 +790,7 @@ export const AudioPlayerProvider = ({ children }) => {
   // Minimized state — shrinks mini player into a small pill/bubble
   const [isMiniPlayerMinimized, setIsMiniPlayerMinimized] = useState(false);
 
-  const handleClosePlayer = () => {
+  const handleClosePlayer = useCallback(() => {
     pause();
     setShowPlayer(false);
     setShowExpandedPlayer(false);
@@ -711,7 +804,34 @@ export const AudioPlayerProvider = ({ children }) => {
     setQueueIndex(-1);
     // Clear persisted state when user explicitly closes the player
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
-  };
+  }, [pause, setEpisode, setPodcast]);
+
+  // ─── Auth identity watcher ─────────────────────────────────────────
+  // Defends against a logged-in user's audio leaking into a
+  // *different* logged-in user's session. We only purge when the
+  // current identity was a real user and it changed to either
+  // logged-out or a different user — NOT when an anonymous
+  // listener finishes signing in (null → id), because anon
+  // playback is a legitimate, supported flow and yanking the
+  // mini player out from under them mid-listen would be jarring.
+  //
+  // Cases handled:
+  //   • prev=null, curr=null      → no-op (still anonymous)
+  //   • prev=null, curr=id        → no-op (anon → signed in;
+  //                                  preserve their playback)
+  //   • prev=id,   curr=null      → CLOSE (logout)
+  //   • prev=idA,  curr=idB       → CLOSE (account switch)
+  //   • prev=undefined            → no-op (first observation)
+  const prevUserIdRef = useRef(undefined);
+  useEffect(() => {
+    const prev = prevUserIdRef.current;
+    const curr = user?.id ?? null;
+    prevUserIdRef.current = curr;
+    if (prev === undefined) return;        // first render
+    if (prev === curr) return;              // no actual change
+    if (prev == null) return;               // anon → signed in, keep state
+    handleClosePlayer();
+  }, [user?.id, handleClosePlayer]);
 
   // Auto-close the player when mature content is disabled and the
   // currently playing podcast is mature.

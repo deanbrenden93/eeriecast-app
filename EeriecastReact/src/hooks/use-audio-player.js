@@ -212,7 +212,7 @@ export function useAudioPlayer({ onEnd } = {}) {
     }
   };
 
-  const loadAndPlay = useCallback(async ({ podcast: p, episode: ep, resume }) => {
+  const loadAndPlay = useCallback(async ({ podcast: p, episode: ep, resume, autoplay = true }) => {
     const audio = audioRef.current;
     if (!audio || !ep) return false;
 
@@ -291,12 +291,19 @@ export function useAudioPlayer({ onEnd } = {}) {
       setPodcast(p || podcast);
       setEpisode(ep);
 
-      try {
-        await audio.play();
-      } catch (e) {
-        if (typeof console !== 'undefined') console.debug('autoplay blocked or play failed', e);
-        // Leave paused; user interaction can trigger play
+      if (autoplay) {
+        try {
+          await audio.play();
+        } catch (e) {
+          if (typeof console !== 'undefined') console.debug('autoplay blocked or play failed', e);
+          // Leave paused; user interaction can trigger play
+        }
       }
+      // When `autoplay === false` we deliberately leave the audio
+      // loaded-but-paused. This is the rehydration path: the mini
+      // player needs an episode in state and a real `src` on the
+      // audio element so the user's first tap on play actually
+      // starts the track instead of doing nothing.
       return true;
     } catch (e) {
       if (typeof console !== 'undefined') console.debug('loadAndPlay failed', e);

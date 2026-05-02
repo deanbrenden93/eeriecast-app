@@ -22,6 +22,7 @@ slot forever.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from django.core.cache import cache
@@ -46,6 +47,21 @@ _ANON_COOKIE_NAME = "ee_anon_id"
 # as a brand-new session, short enough that a shared family device
 # doesn't keep a session row alive forever.
 _ANON_COOKIE_MAX_AGE = 60 * 60 * 24 * 90
+
+# Requests whose User-Agent matches any of these patterns are skipped
+# entirely. Crawlers don't persist cookies, so without this filter
+# every bot request would mint a fresh AnonymousSession row and
+# inflate the "not signed in" KPI by orders of magnitude. The list is
+# deliberately broad — false positives just mean a bot doesn't get
+# counted, which is exactly what we want.
+_BOT_UA_RE = re.compile(
+    r"bot|crawler|spider|crawling|slurp|mediapartners|facebookexternalhit|"
+    r"embedly|quora link preview|outbrain|pinterest|skype|vkshare|"
+    r"w3c_validator|whatsapp|headlesschrome|phantomjs|puppeteer|playwright|"
+    r"curl|wget|python-requests|httpclient|go-http-client|node-fetch|axios|"
+    r"uptime|pingdom|datadog|newrelic|statuscake|monitor|preview|fetch",
+    re.IGNORECASE,
+)
 
 
 def _seen_recently(cache_key: str) -> bool:
@@ -133,9 +149,29 @@ class AnonymousActivityMiddleware(MiddlewareMixin):
             if request.method == "OPTIONS":
                 return response
 
+            # Skip bots/crawlers entirely. They don't persist cookies,
+            # so without this every crawl request would create a new
+            # AnonymousSession row and inflate the "not signed in"
+            # active-visitor count by orders of magnitude.
+            ua = request.META.get("HTTP_USER_AGENT", "") or ""
+            if not ua or _BOT_UA_RE.search(ua):
+                return response
+
             anon_id = request.COOKIES.get(_ANON_COOKIE_NAME)
             is_new = False
             if not anon_id:
+                # Only *mint* a new session for requests that look like
+                # a real browser navigating to a page (Accept includes
+                # text/html). API-only callers, RSS readers, and
+                # similar non-browser clients still get throttled
+                # bumps if they happen to send our cookie back, but
+                # they don't get counted as a brand-new unique
+                # visitor on every request. This is the second line of
+                # defence behind the bot-UA filter above and catches
+                # well-behaved bots that don't advertise themselves.
+                accept = request.META.get("HTTP_ACCEPT", "") or ""
+                if "text/html" not in accept.lower():
+                    return response
                 anon_id = uuid.uuid4().hex
                 is_new = True
             else:

@@ -209,6 +209,12 @@ function PagesContent() {
                     
                     <Route path="/Premium" element={<AnimatedPage><Premium /></AnimatedPage>} />
                     <Route path="/premium" element={<AnimatedPage><Premium /></AnimatedPage>} />
+                    {/* Marketing-friendly aliases — eerie.fm/plus is the
+                        short URL we share publicly; redirect to the
+                        canonical /premium screen. Both casings covered
+                        so links from any source land cleanly. */}
+                    <Route path="/plus" element={<Navigate to="/premium" replace />} />
+                    <Route path="/Plus" element={<Navigate to="/premium" replace />} />
                     
                     <Route path="/CreatorEpisodes" element={<AnimatedPage><CreatorEpisodes /></AnimatedPage>} />
                     <Route path="/creatorepisodes" element={<AnimatedPage><CreatorEpisodes /></AnimatedPage>} />
