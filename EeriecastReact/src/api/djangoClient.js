@@ -164,6 +164,44 @@ class DjangoAPIClient {
       method: 'DELETE'
     });
   }
+
+  // Binary / non-JSON GET — used for CSV exports and any other endpoint
+  // that streams a file. We can't reuse `request()` because it always
+  // calls `response.json()` on success. We still attach the auth header,
+  // still parse a JSON error body on failure (so admins see DRF errors
+  // verbatim instead of "Failed to fetch"), and still surface a
+  // `DjangoAPIError` so callers handle it identically.
+  async getBlob(endpoint, params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = `${this.baseURL}${endpoint}${queryString ? `?${queryString}` : ''}`;
+    const config = {
+      method: 'GET',
+      headers: this.getHeaders({}),
+    };
+    try {
+      const response = await fetch(url, config);
+      if (!response.ok) {
+        let errorData;
+        try { errorData = await response.json(); }
+        catch { errorData = { message: response.statusText }; }
+        const errorMessage =
+          errorData.message || errorData.detail || errorData.error || `HTTP ${response.status}`;
+        throw new DjangoAPIError(errorMessage, response.status, errorData);
+      }
+      // Pull the filename out of `Content-Disposition` if the server
+      // sent one — the CSV export endpoint sets a date-stamped filename
+      // like `eeriecast-verified-emails-2026-05-03.csv` so the user's
+      // download lands with that name instead of a generic UUID.
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = /filename="?([^"]+)"?/i.exec(disposition);
+      const filename = match ? match[1] : null;
+      const blob = await response.blob();
+      return { blob, filename };
+    } catch (error) {
+      if (error instanceof DjangoAPIError) throw error;
+      throw new DjangoAPIError(error.message, 0, null);
+    }
+  }
 }
 
 // Create and configure the Django API client

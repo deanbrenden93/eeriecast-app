@@ -143,6 +143,7 @@ INSTALLED_APPS = [
     'apps.billing',
     'apps.emails',
     'apps.analytics',
+    'apps.admin_tools',
 ]
 
 # Email configuration (driven by env; safe defaults for local/dev)

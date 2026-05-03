@@ -120,11 +120,62 @@ def playlist_episodes_changed(sender, instance: 'Playlist', action, **kwargs):
 
 
 class Notification(models.Model):
-    """User notifications, e.g., when a followed podcast publishes a new episode."""
+    """User notifications.
+
+    There are two `kind`s:
+
+      • ``episode`` — system-generated when a followed podcast publishes
+        a new episode. Carries `podcast` + `episode` FKs and renders a
+        deep-link to the show page in the popover.
+      • ``announcement`` — admin-broadcasted from the admin panel
+        (apps/admin_tools). Carries a free-form `title`, `message`, and
+        an optional `url` (internal path or absolute https://...). The
+        `podcast`/`episode` FKs are null for these.
+
+    The shared shape (one model, nullable FKs) keeps the existing
+    list/read endpoints + the frontend popover working unchanged —
+    `kind` is the discriminator the UI can branch on if it ever needs
+    to render the two flavors differently.
+    """
+
+    KIND_EPISODE = 'episode'
+    KIND_ANNOUNCEMENT = 'announcement'
+    KIND_CHOICES = (
+        (KIND_EPISODE, 'New episode'),
+        (KIND_ANNOUNCEMENT, 'Announcement'),
+    )
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
-    podcast = models.ForeignKey('podcasts.Podcast', on_delete=models.CASCADE, related_name='notifications')
-    episode = models.ForeignKey('episodes.Episode', on_delete=models.CASCADE, related_name='notifications')
+    # Nullable for announcement broadcasts. The episode-notification
+    # signal (apps/episodes/models.py) keeps populating both FKs, so
+    # nothing about the existing flow changes — only the schema gains
+    # the ability to express "this notification has no podcast/episode."
+    podcast = models.ForeignKey(
+        'podcasts.Podcast',
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        null=True,
+        blank=True,
+    )
+    episode = models.ForeignKey(
+        'episodes.Episode',
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        null=True,
+        blank=True,
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=KIND_EPISODE)
+    # Optional bold lead-in shown above the message in the popover.
+    # Episode notifications today don't set this (the message itself
+    # already starts with "New episode in {show}: ..."), so the field
+    # stays blank for legacy rows.
+    title = models.CharField(max_length=120, blank=True, default='')
     message = models.TextField()
+    # Optional click target. Internal paths (`/Library`, `/Episodes?id=42`)
+    # go through react-router; absolute URLs (`https://eeriecast.com/lore`)
+    # open via window.location. Validation happens at the serializer
+    # layer in apps/admin_tools so the model itself stays permissive.
+    url = models.CharField(max_length=500, blank=True, default='')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -132,5 +183,8 @@ class Notification(models.Model):
         indexes = [
             models.Index(fields=["user", "is_read", "created_at"]),
             models.Index(fields=["podcast", "created_at"]),
+            # Lets admin tooling efficiently page through past
+            # broadcasts without scanning every episode-notification.
+            models.Index(fields=["kind", "created_at"]),
         ]
         ordering = ['-created_at']

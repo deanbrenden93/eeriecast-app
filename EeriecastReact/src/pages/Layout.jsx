@@ -543,26 +543,39 @@ function NotificationsPopover({ onClose }) {
     }
   }, [isAuthenticated, refreshNotifications]);
 
-  // Resolve the best deep-link target for a notification. Each notification
-  // references a podcast and usually an episode — route to the show page
-  // (so the user sees the episode in context) and include ?ep=<id> so the
-  // page can scroll/highlight the specific episode if supported.
+  // Resolve the best deep-link target for a notification.
+  //
+  // Three flavors, in priority order:
+  //
+  //   1. `n.url` — admin broadcasts can ship an arbitrary internal
+  //      path (`/Library`) or absolute URL (`https://eeriecast.com/lore`).
+  //      Internal paths go through react-router's navigate; absolute
+  //      URLs open in the same tab via window.location so the popover
+  //      can carry users out to the marketing site or store.
+  //   2. Episode notifications — link to the show page with the
+  //      episode id pinned, so the page can scroll/highlight the
+  //      specific episode if supported.
+  //   3. No target — the notification just informs and dismisses.
   const resolveDeepLink = (n) => {
+    const url = (n?.url || '').trim();
+    if (url) return { kind: url.startsWith('/') ? 'internal' : 'external', target: url };
     const podId = (n?.podcast && typeof n.podcast === 'object') ? n.podcast.id : n?.podcast;
     const epId = (n?.episode && typeof n.episode === 'object') ? n.episode.id : n?.episode;
     if (!podId) return null;
     const base = `${createPageUrl('Episodes')}?id=${encodeURIComponent(podId)}`;
-    return epId ? `${base}&ep=${encodeURIComponent(epId)}` : base;
+    return { kind: 'internal', target: epId ? `${base}&ep=${encodeURIComponent(epId)}` : base };
   };
 
   const handleNotificationClick = (n) => {
     if (!n) return;
-    // Mark as read first so the dot updates even if navigation is cancelled
     if (n.is_read === false) markNotificationRead(n.id);
-    const target = resolveDeepLink(n);
-    if (target) {
-      onClose?.();
-      navigate(target);
+    const link = resolveDeepLink(n);
+    if (!link) return;
+    onClose?.();
+    if (link.kind === 'external') {
+      window.location.assign(link.target);
+    } else {
+      navigate(link.target);
     }
   };
 
@@ -612,7 +625,12 @@ function NotificationsPopover({ onClose }) {
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${n.is_read ? 'bg-zinc-700' : 'bg-red-500'}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm leading-snug break-words text-zinc-300">
+                    {n.title && (
+                      <p className="text-sm font-semibold leading-snug break-words text-white">
+                        {n.title}
+                      </p>
+                    )}
+                    <p className={`text-sm leading-snug break-words text-zinc-300 ${n.title ? 'mt-0.5' : ''}`}>
                       {n.message || 'You have a new notification.'}
                     </p>
                     {n.created_at && (

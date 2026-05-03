@@ -582,3 +582,54 @@ export const Analytics = {
     return djangoClient.get('/analytics/audiobooks/');
   },
 };
+
+// ── Admin tools (staff + superuser only) ──────────────────────────
+//
+// Surfaces in the AdminAnalytics page; gated by `IsStaffSuperuser` on
+// the Django side. These wrap the `apps/admin_tools/` endpoints — see
+// `EeriecastDjango/apps/admin_tools/urls.py` for the full route list.
+
+export const AdminEmails = {
+  // GET /api/admin/emails/audience/?verified_only=true
+  // Returns { count } so the admin can confirm "X recipients" before
+  // hitting the download button. Cheap, doesn't stream the whole list.
+  async audience({ verifiedOnly = true } = {}) {
+    return djangoClient.get('/admin/emails/audience/', {
+      verified_only: verifiedOnly ? 'true' : 'false',
+    });
+  },
+
+  // GET /api/admin/emails/export/?verified_only=true
+  // Streams a CSV — DRF endpoint sets Content-Disposition with a
+  // date-stamped filename. Returns { blob, filename } so callers can
+  // trigger a browser download via an object URL + <a download>.
+  async exportCsv({ verifiedOnly = true } = {}) {
+    return djangoClient.getBlob('/admin/emails/export/', {
+      verified_only: verifiedOnly ? 'true' : 'false',
+    });
+  },
+};
+
+export const AdminNotifications = {
+  // GET /api/admin/notifications/audience/
+  // Same shape as AdminEmails.audience — admin sees the recipient count
+  // before broadcasting. We deliberately do NOT filter by email
+  // verification here: notifications are an in-app channel, so the
+  // audience is all active (non-deleted) accounts regardless of
+  // whether they ever clicked the verification link.
+  async audience() {
+    return djangoClient.get('/admin/notifications/audience/');
+  },
+
+  // POST /api/admin/notifications/broadcast/
+  // Body: { title, body, url? }. Server enqueues a Celery task that
+  // bulk-creates a Notification row per active user. Returns the
+  // task id and the queued recipient count immediately so the UI
+  // can show a "Sent to N users" toast without waiting for fan-out.
+  async broadcast({ title, body, url } = {}) {
+    const payload = { title: (title || '').trim(), body: (body || '').trim() };
+    const trimmedUrl = (url || '').trim();
+    if (trimmedUrl) payload.url = trimmedUrl;
+    return djangoClient.post('/admin/notifications/broadcast/', payload);
+  },
+};

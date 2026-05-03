@@ -60,6 +60,8 @@ import {
   Search as SearchIcon,
   X as XIcon,
   Clock,
+  Mail,
+  Bell,
 } from "lucide-react";
 
 import { useUser } from "@/context/UserContext";
@@ -67,6 +69,8 @@ import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { Analytics } from "@/api/entities";
 import { createPageUrl } from "@/utils";
 import { isAudiobook, isMusic } from "@/lib/utils";
+import AdminEmailsTab from "@/components/admin/AdminEmailsTab";
+import AdminNotificationsTab from "@/components/admin/AdminNotificationsTab";
 
 // ── helpers ───────────────────────────────────────────────────────────
 
@@ -467,6 +471,11 @@ export default function AdminAnalytics() {
       { id: "leaderboards", label: "Leaderboards", icon: Crown },
       { id: "audiobooks", label: "Audiobooks", icon: BookOpen },
       { id: "show", label: "Per-show", icon: LibraryIcon },
+      // Outreach tools — separate from the analytics block above but
+      // intentionally on the same page because they share the admin
+      // gate, the chrome, and the tab strip.
+      { id: "emails", label: "Emails", icon: Mail },
+      { id: "notify", label: "Notifications", icon: Bell },
     ],
     []
   );
@@ -708,7 +717,7 @@ export default function AdminAnalytics() {
               Back to profile
             </button>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-              Analytics
+              Admin
             </h1>
           </div>
           {/* Date picker is hidden on tabs that don't respect a range
@@ -735,7 +744,15 @@ export default function AdminAnalytics() {
           <DashboardTabs tabs={TABS} active={view} onChange={setView} />
         </div>
 
-        {error ? (
+        {/* Outreach tabs render independently of the analytics summary
+            query — admins shouldn't see a chart skeleton on a page
+            that has no charts on it. They have their own internal
+            loading states for their cheap COUNT(*) audience queries. */}
+        {view === "emails" ? (
+          <AdminEmailsTab />
+        ) : view === "notify" ? (
+          <AdminNotificationsTab />
+        ) : error ? (
           <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.05] p-5 text-sm text-rose-200">
             <p className="font-medium">Couldn't load analytics.</p>
             <p className="mt-1 text-rose-300/70">
