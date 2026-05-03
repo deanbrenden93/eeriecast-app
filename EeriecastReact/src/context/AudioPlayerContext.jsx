@@ -59,39 +59,38 @@ const EXPANDED_PLAYER_STYLE = {
   willChange: 'transform',
 };
 
-const MOBILE_PLAYER_INITIAL = { y: '110%' };
-const MOBILE_PLAYER_ANIMATE = { y: 0 };
-const MOBILE_PLAYER_EXIT = { y: '110%' };
-const MOBILE_PLAYER_TRANSITION = {
-  type: 'tween',
-  duration: 0.28,
-  ease: [0.32, 0.72, 0, 1],
-};
-// The wrapper must span the full viewport so the `position:fixed`
-// elements inside MobilePlayer stay correctly anchored once a
-// transform is applied to it (CSS spec: a transformed ancestor
-// becomes the containing block for any `position:fixed`
-// descendants). `pointer-events: none` keeps the otherwise-empty
-// surface from swallowing clicks; the actual interactive bits
-// inside MobilePlayer add `pointer-events: auto` for themselves.
+// The mini-player wrapper must NOT have `transform` or
+// `will-change: transform`. Per the CSS spec both of those make
+// the element a containing block for `position:fixed` descendants
+// — and the inner mini-full / pill are themselves position:fixed.
+// On iOS Safari and mobile Chrome, when the URL bar collapses /
+// expands during scroll, the visual viewport changes faster than
+// the layout viewport this wrapper's `inset: 0` box is sized
+// against; that lag is exactly what produced the "gap below /
+// overlap above" the user reported during scroll. The bottom nav
+// is rock-solid in the same scenarios because it's just
+// `position: fixed; bottom: 0` with no transformed ancestor —
+// we deliberately mirror that here (no framer-motion wrapper, no
+// transform, no will-change) so the mini player tracks the
+// visual viewport directly. The inner pill / mini-full keep
+// their tiny pill ↔ restore micro-transition because that
+// transform is on the position:fixed element itself, which can't
+// affect its own viewport-relative positioning.
+//
+// `pointer-events: none` keeps the otherwise-empty full-viewport
+// surface from swallowing clicks on the page underneath; the
+// actual interactive bits inside MobilePlayer add
+// `pointer-events: auto` for themselves.
 //
 // `z-40` (and the `[html.ereader-active_&]:z-[10080]` arbitrary
-// variant on the wrapper className below) live here on the
-// **wrapper**, not on the inner mini-full / pill, because
-// `position: fixed` AND `will-change: transform` both create a new
-// stacking context — that means any `z-index` on a descendant is
-// scoped *inside* this wrapper rather than competing globally.
-// Without the explicit z on the wrapper, the wrapper itself ended
-// up at z-auto and got painted **below** home-screen card menus
-// that use `z-[5]`, which is exactly the regression the user saw.
-//
-// `willChange: transform` promotes a compositor layer up front so
-// the first animation frame doesn't pay the cost of layer creation.
+// variant on the wrapper className) live here on the wrapper as
+// an authoritative stacking-context anchor for the player layer,
+// so the inner pill/mini-full's z-index can never accidentally
+// sit below page chrome.
 const MOBILE_PLAYER_STYLE = {
   position: 'fixed',
   inset: 0,
   pointerEvents: 'none',
-  willChange: 'transform',
 };
 
 // ─── End-of-queue autoplay fallback ────────────────────────────────
@@ -1389,57 +1388,56 @@ export const AudioPlayerProvider = ({ children }) => {
       </AnimatePresence>
 
       {/* Mobile Player - shows when audio is playing and not expanded.
-          miniPlayerReady gates mounting until the expanded player's exit
-          animation finishes so the CSS enter animation is visible.
-          NOTE: The wrapper uses opacity-only exit (no transform) because
-          transform on a parent breaks position:fixed inside MobilePlayer.
-          The enter animation is a CSS @keyframes on MobilePlayer's own root.
-          currentTime / duration / isPlaying are read from `audioTimeStore`
-          via `useAudioTime` — see ExpandedPlayer note above. */}
-      <AnimatePresence>
-        {showPlayer && !showExpandedPlayer && !hidePlayer && miniPlayerReady && episode && podcast && (
-          <motion.div
-            key="mobile-player"
-            initial={MOBILE_PLAYER_INITIAL}
-            animate={MOBILE_PLAYER_ANIMATE}
-            exit={MOBILE_PLAYER_EXIT}
-            transition={MOBILE_PLAYER_TRANSITION}
-            style={MOBILE_PLAYER_STYLE}
-            // z-40 by default, escalates to z-[10080] only when the
-            // e-reader / comic reader is active so playback stays
-            // controllable while reading. The arbitrary variant
-            // matches the global rule: `<html class="ereader-active">`
-            // is toggled on/off by EReader.jsx and ComicReader.jsx.
-            className="z-40 [html.ereader-active_&]:z-[10080]"
-          >
-            <MobilePlayer
-              podcast={podcast}
-              episode={episode}
-              volume={volume}
-              onToggle={toggle}
-              onExpand={handleExpandPlayer}
-              onSkip={skip}
-              onNext={playNext}
-              onPrev={playPrev}
-              onSeek={seek}
-              onClose={handleClosePlayer}
-              onVolumeChange={setVolume}
-              // queue props
-              queue={queue}
-              queueIndex={queueIndex}
-              // playback mode props
-              isShuffling={isShuffling}
-              repeatMode={repeatMode}
-              onShuffleToggle={toggleShuffle}
-              onRepeatToggle={cycleRepeat}
-              // minimize props
-              isMinimized={isMiniPlayerMinimized}
-              onMinimize={handleMinimizePlayer}
-              onRestore={handleRestorePlayer}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+          miniPlayerReady gates mounting until the expanded player's
+          exit animation finishes so the mini doesn't pop in mid-slide.
+          NOTE: This wrapper is intentionally NOT animated and NOT
+          a `motion.div` — no framer-motion, no transform, no
+          will-change. Any of those on the wrapper would make it a
+          containing block for the inner `position:fixed` mini-full
+          / pill and cause the mobile-Safari "gap on scroll" bug
+          where the mini drifts off the visual viewport while the
+          URL bar transitions. We instead let the inner mini-full
+          / pill be `position: fixed` against the actual viewport
+          (same strategy as the bottom nav). currentTime /
+          duration / isPlaying are read from `audioTimeStore` via
+          `useAudioTime` — see ExpandedPlayer note above. */}
+      {showPlayer && !showExpandedPlayer && !hidePlayer && miniPlayerReady && episode && podcast && (
+        <div
+          style={MOBILE_PLAYER_STYLE}
+          // z-40 by default, escalates to z-[10080] only when the
+          // e-reader / comic reader is active so playback stays
+          // controllable while reading. The arbitrary variant
+          // matches the global rule: `<html class="ereader-active">`
+          // is toggled on/off by EReader.jsx and ComicReader.jsx.
+          className="z-40 [html.ereader-active_&]:z-[10080]"
+        >
+          <MobilePlayer
+            podcast={podcast}
+            episode={episode}
+            volume={volume}
+            onToggle={toggle}
+            onExpand={handleExpandPlayer}
+            onSkip={skip}
+            onNext={playNext}
+            onPrev={playPrev}
+            onSeek={seek}
+            onClose={handleClosePlayer}
+            onVolumeChange={setVolume}
+            // queue props
+            queue={queue}
+            queueIndex={queueIndex}
+            // playback mode props
+            isShuffling={isShuffling}
+            repeatMode={repeatMode}
+            onShuffleToggle={toggleShuffle}
+            onRepeatToggle={cycleRepeat}
+            // minimize props
+            isMinimized={isMiniPlayerMinimized}
+            onMinimize={handleMinimizePlayer}
+            onRestore={handleRestorePlayer}
+          />
+        </div>
+      )}
     </AudioPlayerContext.Provider>
   );
 };

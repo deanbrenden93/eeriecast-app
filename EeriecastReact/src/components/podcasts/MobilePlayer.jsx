@@ -276,19 +276,19 @@ function MobilePlayer({
           </motion.div>
         ) : (
           /* ─── Full Mini Player ──────────────────────────────────── */
-          /* This is the full-width mini player. The mount/unmount
-             slide animation lives on the wrapper provided by
-             AudioPlayerContext (a transform-only slide on a
-             full-viewport `position: fixed` parent). The internal
-             motion props here are scoped to the
-             *minimize ↔ restore* transition only — `initial={false}`
-             on the parent AnimatePresence prevents this from
-             replaying on first mount of MobilePlayer, which would
-             otherwise stack two slide animations on top of each
-             other and cause exactly the dual-animation jank the
-             user reported. The exit is kept short and
-             transform-only (no opacity, no scale) so it doesn't
-             cause a backdrop-filter recomposite. */
+          /* This is the full-width mini player. The wrapper provided
+             by AudioPlayerContext is intentionally NOT animated and
+             has no `transform` / `will-change: transform` (those on
+             an ancestor would make the wrapper a containing block
+             for this `position: fixed` element and cause the mobile
+             Safari "gap on scroll" bug — the wrapper now mirrors
+             the bottom nav's static `position: fixed` strategy).
+             The `initial={false}` on the parent AnimatePresence
+             still prevents the variant motion from running on
+             first mount of MobilePlayer; the internal motion props
+             here remain scoped to the *minimize ↔ restore*
+             transition only and use a tiny, transform-only slide so
+             they don't trigger a backdrop-filter recomposite. */
           <motion.div
             key="mini-full"
             initial={{ y: 12 }}
