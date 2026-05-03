@@ -231,17 +231,27 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
           exit (see `index.css`). */}
       <DialogContent
         hideClose
-        // The combination of `w-[94vw]` + `max-w-[560px]` clamps the
-        // modal to the viewport on phones — but only works if every
-        // shrinkable flex child inside ALSO has `min-w-0`, otherwise
-        // the intrinsic width of a long episode title or playlist name
-        // forces the panel wider than the viewport and it flows off
-        // the right edge in portrait. The `min-w-0` cleanups below
-        // (header left group, title block, footer hint) are what
-        // actually fix the overflow; this just keeps the cap.
-        className="ec-pop-modal w-[94vw] max-w-[560px] bg-gradient-to-br from-[#0c0d12] via-[#11121a] to-[#1a1726] text-white border border-violet-500/30 shadow-2xl shadow-violet-900/40 p-0 overflow-hidden z-[10200]"
+        // Width: `w-[94vw]` + `max-w-[560px]` clamps the modal to the
+        // viewport on phones — but only works if every shrinkable flex
+        // child inside ALSO has `min-w-0`, otherwise the intrinsic
+        // width of a long episode title or playlist name forces the
+        // panel wider than the viewport and it flows off the right
+        // edge in portrait. The `min-w-0` cleanups below (header left
+        // group, title block, footer hint) are what actually fix the
+        // overflow; this just keeps the cap.
+        //
+        // Height: `max-h-[90dvh]` + the `flex flex-col` chain below
+        // is the equivalent guarantee on the vertical axis. The list
+        // takes whatever space is left after the (auto-height) header
+        // and footer, and scrolls inside itself — so on short or
+        // narrow-and-tall screens the action buttons in the footer
+        // are NEVER pushed below the viewport. `dvh` (dynamic vh)
+        // is essential here because mobile browser chrome can eat a
+        // chunk of the visible area; using plain `vh` would still
+        // hide the footer behind the URL bar on iOS Safari.
+        className="ec-pop-modal w-[94vw] max-w-[560px] max-h-[90dvh] flex flex-col bg-gradient-to-br from-[#0c0d12] via-[#11121a] to-[#1a1726] text-white border border-violet-500/30 shadow-2xl shadow-violet-900/40 p-0 overflow-hidden z-[10200]"
       >
-        <div className="relative max-w-full">
+        <div className="relative flex flex-col flex-1 min-h-0">
           {/* Atmospheric glow — same identity color as the Playlist
               detail screen and Library cards. */}
           <div className="absolute -top-32 -right-24 w-72 h-72 bg-violet-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -283,9 +293,13 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
             </div>
           </div>
 
-          {/* ── Content ────────────────────────────────────────── */}
-          <form onSubmit={handleSubmit}>
-            <div className="relative px-4 sm:px-6 md:px-8">
+          {/* ── Content ──────────────────────────────────────────
+              The form and the content area both join the flex
+              column so the inner list is the only thing that
+              flex-grows + scrolls; header and footer keep their
+              natural heights and stay pinned. */}
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+            <div className="relative px-4 sm:px-6 md:px-8 flex-1 min-h-0 flex flex-col">
               {/* Mode toggle / search row */}
               {!creating ? (
                 <div className="flex items-center gap-2 mb-3">
@@ -311,10 +325,20 @@ export default function AddToPlaylistModal({ isOpen, episode, onClose, playlists
                 </div>
               ) : null}
 
-              {/* Existing playlists list */}
+              {/* Existing playlists list.
+                  `flex-1 min-h-0` lets the list claim all remaining
+                  vertical space inside the modal and scroll inside
+                  itself. This replaces the previous fixed
+                  `max-h-[280px]` cap — that cap meant the modal's
+                  total height was (header + 280 + footer + paddings),
+                  which on thin/tall phones overflowed the viewport
+                  and pushed the Cancel / Add buttons below the
+                  visible area. With the flex chain above + a viewport
+                  `max-h` on the panel, the list simply shrinks to
+                  fit whatever space is available. */}
               {!creating && (
-                <div className="rounded-xl border border-white/[0.05] bg-black/20 overflow-hidden">
-                  <div className="max-h-[280px] overflow-y-auto divide-y divide-white/[0.04]">
+                <div className="rounded-xl border border-white/[0.05] bg-black/20 overflow-hidden flex-1 min-h-0 flex flex-col">
+                  <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-white/[0.04]">
                     {filteredPlaylists.length === 0 ? (
                       <div className="py-10 px-6 text-center">
                         <div className="w-12 h-12 mx-auto rounded-full bg-violet-500/10 flex items-center justify-center mb-3 ring-1 ring-violet-400/15">
