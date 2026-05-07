@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
 import { Category } from "@/api/entities";
-import { Loader2 } from "lucide-react";
 import { getCategoryStyle } from "@/lib/categoryStyles";
+import { CategoryExplorerSkeleton } from "@/components/skeletons/HomeSkeletons";
 
 export default function CategoryExplorer() {
   const scrollRef = useRef(null);
@@ -43,16 +43,11 @@ export default function CategoryExplorer() {
 
   const categories = categoriesData;
 
-  if (isLoading) {
-    return (
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-6">Explore Categories</h2>
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
-        </div>
-      </div>
-    );
-  }
+  // Skeleton matches the live layout's card width / height / row pattern
+  // so the page below this section doesn't bounce when categories
+  // resolve. Replaces the previous centered-spinner state which left
+  // the row flat-zero height during fetch.
+  if (isLoading) return <CategoryExplorerSkeleton />;
 
   if (!categories.length) return null;
 

@@ -10,6 +10,7 @@ import { hasCategory, isAudiobook, isMusic } from "@/lib/utils";
 import { canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
 import { qk } from "@/lib/queryClient";
+import { EpisodeCloudsSkeleton } from "@/components/skeletons/HomeSkeletons";
 import {
   ChevronLeft,
   ChevronRight,
@@ -352,7 +353,10 @@ export default function EpisodeCloudsRow({ onAddToPlaylist: _unused }) {
     [loadAndPlay, isAuthenticated],
   );
 
-  if (isLoading && !anyData) return null;
+  // First load (no cached pool yet) → render a shape-matched cluster
+  // skeleton so the section reserves its full footprint instead of
+  // collapsing to zero height and pushing the rest of the page up.
+  if (isLoading && !anyData) return <EpisodeCloudsSkeleton />;
   if (!anyData) return null;
 
   return (

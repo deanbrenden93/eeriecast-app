@@ -48,6 +48,16 @@ import MembersOnlySection from "../components/podcasts/MembersOnlySection";
 import MembersOnlyEpisodesRow from "../components/podcasts/MembersOnlyEpisodesRow";
 import FeaturedCreatorsSection from "../components/podcasts/FeaturedCreatorsSection";
 import ExpandedPlayer from "../components/podcasts/ExpandedPlayer";
+import {
+  FeaturedHeroSkeleton,
+  KeepListeningSkeleton,
+  EpisodeRowSkeleton,
+  EpisodeCloudsSkeleton,
+  MusicTracksSkeleton,
+  ShowRowSkeleton,
+  CategoryExplorerSkeleton,
+  FeaturedCreatorsSkeleton,
+} from "@/components/skeletons/HomeSkeletons";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@/context/UserContext.jsx";
@@ -106,7 +116,7 @@ export default function Podcasts() {
   // Keep Listening: fetch the 20 most recent history entries — same data
   // source as the Library → History tab, just capped and styled for the home screen.
   // Cached via React Query so navigating away and back doesn't flash skeletons.
-  const { data: keepListeningRaw = [] } = useQuery({
+  const { data: keepListeningRaw = [], isLoading: isHistoryLoading } = useQuery({
     queryKey: qk.library.history(20),
     queryFn: async () => {
       const resp = await UserLibrary.getHistory(20);
@@ -235,27 +245,27 @@ export default function Podcasts() {
   const handleCloseMobilePlayer = () => { pause(); };
   const handleCollapsePlayer = () => setShowExpandedPlayer(false);
 
-  // Skeleton loading block
-  const LoadingSkeleton = ({ height = "h-[200px]" }) => (
-    <div className={`${height} w-full bg-eeriecast-surface-light/50 rounded-xl animate-pulse`} />
-  );
-
   return (
     <div className="min-h-screen bg-eeriecast-surface w-full">
-      {/* Hero */}
-      {isLoading ? (
-        <div className="w-full bg-eeriecast-surface-light/30" style={{ minHeight: 'clamp(360px, 46vh, 460px)' }} />
-      ) : (
-        <FeaturedHero onPlay={handlePodcastPlay} />
-      )}
+      {/* ─── Hero ───
+          Pre-data: render a skeleton block sized exactly like the real
+          hero (clamp(400px, 48vh, 500px)) so the page below it doesn't
+          jump up when the catalog finishes loading. */}
+      {isLoading ? <FeaturedHeroSkeleton /> : <FeaturedHero onPlay={handlePodcastPlay} />}
 
-      {/* Keep Listening */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton height="h-[180px]" />
-        </div>
-      ) : (
-        keepListeningItems.length > 0 && (
+      {/* ─── Keep Listening ───
+          Only authenticated users have a history feed; anonymous users
+          skip this entire row. While the history fetch (or the catalog
+          itself) is in flight we render a 2-row skeleton matching the
+          real card grid, then either the real row or nothing once the
+          fetch resolves. Users with no history never see a skeleton —
+          the row is simply omitted, same as today. */}
+      {isAuthenticated && (
+        (isLoading || isHistoryLoading) ? (
+          <div className="w-full px-2.5 lg:px-10 py-3">
+            <KeepListeningSkeleton />
+          </div>
+        ) : keepListeningItems.length > 0 && (
           <div className="w-full px-2.5 lg:px-10 py-3">
             <KeepListeningSection
               items={keepListeningItems}
@@ -280,77 +290,76 @@ export default function Podcasts() {
         )
       )}
 
-      {/* For You — episodes from podcasts the user has listened to */}
-      {!isLoading && (
-        <div className="w-full px-2.5 lg:px-10 py-3">
+      {/* ─── For You ───
+          NewReleasesRow renders its own skeleton internally during its
+          fetch. The page just wraps it in the same padding it always
+          has, so the real row drops in without a horizontal shift. */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeRowSkeleton titleWidth="w-32" />
+        ) : (
           <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">For You</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Recommended`}
             feedType="recommended"
             onAddToPlaylist={openAddToPlaylist}
           />
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Newest — freshly published episodes across the catalog. Sits
-          between "For You" and "Trending Now" so the home screen reads
-          as personal → recent → popular. Uses the same
-          NewReleasesRow / feedType="latest" plumbing that powers the
-          Discover → Newest tab, so the feed stays in sync. */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton height="h-[300px]" />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-3">
+      {/* ─── Newest ───
+          Freshest episodes across the catalog. Sits between For You
+          and Trending Now (personal → recent → popular). Same
+          NewReleasesRow plumbing as the Discover → Newest tab so feeds
+          stay in sync. */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeRowSkeleton titleWidth="w-44" />
+        ) : (
           <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">Newest Episodes</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Newest`}
             feedType="latest"
             onAddToPlaylist={openAddToPlaylist}
           />
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Trending — episodes sorted by popularity */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton height="h-[300px]" />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-3">
+      {/* ─── Trending ─── */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeRowSkeleton titleWidth="w-40" />
+        ) : (
           <NewReleasesRow
             title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
             viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
             feedType="trending"
             onAddToPlaylist={openAddToPlaylist}
           />
-        </div>
-      )}
-
-      {/* Drifting by Mood — themed "episode clouds" that break up the row
-          monotony with organic thumbnail clusters. Each cluster maps a
-          playful teaser title ("Explicitly Hilarious", "Lost in the
-          Woods", etc.) to an underlying podcast category and rolls 5
-          random episodes from that bucket on each visit. */}
-      {!isLoading && (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <EpisodeCloudsRow onAddToPlaylist={openAddToPlaylist} />
-        </div>
-      )}
-
-      {/* Categories */}
-      <div className="w-full px-2.5 lg:px-10 py-5">
-        {isLoading ? <LoadingSkeleton /> : <CategoryExplorer />}
+        )}
       </div>
 
-      {/* Audiobooks */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-3">
+      {/* ─── Random Cravings (Episode Clouds) ───
+          Themed clusters that break the row-monotony with organic
+          thumbnail clouds. The component owns its own loading state. */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeCloudsSkeleton />
+        ) : (
+          <EpisodeCloudsRow onAddToPlaylist={openAddToPlaylist} />
+        )}
+      </div>
+
+      {/* ─── Categories ─── */}
+      <div className="w-full px-2.5 lg:px-10 py-5">
+        {isLoading ? <CategoryExplorerSkeleton /> : <CategoryExplorer />}
+      </div>
+
+      {/* ─── Audiobooks ─── */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <ShowRowSkeleton titleWidth="w-32" />
+        ) : (
           <PodcastRow
             title={
               <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-300 bg-clip-text text-transparent">
@@ -364,51 +373,55 @@ export default function Podcasts() {
             viewAllTo={createPageUrl('Audiobooks')}
             subtext={(p) => formatAudiobookRuntime(p)}
           />
+        )}
+      </div>
+
+      {/* ─── Music ───
+          Two-row track-chip grid (not artist cards). Up to 40 tracks
+          surfaced; "View all" lands in Discover → Music. Only renders
+          if there's actually any music in the catalog. */}
+      {(isLoading || podcasts.some(p => isMusic(p))) && (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          {isLoading ? (
+            <MusicTracksSkeleton />
+          ) : (
+            <MusicTracksRow
+              title={
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-fuchsia-400 to-fuchsia-300 bg-clip-text text-transparent">
+                  Music
+                </h2>
+              }
+              viewAllTo={`${createPageUrl('Discover')}?tab=Music`}
+              maxItems={40}
+              onAddToPlaylist={openAddToPlaylist}
+            />
+          )}
         </div>
       )}
 
-      {/* Music — rendered as individual track chips (not artist cards),
-          so listeners can kick off a specific song with one tap rather
-          than drilling through an artist page first. Up to 40 tracks
-          are surfaced in a two-row horizontal grid. "View all" routes
-          into the Discover screen's Music tab so the music browse
-          experience lives alongside the rest of the show categories. */}
-      {!isLoading && podcasts.some(p => isMusic(p)) && (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <MusicTracksRow
-            title={
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-fuchsia-400 to-fuchsia-300 bg-clip-text text-transparent">
-                Music
-              </h2>
-            }
-            viewAllTo={`${createPageUrl('Discover')}?tab=Music`}
-            maxItems={40}
-            onAddToPlaylist={openAddToPlaylist}
-          />
-        </div>
-      )}
-
-      {/* Members-Only Episodes — randomized mix of samples + gated content */}
-      {!isLoading && (
-        <div className="w-full px-2.5 lg:px-10 py-3">
+      {/* ─── Members-Only Episodes ───
+          Randomized mix of samples + gated content. The component
+          renders its own skeleton during its internal fetches. */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeRowSkeleton titleWidth="w-56" />
+        ) : (
           <MembersOnlyEpisodesRow onAddToPlaylist={openAddToPlaylist} />
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Members Only Shows */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton height="h-[300px]" />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-3">
+      {/* ─── Members Only Shows ─── */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <ShowRowSkeleton titleWidth="w-36" />
+        ) : (
           <MembersOnlySection
             podcasts={podcasts.filter(p => p.is_exclusive && !isMusic(p))}
             onPodcastPlay={handlePodcastPlay}
             subtext={(p) => formatEpisodeCount(p)}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ─── Membership promo banner (non-premium users only) ─── */}
       {!isLoading && !isPremium && (
@@ -458,16 +471,14 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* All Shows */}
-      {isLoading ? (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <LoadingSkeleton height="h-[300px]" />
-        </div>
-      ) : (
-        <div className="w-full px-2.5 lg:px-10 py-3 pb-32">
+      {/* ─── Featured Creators ─── */}
+      <div className="w-full px-2.5 lg:px-10 py-3 pb-32">
+        {isLoading ? (
+          <FeaturedCreatorsSkeleton />
+        ) : (
           <FeaturedCreatorsSection />
-        </div>
-      )}
+        )}
+      </div>
       
       <AnimatePresence>
         {selectedPodcast && (

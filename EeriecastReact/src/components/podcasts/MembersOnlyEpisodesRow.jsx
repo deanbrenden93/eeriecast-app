@@ -24,6 +24,7 @@ import { canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 import { qk } from "@/lib/queryClient";
+import { EpisodeRowSkeleton } from "@/components/skeletons/HomeSkeletons";
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -230,7 +231,11 @@ export default function MembersOnlyEpisodesRow({
     }
   };
 
-  if (loading && mixed.length === 0) return null;
+  // First load: nothing in cache yet → show a shape-matched skeleton so
+  // the section keeps its footprint instead of vanishing and pushing
+  // every row below it up the page.
+  if (loading && mixed.length === 0)
+    return <EpisodeRowSkeleton count={Math.min(maxItems, 6)} titleWidth="w-56" />;
   if (!loading && mixed.length === 0) return null;
 
   return (

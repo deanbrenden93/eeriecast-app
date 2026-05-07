@@ -25,6 +25,7 @@ import { getAudiobookPurchaseLink } from '@/data/audiobookPurchaseLinks';
 import { getShowDescription } from '@/data/show-descriptions';
 import MatureContentModal from '@/components/MatureContentModal';
 import { STORY_SUBMISSION_CATEGORY, STORY_SUBMISSION_SHOWS } from '@/pages/Help';
+import { ShowDetailSkeleton } from '@/components/skeletons/HomeSkeletons';
 
 function useQuery() {
   const { search } = useLocation();
@@ -577,14 +578,13 @@ export default function Episodes() {
   }, [show?.total_duration]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-eeriecast-surface text-white">
-        <div className="h-[50vh] w-full bg-eeriecast-surface-light/20 animate-pulse" />
-        <div className="px-2.5 lg:px-10 py-8">
-          <div className="h-80 w-full bg-eeriecast-surface-light/20 rounded-xl animate-pulse" />
-        </div>
-      </div>
-    );
+    // Skeleton shaped like the real hero (cover, badges, title, meta,
+    // description, CTAs) plus an episode-list preview underneath.
+    // Reserves the same vertical footprint as the loaded page so the
+    // mini-player and bottom-nav don't slide when content lands. We
+    // pass a hint about audiobook-vs-podcast so the cover skeleton
+    // uses the right aspect ratio (3:4 for books, square otherwise).
+    return <ShowDetailSkeleton isBook={isBook} />;
   }
 
   return (

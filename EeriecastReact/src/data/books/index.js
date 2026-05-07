@@ -7,12 +7,14 @@
  */
 
 import callOfCthulhu from "./call-of-cthulhu";
+import dogwood from "./dogwood";
 import drakenbludTheMalformedKing from "./drakenblud-the-malformed-king";
 import lore from "./lore";
 import westfall from "./westfall";
 
 const BOOK_CATALOG = [
   callOfCthulhu,
+  dogwood,
   drakenbludTheMalformedKing,
   lore,
   westfall,

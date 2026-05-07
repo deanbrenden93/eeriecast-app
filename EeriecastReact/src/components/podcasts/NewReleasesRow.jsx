@@ -12,6 +12,7 @@ import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
 import { qk } from "@/lib/queryClient";
+import { EpisodeRowSkeleton } from "@/components/skeletons/HomeSkeletons";
 
 function formatDuration(raw) {
   if (!raw && raw !== 0) return null;
@@ -196,7 +197,12 @@ export default function NewReleasesRow({
     }
   };
 
-  if (loading) return null;
+  // Render a shape-matched skeleton while the feed is fetching for the
+  // first time (cache empty). Mirrors the live layout's card width,
+  // aspect ratio, and footer height so swapping skeleton ↔ real cards
+  // doesn't shift the rest of the page. After load, the row hides if
+  // there's truly nothing to surface.
+  if (loading) return <EpisodeRowSkeleton count={Math.min(maxItems, 6)} />;
   if (episodes.length === 0) return null;
 
   return (

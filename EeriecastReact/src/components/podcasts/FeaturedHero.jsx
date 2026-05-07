@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Play, ChevronRight, BookOpen, Crown } from "lucide-react";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { useUser } from "@/context/UserContext.jsx";
+import dogwoodHero from "@/assets/heroes/dogwood.png";
 
 /* ═══════════════════════════════════════════════════════════════════
    HERO SLIDES CONFIG
@@ -60,16 +61,24 @@ const HERO_SLIDES = [
   },
   {
     slug: 'dogwood-a-southern-gothic-body-horror-novel',
-    badge: 'New Audiobook',
+    badge: 'Southern Horror-tality',
     title: 'Dogwood',
     description:
-      '1940s Georgia. Two girls vanish from Dogwood Plantation. A private eye and a professor must untangle secrets and murder — and discover the true monsters are terrifyingly human.',
-    ctaText: 'Start Reading',
-    ctaIcon: 'book',
-    secondaryCta: { text: 'View Book' },
-    accent: '#c2455a',
-    accentAlt: '#8b2040',
+      'The Dogwood Horror Novel is now complete. Catch the entire DISTURBING saga of a mysterious herb that might be turning people into monsters in a small town in Georgia...',
+    ctaText: 'Listen Now',
+    // Sends the user to the Dogwood show page instead of starting playback
+    ctaNav: 'show',
+    // Tuned for the editorial hero image (cool slate-and-silver moonlit
+    // composition) rather than the dustier dogwood-petal tones used on
+    // the show page itself. A more saturated arterial rose pops as
+    // warm-on-cool against the image, reinforces the "disturbing" copy,
+    // and stays in the dogwood (red-flowered tree) family.
+    accent: '#e11d48',
+    accentAlt: '#881337',
     isBook: true,
+    // Editorial hero artwork — overrides the podcast cover for this slide.
+    // Renders untilted (the image is intentionally composed, not square art).
+    heroImage: dogwoodHero,
   },
 ];
 
@@ -94,6 +103,10 @@ function SlideContent({ slide, podcast, onPlay, navigate }) {
   const handlePrimary = () => {
     if (isPromo && slide.ctaTo) {
       navigate(slide.ctaTo);
+    } else if (slide.ctaNav === 'show' && podcast) {
+      // Editorial slides (e.g. Dogwood) route the primary CTA to the show
+      // page rather than starting playback immediately.
+      navigate(showUrl(podcast));
     } else if (onPlay && podcast) {
       onPlay(podcast);
     }
@@ -305,7 +318,11 @@ export default function FeaturedHero({ onPlay }) {
   const isPromo = currentSlide?.type === 'promo';
   const accent = currentSlide?.accent || '#dc2626';
   const accentAlt = currentSlide?.accentAlt || '#7c3aed';
-  const coverImage = currentPodcast?.cover_image;
+  // Slides may override the background with custom editorial artwork.
+  // Otherwise the podcast's cover_image is used (the existing behaviour).
+  const heroImage = currentSlide?.heroImage;
+  const bgImage = heroImage || currentPodcast?.cover_image;
+  const isEditorialHero = !!heroImage;
 
   /* Auto-rotate */
   useEffect(() => {
@@ -365,11 +382,12 @@ export default function FeaturedHero({ onPlay }) {
     >
       {/* ── Background ── */}
       <div className="absolute inset-0 bg-[#08080e]">
-        {/* Blurred cover art wash */}
+        {/* Blurred wash — softens the edges and bleeds the dominant colour
+            of the artwork into the surrounding chrome. */}
         <AnimatePresence mode="sync">
-          {coverImage && (
+          {bgImage && (
             <motion.div
-              key={coverImage}
+              key={bgImage}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -377,7 +395,7 @@ export default function FeaturedHero({ onPlay }) {
               className="absolute inset-0"
             >
               <img
-                src={coverImage}
+                src={bgImage}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover"
                 style={{ filter: 'blur(70px) saturate(1.4) brightness(0.3)', transform: 'scale(1.3)' }}
@@ -387,13 +405,16 @@ export default function FeaturedHero({ onPlay }) {
           )}
         </AnimatePresence>
 
-        {/* Crisp full-bleed cover — the slide's dominant visual across every
-            breakpoint, with a slight clockwise tilt. Scale compensates for
-            rotation so the rotated corners never expose the backdrop. */}
-        {coverImage && (
+        {/* Crisp full-bleed art — the slide's dominant visual across every
+            breakpoint. Square podcast covers get a slight clockwise tilt
+            (and a compensating scale so the rotated corners never expose
+            the backdrop). Editorial hero artwork is rendered untilted
+            because it's intentionally composed and tilting would crop it
+            awkwardly. */}
+        {bgImage && (
           <AnimatePresence mode="sync">
             <motion.div
-              key={`bg-cover-${coverImage}`}
+              key={`bg-cover-${bgImage}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -402,14 +423,21 @@ export default function FeaturedHero({ onPlay }) {
               aria-hidden="true"
             >
               <img
-                src={coverImage}
+                src={bgImage}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover lg:[object-position:center_25%]"
-                style={{
-                  transform: 'rotate(2.5deg) scale(1.12)',
-                  transformOrigin: 'center',
-                  filter: 'saturate(1.1) brightness(0.85)',
-                }}
+                style={isEditorialHero
+                  ? {
+                      transform: 'scale(1.04)',
+                      transformOrigin: 'center',
+                      filter: 'saturate(1.05) brightness(0.78)',
+                    }
+                  : {
+                      transform: 'rotate(2.5deg) scale(1.12)',
+                      transformOrigin: 'center',
+                      filter: 'saturate(1.1) brightness(0.85)',
+                    }
+                }
                 draggable={false}
               />
             </motion.div>

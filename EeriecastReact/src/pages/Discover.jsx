@@ -20,6 +20,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { X, Loader2, ArrowLeft } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getCategoryStyle, normalizeCategoryKey } from "@/lib/categoryStyles";
+import { ShowGridSkeleton, EpisodesTableSkeleton } from "@/components/skeletons/HomeSkeletons";
 
 /* ─────────────────────────── helpers ─────────────────────────── */
 
@@ -626,10 +627,9 @@ export default function Discover() {
           />
         </SectionHeader>
         {loading && visible.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 py-16">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading episodes...
-          </div>
+          // Skeleton shaped like the real episode-row table so the tab
+          // doesn't collapse + jump while the feed loads.
+          <EpisodesTableSkeleton rows={10} />
         ) : visible.length === 0 ? (
           <div className="text-center py-16 text-zinc-500">{emptyMessage}</div>
         ) : (
@@ -786,6 +786,8 @@ export default function Discover() {
     };
 
     if (isCategoriesLoading) {
+      // Skeleton grid shaped like the real category pill grid, so the
+      // tab keeps its footprint while the categories fetch resolves.
       return (
         <motion.div
           key="category-loading"
@@ -793,9 +795,19 @@ export default function Discover() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="text-zinc-500 text-center py-10"
         >
-          Loading categories...
+          <div className="mb-5 space-y-2">
+            <div className="h-7 w-64 eeriecast-skeleton rounded" />
+            <div className="h-3 w-72 eeriecast-skeleton rounded" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5 md:gap-3">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-[4.25rem] md:h-[4.5rem] rounded-xl border border-white/[0.05] bg-white/[0.02] eeriecast-skeleton"
+              />
+            ))}
+          </div>
         </motion.div>
       );
     }
@@ -875,13 +887,29 @@ export default function Discover() {
 
   const renderContent = () => {
     if (isLoading) {
-      return (
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="h-20 bg-eeriecast-surface-light/50 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      );
+      // Initial catalog load — render a skeleton shaped to match the
+      // currently-active tab. Episode tabs (Recommended/Newest/Trending)
+      // get a table skeleton; show tabs get a grid; categories get a
+      // pill grid. Same dimensions as the loaded UI so the tab content
+      // doesn't shift up when the catalog resolves.
+      const isEpisodeTab =
+        activeTab === "Recommended" ||
+        activeTab === "Newest" ||
+        activeTab === "Trending";
+      if (isEpisodeTab) return <EpisodesTableSkeleton rows={10} />;
+      if (activeTab === "Categories") {
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5 md:gap-3">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-[4.25rem] md:h-[4.5rem] rounded-xl border border-white/[0.05] bg-white/[0.02] eeriecast-skeleton"
+              />
+            ))}
+          </div>
+        );
+      }
+      return <ShowGridSkeleton count={18} />;
     }
 
     switch (activeTab) {
