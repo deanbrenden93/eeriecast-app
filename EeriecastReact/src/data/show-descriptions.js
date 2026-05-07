@@ -31,21 +31,41 @@ const SHOW_DESCRIPTIONS = {
 };
 
 /**
+ * Explicit aliases for shows whose API title doesn't match the
+ * curated key verbatim. Add an entry here when the live title diverges
+ * from the canonical name (e.g. "LORE - A Folklore Horror Novel"
+ * should map to the "lore" entry above).
+ *
+ * Keys and values are both lowercase + trimmed.
+ *
+ * IMPORTANT: do NOT add partial / fuzzy aliases here. This map is
+ * exact-match only. The previous implementation did a `String.includes`
+ * match between every show title and every curated key, which silently
+ * mapped "Freaky Folklore Lost Lore" → the "freaky folklore" entry
+ * (and "Lost Lore" → the "lore" entry) — i.e. spinoff shows inherited
+ * the parent show's description. Exact aliases keep the override
+ * surface intentional.
+ */
+const TITLE_ALIASES = {
+  "lore - a folklore horror novel": "lore",
+};
+
+const normalizeTitle = (raw) => (raw || "").toLowerCase().trim();
+
+/**
  * Look up a curated description for a show by title.
- * Returns the curated copy, or null if none exists.
+ * Returns the curated copy, or null if none exists — in which case
+ * the caller should fall back to the API-supplied description.
  */
 export function getShowDescription(show) {
   if (!show) return null;
-  const title = (show.title || show.name || "").toLowerCase().trim();
+  const title = normalizeTitle(show.title || show.name);
   if (!title) return null;
 
-  // Exact match first
   if (SHOW_DESCRIPTIONS[title]) return SHOW_DESCRIPTIONS[title];
 
-  // Containment match (e.g. "LORE - A Folklore Horror Novel" contains key "lore")
-  for (const [key, desc] of Object.entries(SHOW_DESCRIPTIONS)) {
-    if (title.includes(key) || key.includes(title)) return desc;
-  }
+  const aliased = TITLE_ALIASES[title];
+  if (aliased && SHOW_DESCRIPTIONS[aliased]) return SHOW_DESCRIPTIONS[aliased];
 
   return null;
 }
