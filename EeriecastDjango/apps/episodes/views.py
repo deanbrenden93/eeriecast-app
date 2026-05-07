@@ -1,3 +1,5 @@
+import hashlib
+import random
 from datetime import timedelta
 
 from django.contrib.contenttypes.models import ContentType
@@ -28,8 +30,17 @@ from .serializers import EpisodeSerializer
 # TTL is the safety net: even without signals (e.g. cross-worker on
 # LocMemCache, or future deploys before signals reload), stale profiles
 # self-heal within RECO_PROFILE_TTL seconds.
-RECO_PROFILE_CACHE_VERSION = 1
-RECO_PROFILE_TTL = 300  # 5 minutes
+#
+# 60s TTL: cache busting via signals only propagates within the worker
+# that received the write. With multiple gunicorn workers on a per-
+# process LocMemCache, sibling workers keep a stale profile until their
+# own copy expires. Five minutes was long enough for "I just played
+# something and the For You feed didn't change" to be a recurring
+# complaint; 60s is short enough that staleness is bounded to a single
+# refresh while still amortizing the profile build across the bursty
+# fan-out from a single page paint (home rows + Discover prefetch).
+RECO_PROFILE_CACHE_VERSION = 2
+RECO_PROFILE_TTL = 60
 
 
 def _reco_profile_cache_key(user_id):
@@ -62,11 +73,6 @@ RECOMMENDED_PROFILE_DAYS = 90
 # A user with thousands of followed/listened-to podcasts would otherwise
 # blow up the query size. Top-N preserves the strongest signals.
 RECOMMENDED_PODCAST_SCORE_CAP = 250
-
-# Cap the number of podcasts we ask for popularity stats over to keep
-# the candidate-pool join bounded on huge catalogs.
-RECOMMENDED_POPULARITY_DAYS = 14
-
 
 class RecommendedFeedPagination(PageNumberPagination):
     """Dedicated pagination for /episodes/recommended/.
@@ -167,6 +173,14 @@ def _compute_user_profile(user):
         "podcast_engagement": {},
         "followed_podcast_ids": set(),
         "favorite_podcast_ids": set(),
+        # Podcasts derived from the user's favorited *episodes*. Episode
+        # favorites used to be invisible to the ranker (the algorithm
+        # only looked at podcast-level favorites), so a user who tapped
+        # the heart on a dozen episodes would still hit cold-start and
+        # see the global popularity list. We now roll those favorites
+        # up to their parent podcast and feed them into the same
+        # interested_podcast_ids set as podcast follows / favorites.
+        "favorite_episode_podcast_ids": set(),
         "category_weights": {},
         "creator_weights": {},
     }
@@ -226,21 +240,42 @@ def _compute_user_profile(user):
         .values_list("object_id", flat=True)
     )
 
+    # Episode favorites — roll up to the parent podcast so a user who
+    # only ever favorites individual episodes still produces signal.
+    # Without this, hearting episodes does literally nothing to the
+    # ranking and the feed feels broken ("I favorited five episodes
+    # and the order didn't budge").
+    episode_ct = ContentType.objects.get_for_model(Episode)
+    favorite_episode_ids = list(
+        Favorite.objects.filter(user=user, content_type=episode_ct)
+        .values_list("object_id", flat=True)
+    )
+    if favorite_episode_ids:
+        profile["favorite_episode_podcast_ids"] = set(
+            Episode.objects.filter(id__in=favorite_episode_ids)
+            .values_list("podcast_id", flat=True)
+        )
+
     interested_podcast_ids = (
         set(profile["podcast_engagement"].keys())
         | profile["followed_podcast_ids"]
         | profile["favorite_podcast_ids"]
+        | profile["favorite_episode_podcast_ids"]
     )
     if interested_podcast_ids:
         # Per-podcast taste weight used to derive category/creator
         # preferences. Follows are the strongest explicit signal, then
-        # favorites, then accumulated engagement.
+        # podcast favorites, then episode-level favorites (a softer
+        # "I liked this thing" than starring the whole show), then
+        # accumulated engagement.
         def _podcast_weight(pid):
             base = profile["podcast_engagement"].get(pid, 0.0)
             if pid in profile["followed_podcast_ids"]:
                 base = max(base, 1.0)
             elif pid in profile["favorite_podcast_ids"]:
                 base = max(base, 0.7)
+            elif pid in profile["favorite_episode_podcast_ids"]:
+                base = max(base, 0.5)
             return base
 
         for pid, cat_id in (
@@ -291,6 +326,7 @@ def _compute_podcast_scores(profile):
         set(profile["podcast_engagement"].keys())
         | profile["followed_podcast_ids"]
         | profile["favorite_podcast_ids"]
+        | profile["favorite_episode_podcast_ids"]
     )
 
     # Cap category and creator expansion so a user with extremely broad
@@ -349,9 +385,13 @@ def _compute_podcast_scores(profile):
 
     # Component weights — tuned so an explicit follow always beats a
     # category-only similarity, and a favorited show beats a casual
-    # one-time listen of the same category.
+    # one-time listen of the same category. Episode favorites land
+    # between podcast favorites and pure category overlap: weaker than
+    # "I love the whole show" but stronger than "I happen to like the
+    # genre".
     follow_weight = 60.0
     favorite_weight = 35.0
+    favorite_episode_weight = 22.0
     history_weight = 25.0   # multiplied by capped engagement (0..3)
     category_weight = 8.0   # multiplied by capped overlap (0..3)
     creator_weight = 12.0   # multiplied by capped overlap (0..3)
@@ -364,6 +404,8 @@ def _compute_podcast_scores(profile):
             score += follow_weight
         if pid in profile["favorite_podcast_ids"]:
             score += favorite_weight
+        if pid in profile["favorite_episode_podcast_ids"]:
+            score += favorite_episode_weight
 
         engagement = profile["podcast_engagement"].get(pid, 0.0)
         if engagement > 0:
@@ -454,60 +496,82 @@ class TrendingEpisodeListView(generics.ListAPIView):
 
 
 class RecommendedEpisodeListView(generics.ListAPIView):
-    """For You / Recommended feed.
+    """For You / Recommended feed — pure-taste, no popularity bandwagon.
 
-    The ranker combines explicit signals (follows, favorites), implicit
-    signals (engagement-weighted listening history), and content-similarity
-    signals (shared categories, shared creators) into a per-podcast score,
-    then annotates each candidate episode with that score plus a recency
-    bonus and a recent-popularity prior. Ordering is fully deterministic
-    server-side; the frontend should not reshuffle.
+    Philosophy. The point of this surface is "based on what *you* have
+    been liking and listening to so far, here is more of that." It is
+    explicitly *not* a "what's hot right now" or "everyone is listening
+    to this" surface — those exist (the Trending feed and the Newest
+    feed) and they live on their own tabs. We deliberately do not bias
+    For You toward popular content, because doing so collapses every
+    user's recommendations into a global popularity ranking and erases
+    the personalization the user can feel.
 
-    Cold-start (anonymous users, or signed-in users with zero usable
-    signals) falls through to a popularity + recency ranking instead of
-    Postgres ``ORDER BY RANDOM()``, which is both expensive and the source
-    of the "different 20 every refresh" symptom.
+    Scoring inputs (all sourced from the requesting user's own data):
+      * Follows                — +60  per podcast
+      * Podcast favorites      — +35  per podcast
+      * Episode favorites      — +22  per parent podcast
+      * Engaged listening      — up to +75 per podcast (engagement-
+                                 weighted, recency-decayed)
+      * Category overlap       — up to +24 per episode (own categories)
+      * Creator overlap        — up to +36 per episode (own creators)
+      * Recency bonus          — +1 / +5 / +10 / +15 by age bucket
+                                 (a freshness tiebreak, not a driver)
+
+    Notably absent: any global popularity term. Two episodes with the
+    same personalization score sort by recency and then by a per-user
+    deterministic shuffle (see ``list``), never by "how many other
+    listeners played this in the last 14 days."
+
+    No-signal users see an empty feed. Anonymous visitors and signed-
+    in users with zero usable signal (no follows, no favorites of any
+    kind, no listening history within the profile window) get an empty
+    result on purpose — there is nothing personal to recommend yet.
+    The frontend already handles this with a "Sign in" CTA on the
+    Discover Recommended tab and by hiding the For You row on the
+    home screen until the user accumulates some taste signal.
+
+    Two-phase ordering. The DB sort buckets episodes by score; the
+    Python pass then (a) shuffles within each score bucket using a
+    seed derived from ``user_id + today``, and (b) round-robins across
+    podcasts within each bucket so a single followed show can't
+    monopolize the entire row. Same user + same day = stable order
+    across refreshes; different users (or same user, next day) =
+    different orderings.
     """
 
     serializer_class = EpisodeSerializer
     permission_classes = [permissions.AllowAny]
     pagination_class = RecommendedFeedPagination
 
-    def _cold_start_queryset(self, base_queryset):
-        now = timezone.now()
-        recent_pop_filter = Q(
-            playbackevent__created_at__gte=now - timedelta(days=RECOMMENDED_POPULARITY_DAYS),
-            playbackevent__event__in=["play", "complete"],
-        )
-        recency_expr = Case(
-            When(published_at__gte=now - timedelta(days=14), then=Value(20)),
-            When(published_at__gte=now - timedelta(days=60), then=Value(10)),
-            When(published_at__gte=now - timedelta(days=180), then=Value(3)),
-            default=Value(0),
-            output_field=IntegerField(),
-        )
-        return (
-            base_queryset
-            .annotate(
-                _recency=recency_expr,
-                _popularity=Count("playbackevent", filter=recent_pop_filter),
-            )
-            .annotate(_total_score=F("_recency") + F("_popularity") * 2)
-            .order_by("-_total_score", "-published_at")
-        )
+    # How many candidates we materialize before applying the per-user
+    # shuffle + diversity pass. Has to comfortably exceed the largest
+    # page the frontend asks for (FEED_FETCH_LIMIT = 200) so a full
+    # first page can be served from the post-processed window.
+    SHUFFLE_WINDOW = 1000
+
+    # Diversity cap — within the post-shuffle order, no more than this
+    # many consecutive episodes may come from the same podcast before
+    # we round-robin to a different one (when one is available at the
+    # same or lower score tier). Prevents a single followed show with
+    # a deep back-catalog from filling the whole feed.
+    MAX_CONSECUTIVE_PER_PODCAST = 1
 
     def get_queryset(self):
-        base_queryset = _base_non_audiobook_queryset()
         user = self.request.user
-        is_premium = _is_premium_user(user)
+        # Anonymous visitors have no taste signal of any kind. Returning
+        # nothing is the honest answer; the home-screen row hides itself
+        # on an empty feed and the Discover tab shows "Sign in to get
+        # personalized recommendations" — both designed exactly for this
+        # state.
+        if not user or not user.is_authenticated:
+            return Episode.objects.none()
 
-        if not is_premium:
+        base_queryset = _base_non_audiobook_queryset()
+        if not _is_premium_user(user):
             base_queryset = base_queryset.filter(
                 podcast__is_exclusive=False, is_premium=False
             )
-
-        if not user or not user.is_authenticated:
-            return self._cold_start_queryset(base_queryset)
 
         profile = _build_user_profile(user)
 
@@ -521,11 +585,14 @@ class RecommendedEpisodeListView(generics.ListAPIView):
 
         podcast_scores = _compute_podcast_scores(profile)
 
-        # Cold-start the user too: if we found zero personalization signal
-        # (brand-new account, all signals filtered out by recency, etc.),
-        # fall through to popularity+recency on their eligible candidates.
+        # Signed in but no signal yet → empty feed. The frontend shows
+        # "Listen to some episodes to get personalized suggestions" in
+        # this state. We refuse to fall back to a global popularity
+        # ranking because doing so would make every brand-new account
+        # see the exact same list as every other brand-new account,
+        # which is the symptom that motivated this rewrite.
         if not podcast_scores:
-            return self._cold_start_queryset(candidates)
+            return Episode.objects.none()
 
         # Cap the SQL Case expression to the top-N strongest podcasts so
         # that very heavy users don't generate unwieldy queries.
@@ -544,6 +611,11 @@ class RecommendedEpisodeListView(generics.ListAPIView):
         )
 
         now = timezone.now()
+        # Recency is a freshness tiebreak, not a driver — the largest
+        # bucket here (+15 for "this week") is still smaller than the
+        # smallest personalization signal (+22 for an episode favorite).
+        # An ancient episode of a podcast you follow always outranks
+        # a brand-new episode of a podcast you've never touched.
         recency_expr = Case(
             When(published_at__gte=now - timedelta(days=7), then=Value(15)),
             When(published_at__gte=now - timedelta(days=30), then=Value(10)),
@@ -553,23 +625,152 @@ class RecommendedEpisodeListView(generics.ListAPIView):
             output_field=IntegerField(),
         )
 
-        # Light popularity prior so equally-personalized candidates break
-        # ties toward what other listeners are actually engaging with right
-        # now, instead of arbitrary id order.
-        recent_pop_filter = Q(
-            playbackevent__created_at__gte=now - timedelta(days=RECOMMENDED_POPULARITY_DAYS),
-            playbackevent__event__in=["play", "complete"],
-        )
+        # Filter the candidate pool down to episodes whose podcast
+        # actually scored. Without this filter we'd materialize the
+        # entire catalog into the SHUFFLE_WINDOW (most of it scoring
+        # zero on personalization) and then throw it away in the
+        # diversity pass — a huge waste of DB IO for users with a
+        # narrow taste profile. Keeping the queryset bounded to
+        # podcasts with non-zero score also means the post-fetch
+        # shuffle works on signal, not noise.
+        scored_pids = [pid for pid, _ in top_podcasts]
+        candidates = candidates.filter(podcast_id__in=scored_pids)
 
         return (
             candidates
             .annotate(
                 _personalization=personalization_expr,
                 _recency=recency_expr,
-                _popularity=Count("playbackevent", filter=recent_pop_filter),
             )
             .annotate(
-                _total_score=F("_personalization") + F("_recency") + F("_popularity"),
+                _total_score=F("_personalization") + F("_recency"),
             )
             .order_by("-_total_score", "-published_at")
         )
+
+    def _shuffle_seed(self, request):
+        """Build the deterministic shuffle seed for this request.
+
+        Authenticated users key on their user id so the order is
+        stable across refreshes within a day but different per
+        account. Anonymous visitors key on a hash of their IP +
+        User-Agent + day, which is enough to give different anon
+        visitors different orderings without breaking refresh
+        stability for any one of them. The day component rotates the
+        feed naturally so even a returning user gets a fresh top-of-
+        feed each day instead of seeing the same five episodes
+        forever.
+        """
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False) and getattr(user, "id", None):
+            user_key = f"u:{user.id}"
+        else:
+            ip = (
+                request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+                or request.META.get("REMOTE_ADDR", "")
+                or ""
+            )
+            ua = request.META.get("HTTP_USER_AGENT", "") or ""
+            user_key = "anon:" + hashlib.md5(f"{ip}|{ua}".encode("utf-8")).hexdigest()[:16]
+        day_key = timezone.now().date().isoformat()
+        return f"{user_key}:{day_key}"
+
+    @staticmethod
+    def _shuffle_within_score_tiers(items, rng):
+        """Shuffle ``items`` in place per contiguous ``_total_score`` tier.
+
+        ``items`` arrives already sorted by ``-_total_score`` from the
+        DB. We walk the list once, group consecutive items that share
+        the same score, and shuffle each group with the per-request
+        RNG. The relative order of score tiers is preserved — a
+        78-point episode never overtakes a 92-point one — so the
+        algorithm's intent stays intact.
+        """
+        if not items:
+            return items
+
+        out = []
+        bucket = []
+        current_score = object()  # sentinel guaranteed to mismatch
+        for ep in items:
+            score = getattr(ep, "_total_score", None)
+            if score is None:
+                score = 0
+            if score == current_score:
+                bucket.append(ep)
+            else:
+                if bucket:
+                    rng.shuffle(bucket)
+                    out.extend(bucket)
+                bucket = [ep]
+                current_score = score
+        if bucket:
+            rng.shuffle(bucket)
+            out.extend(bucket)
+        return out
+
+    @staticmethod
+    def _diversify_by_podcast(items, max_consecutive):
+        """Round-robin items so the same podcast doesn't dominate.
+
+        Walks the (already shuffled) list and reorders so no more than
+        ``max_consecutive`` episodes from the same podcast appear back-
+        to-back. Stable beyond that — when no diversity-respecting
+        choice is available we just emit the next item in order, so a
+        user whose top score tier is dominated by a single show will
+        still see those episodes (correctly), just not all bunched at
+        the very top.
+        """
+        if not items or max_consecutive < 1:
+            return items
+
+        remaining = list(items)
+        out = []
+        recent = []  # last `max_consecutive` podcast_ids emitted
+
+        while remaining:
+            chosen_idx = None
+            for idx, ep in enumerate(remaining):
+                pid = getattr(ep, "podcast_id", None)
+                # Recency window only counts repeats — a None pid (no
+                # podcast?) shouldn't be penalized.
+                if pid is None or recent.count(pid) < max_consecutive:
+                    chosen_idx = idx
+                    break
+            if chosen_idx is None:
+                # All remaining items would violate the cap; emit the
+                # next item in order rather than stall.
+                chosen_idx = 0
+
+            ep = remaining.pop(chosen_idx)
+            out.append(ep)
+            pid = getattr(ep, "podcast_id", None)
+            recent.append(pid)
+            if len(recent) > max_consecutive:
+                recent.pop(0)
+
+        return out
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Materialize a window. Slicing a queryset issues a LIMIT, so
+        # we never pull the whole catalog — just enough to cover the
+        # largest page anyone actually fetches plus headroom for the
+        # in-bucket shuffle and diversity pass to have meaningful range.
+        candidates = list(queryset[: self.SHUFFLE_WINDOW])
+
+        seed_input = self._shuffle_seed(request).encode("utf-8")
+        rng = random.Random(int(hashlib.md5(seed_input).hexdigest(), 16))
+        candidates = self._shuffle_within_score_tiers(candidates, rng)
+        candidates = self._diversify_by_podcast(
+            candidates, self.MAX_CONSECUTIVE_PER_PODCAST
+        )
+
+        page = self.paginate_queryset(candidates)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(candidates, many=True)
+        return Response(serializer.data)

@@ -5,7 +5,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useAudioTime } from "@/hooks/use-audio-time";
 import { AnimatePresence, motion } from "framer-motion";
-import ScrollingTitle from "@/components/common/ScrollingTitle";
 
 const PlayIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -357,11 +356,12 @@ function MobilePlayer({
 
                 {/* Track Info */}
                 <div className="flex-1 min-w-0 pr-[clamp(4px,1vw,12px)] mr-[clamp(4px,1vw,8px)]">
-                  <ScrollingTitle
-                    as="div"
-                    text={episode.title}
-                    className="text-white/90 font-semibold text-[clamp(12px,1.8vw,14px)] mb-0.5"
-                  />
+                  <div
+                    title={episode.title}
+                    className="text-white/90 font-semibold text-[clamp(12px,1.8vw,14px)] mb-0.5 line-clamp-2 break-words"
+                  >
+                    {episode.title}
+                  </div>
                   <div className="flex items-center gap-2">
                     <div className="text-zinc-500 text-[clamp(10px,1.5vw,12px)] whitespace-nowrap overflow-hidden text-ellipsis">
                       {podcast.title}
@@ -466,11 +466,12 @@ function MobilePlayer({
                     <div className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] ring-1 ring-white/[0.06]">
                       <img src={currentItem.episode?.cover_image || currentItem.podcast?.cover_image || cover} alt={currentItem.episode?.title || episode.title} className="w-10 h-10 rounded-lg object-cover" />
                       <div className="min-w-0 flex-1">
-                        <ScrollingTitle
-                          as="div"
-                          text={currentItem.episode?.title || episode.title}
-                          className="text-white text-sm font-medium"
-                        />
+                        <div
+                          title={currentItem.episode?.title || episode.title}
+                          className="text-white text-sm font-medium line-clamp-2 break-words"
+                        >
+                          {currentItem.episode?.title || episode.title}
+                        </div>
                         <div className="text-zinc-500 text-xs truncate">Now Playing · {currentItem.podcast?.title || podcast.title}</div>
                       </div>
                     </div>
@@ -491,11 +492,12 @@ function MobilePlayer({
                           <div className="w-10 h-10 rounded-lg bg-white/[0.06] flex items-center justify-center text-zinc-600 text-xs">EP</div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <ScrollingTitle
-                            as="div"
-                            text={ep?.title || 'Episode'}
-                            className="text-white text-sm font-medium"
-                          />
+                          <div
+                            title={ep?.title || 'Episode'}
+                            className="text-white text-sm font-medium line-clamp-2 break-words"
+                          >
+                            {ep?.title || 'Episode'}
+                          </div>
                           <div className="text-zinc-500 text-xs truncate">{pd?.title || ''}</div>
                         </div>
                       </button>

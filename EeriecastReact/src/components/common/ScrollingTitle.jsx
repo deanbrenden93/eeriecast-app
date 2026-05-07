@@ -3,13 +3,15 @@ import { useEffect, useRef, useState } from "react";
 
 // ── ScrollingTitle ─────────────────────────────────────────────────
 //
-// App-wide marquee for episode titles (and any other single-line
-// label) that overflow their container. Lifted out of the
-// full-screen player's local helpers so every surface — episode
-// tables, home rows, the mini player, the queue, search, history,
-// favorites, profile, etc. — gets the exact same "ping-pong" scroll
-// when a title doesn't fit, and stays a static truncated single
-// line when it does.
+// Marquee for the hero episode title on the full-screen player.
+// Reserved for that single surface only: every other place in the app
+// (episode tables, home rows, the mini player, the queue, search,
+// history, favorites, profile, etc.) now renders titles as static
+// two-line clamped text with ellipsis. The reasoning is that motion
+// across many simultaneous cards/rows turned out to be visually
+// distracting; on the player screen there is exactly one title at a
+// time and a long episode name still benefits from being fully
+// readable, so the ping-pong scroll is kept there.
 //
 // Behavior matches the player verbatim:
 //   • detect overflow with `scrollWidth > clientWidth + 2`

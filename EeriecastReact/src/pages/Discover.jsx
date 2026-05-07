@@ -338,8 +338,17 @@ export default function Discover() {
     enabled: activeTab === 'Trending',
   });
 
+  // Personalized feed — must be scoped per user so signing in/out on
+  // the same tab doesn't keep serving the previous identity's ranked
+  // list out of the react-query cache. (Without `userScope` in the
+  // key, an anonymous visitor's cold-start results would persist after
+  // login, and vice versa, which is what made For You / Recommended
+  // appear stuck on the same episodes regardless of account.)
   const { data: recommendedFeed = [], isLoading: recommendedLoading } = useQuery({
-    queryKey: qk.episodes.feed('recommended', { fetchLimit: FEED_FETCH_LIMIT }),
+    queryKey: qk.episodes.feed('recommended', {
+      fetchLimit: FEED_FETCH_LIMIT,
+      userScope: user?.id ?? 'anon',
+    }),
     queryFn: async () => {
       const resp = await Episode.recommended(FEED_FETCH_LIMIT);
       return Array.isArray(resp) ? resp : (resp?.results || []);

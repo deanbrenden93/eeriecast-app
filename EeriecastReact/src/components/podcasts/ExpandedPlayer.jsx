@@ -162,9 +162,11 @@ function sanitizeShowNotes(html) {
 
 // Marquee helpers (`MarqueeText` / `MarqueeTitle`) used to live here.
 // They were promoted to the shared `ScrollingTitle` primitive at
-// `@/components/common/ScrollingTitle` so every surface in the app
-// (episode tables, home rows, the mini player, the queue, search,
-// history, etc.) gets the same overflow-detected ping-pong scroll.
+// `@/components/common/ScrollingTitle`. The marquee is now reserved
+// exclusively for the hero episode title on this player screen — every
+// other surface (episode tables, home rows, the mini player, the queue,
+// search, history, etc.) renders titles as static two-line clamped text
+// with ellipsis so the UI stops jittering with motion across the app.
 
 /** Expandable episode show-notes block with basic rich formatting preserved.
  *
@@ -355,11 +357,12 @@ const SortableQueueItem = memo(function SortableQueueItem({ id, index, item, pod
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <ScrollingTitle
-            as="div"
-            text={ep?.title || 'Episode'}
-            className="text-white text-sm font-semibold mb-0.5 group-hover:text-[#ff0040] transition-colors"
-          />
+          <div
+            title={ep?.title || 'Episode'}
+            className="text-white text-sm font-semibold mb-0.5 group-hover:text-[#ff0040] transition-colors line-clamp-2 break-words"
+          >
+            {ep?.title || 'Episode'}
+          </div>
           <div className="text-white/40 text-xs truncate uppercase tracking-wider">{pd?.title || ''}</div>
         </div>
       </button>
@@ -1804,11 +1807,12 @@ function ExpandedPlayer({
                     </div>
                     {/* Title + Show */}
                     <div className="w-28 cursor-pointer" onClick={() => handlePlayFromQueue(item, absoluteIndex)}>
-                      <ScrollingTitle
-                        as="span"
-                        text={ep?.title || 'Episode'}
-                        className="text-xs font-semibold text-white/90"
-                      />
+                      <span
+                        title={ep?.title || 'Episode'}
+                        className="block text-xs font-semibold text-white/90 line-clamp-2 break-words"
+                      >
+                        {ep?.title || 'Episode'}
+                      </span>
                       <p className="text-[10px] text-white/40 mt-0.5 truncate">{pd?.title || ''}</p>
                     </div>
                   </div>
@@ -1852,11 +1856,12 @@ function ExpandedPlayer({
                         }
                       }}
                     >
-                      <ScrollingTitle
-                        as="div"
-                        text={rec.title}
-                        className="text-sm font-semibold text-white/90 group-hover:text-white transition-colors"
-                      />
+                      <div
+                        title={rec.title}
+                        className="text-sm font-semibold text-white/90 group-hover:text-white transition-colors line-clamp-2 break-words"
+                      >
+                        {rec.title}
+                      </div>
                       <div className="text-[11px] text-white/35 truncate mt-0.5">{recPod.title || ''}</div>
                     </div>
                     <div onClick={(e) => e.stopPropagation()}>
@@ -1943,11 +1948,12 @@ function ExpandedPlayer({
                         }
                       }}
                     >
-                      <ScrollingTitle
-                        as="div"
-                        text={ep.title}
-                        className="text-xs font-semibold text-white/80 group-hover:text-white transition-colors"
-                      />
+                      <div
+                        title={ep.title}
+                        className="text-xs font-semibold text-white/80 group-hover:text-white transition-colors line-clamp-2 break-words"
+                      >
+                        {ep.title}
+                      </div>
                       <div className="text-[10px] text-white/30 mt-0.5 truncate">{ep.published_at ? formatDate(ep.published_at) : ''}</div>
                     </div>
                     <div onClick={(e) => e.stopPropagation()}>
@@ -2244,11 +2250,12 @@ function ExpandedPlayer({
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <ScrollingTitle
-                            as="div"
-                            text={episode?.title || ''}
-                            className="text-white text-base font-bold mb-1"
-                          />
+                          <div
+                            title={episode?.title || ''}
+                            className="text-white text-base font-bold mb-1 line-clamp-2 break-words"
+                          >
+                            {episode?.title || ''}
+                          </div>
                           <div className="text-white/60 text-sm truncate">{podcast?.title}</div>
                         </div>
                         <div className="pr-2">

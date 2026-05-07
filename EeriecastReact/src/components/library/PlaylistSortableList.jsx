@@ -27,7 +27,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import ScrollingTitle from '@/components/common/ScrollingTitle';
 import { createPageUrl } from '@/utils';
 import { formatDate } from '@/lib/utils';
 
@@ -45,7 +44,7 @@ import { formatDate } from '@/lib/utils';
 // one round trip.
 //
 // Rows are rendered with the same shape as `EpisodesTable` rows
-// (cover, title via `ScrollingTitle`, show name, date) but lighter —
+// (cover, two-line clamped title, show name, date) but lighter —
 // the kebab here only carries playlist-relevant actions ("Add to
 // another playlist" + "Remove from this playlist") so the list reads
 // as the natural home for managing the playlist's contents.
@@ -135,12 +134,13 @@ const SortableRow = memo(function SortableRow({ episode, onPlay, onAddToPlaylist
 
       {/* Title block */}
       <div className="flex-1 min-w-0">
-        <ScrollingTitle
-          as="h3"
-          text={episode?.title || 'Episode'}
+        <h3
+          title={episode?.title || 'Episode'}
           onClick={handlePlay}
-          className="font-semibold text-sm sm:text-base text-white hover:text-violet-300 transition-colors cursor-pointer mb-0.5"
-        />
+          className="font-semibold text-sm sm:text-base text-white hover:text-violet-300 transition-colors cursor-pointer mb-0.5 line-clamp-2 break-words"
+        >
+          {episode?.title || 'Episode'}
+        </h3>
         <div className="flex items-center gap-2 text-xs text-zinc-500 min-w-0">
           {showId && showName ? (
             <Link

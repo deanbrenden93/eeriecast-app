@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import PropTypes from 'prop-types';
 import { formatDate } from '@/lib/utils';
-import ScrollingTitle from '@/components/common/ScrollingTitle';
 
 function formatDuration(totalSeconds) {
   const s = Number(totalSeconds);
@@ -59,11 +58,12 @@ export default function DiscoverEpisodeCard({ episode, podcast, onPlay, onAddToP
             </Link>
 
             {/* Episode title */}
-            <ScrollingTitle
-              as="h3"
-              text={episode?.title}
-              className="text-white font-semibold text-sm sm:text-[15px] leading-snug mt-0.5 group-hover:text-zinc-200 transition-colors duration-300"
-            />
+            <h3
+              title={episode?.title}
+              className="text-white font-semibold text-sm sm:text-[15px] leading-snug mt-0.5 group-hover:text-zinc-200 transition-colors duration-300 line-clamp-2 break-words"
+            >
+              {episode?.title}
+            </h3>
 
             {/* Meta row */}
             <div className="mt-1.5 flex items-center gap-2 text-[11px] sm:text-xs text-zinc-500">

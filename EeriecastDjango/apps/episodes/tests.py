@@ -160,18 +160,20 @@ class EpisodeFeedEndpointTests(TestCase):
         self.assertIn(match_episode.id, returned_ids)
         self.assertNotIn(listened_episode.id, returned_ids)
 
-    def test_recommended_fallback_for_anonymous_returns_only_free_non_audiobook(self):
+    def test_recommended_returns_empty_for_anonymous_visitors(self):
+        """For You is pure-personalization; anonymous users have no
+        taste signal to personalize against, so the endpoint returns
+        an empty page on purpose. The frontend handles this state with
+        a "Sign in to get personalized recommendations" CTA on the
+        Discover Recommended tab and by hiding the home-screen For
+        You row entirely. We deliberately do NOT fall back to a global
+        popularity ranking — doing so would make every anonymous and
+        every brand-new account see the exact same list, which is the
+        symptom this rewrite was meant to eliminate.
+        """
         free_podcast = self._create_podcast("Free Show", "free-show", categories=[self.category_horror])
-        exclusive_podcast = self._create_podcast(
-            "Members Show",
-            "members-show",
-            is_exclusive=True,
-            categories=[self.category_horror],
-        )
-        audiobook_podcast = self._create_podcast("Audio Book", "audio-book", categories=[self.category_audiobook])
         now = timezone.now()
-
-        free_episode = self._create_episode(
+        self._create_episode(
             podcast=free_podcast,
             slug="free-episode",
             title="Free Episode",
@@ -179,33 +181,77 @@ class EpisodeFeedEndpointTests(TestCase):
             published_at=now - timedelta(days=1),
             is_premium=False,
         )
-        self._create_episode(
-            podcast=exclusive_podcast,
-            slug="exclusive-episode",
-            title="Exclusive Episode",
-            description="Members only",
-            published_at=now - timedelta(days=1),
-            is_premium=False,
-        )
-        self._create_episode(
-            podcast=free_podcast,
-            slug="premium-episode",
-            title="Premium Episode",
-            description="Premium gate",
-            published_at=now - timedelta(days=1),
-            is_premium=True,
-        )
-        self._create_episode(
-            podcast=audiobook_podcast,
-            slug="book-episode",
-            title="Book Episode",
-            description="Book chapter",
-            published_at=now - timedelta(days=1),
-            is_premium=False,
-        )
 
         response = self.client.get("/api/episodes/recommended/?page_size=10")
         self.assertEqual(response.status_code, 200)
         results = response.json().get("results", [])
+        self.assertEqual(results, [])
+
+    def test_recommended_returns_empty_for_signed_in_user_with_no_signal(self):
+        """A signed-in user with zero follows / favorites / history
+        has no taste signal yet, so the feed is empty. Same reasoning
+        as the anonymous case: refusing to fall back to popularity is
+        the entire point of this surface.
+        """
+        self._create_podcast("Free Show", "free-show", categories=[self.category_horror])
+        user = User.objects.create_user(email="empty@example.com", username="empty", password="test1234")
+        self.client.force_authenticate(user=user)
+
+        response = self.client.get("/api/episodes/recommended/?page_size=10")
+        self.assertEqual(response.status_code, 200)
+        results = response.json().get("results", [])
+        self.assertEqual(results, [])
+
+    def test_recommended_excludes_global_popularity_signal(self):
+        """An episode with massive global play counts that the user
+        has never engaged with must NOT appear in their For You feed.
+        Personalization is sourced solely from the requesting user's
+        own signals; what other listeners are doing is irrelevant on
+        this surface.
+        """
+        liked_podcast = self._create_podcast("Liked", "liked-show", categories=[self.category_horror])
+        # Different category so it doesn't get pulled in via category overlap.
+        category_other = Category.objects.create(name="Comedy", slug="comedy")
+        unliked_podcast = self._create_podcast(
+            "Hot But Unrelated",
+            "hot-show",
+            categories=[category_other],
+        )
+        now = timezone.now()
+
+        liked_episode = self._create_episode(
+            podcast=liked_podcast,
+            slug="liked-ep",
+            title="Liked Episode",
+            description="From a podcast the user follows",
+            published_at=now - timedelta(days=1),
+        )
+        viral_episode = self._create_episode(
+            podcast=unliked_podcast,
+            slug="viral-ep",
+            title="Viral Episode",
+            description="Massive global plays, unrelated to user's taste",
+            published_at=now - timedelta(days=1),
+        )
+
+        user = User.objects.create_user(email="taste@example.com", username="taste", password="test1234")
+        from apps.library.models import PodcastFollowing
+        PodcastFollowing.objects.create(user=user, podcast=liked_podcast)
+
+        # Make the viral episode genuinely globally popular by logging
+        # plays under a *different* user, so the requesting user has
+        # no personal engagement signal pointing at it.
+        crowd = User.objects.create_user(email="crowd@example.com", username="crowd", password="test1234")
+        for _ in range(200):
+            PlaybackEvent.objects.create(
+                user=crowd, episode=viral_episode, event="play", position=0, duration=1800,
+            )
+
+        self.client.force_authenticate(user=user)
+        response = self.client.get("/api/episodes/recommended/?page_size=10")
+        self.assertEqual(response.status_code, 200)
+        results = response.json().get("results", [])
         returned_ids = {row["id"] for row in results}
-        self.assertEqual(returned_ids, {free_episode.id})
+
+        self.assertIn(liked_episode.id, returned_ids)
+        self.assertNotIn(viral_episode.id, returned_ids)

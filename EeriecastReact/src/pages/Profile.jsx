@@ -23,7 +23,6 @@ import {
   BarChart3,
 } from "lucide-react";
 import ChangePasswordModal from "@/components/auth/ChangePasswordModal";
-import ScrollingTitle from "@/components/common/ScrollingTitle";
 import {
   getTrialLabel,
   formatTrialDaysRemaining,
@@ -692,11 +691,12 @@ function RecentEpisodeRow({ episode, onPlay }) {
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <ScrollingTitle
-          as="p"
-          text={episode.title}
-          className="text-sm font-medium text-gray-200"
-        />
+        <p
+          title={episode.title}
+          className="text-sm font-medium text-gray-200 line-clamp-2 break-words"
+        >
+          {episode.title}
+        </p>
         {showTitle && (
           <p className="text-xs text-gray-500 truncate">{showTitle}</p>
         )}

@@ -10,7 +10,6 @@ import { hasCategory, isAudiobook, isMusic } from "@/lib/utils";
 import { canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { toast } from "@/components/ui/use-toast";
 import { qk } from "@/lib/queryClient";
-import ScrollingTitle from "@/components/common/ScrollingTitle";
 import {
   ChevronLeft,
   ChevronRight,
@@ -899,11 +898,12 @@ function CloudCard({ theme, pool, contentFilter, isEpisodeFree, onItemClick }) {
         >
           {active?.podcast?.title || active?.podcast?.name || ""}
         </p>
-        <ScrollingTitle
-          as="p"
-          text={active?.title || ""}
-          className="text-sm font-semibold text-white leading-tight mt-0.5"
-        />
+        <p
+          title={active?.title || ""}
+          className="text-sm font-semibold text-white leading-tight mt-0.5 line-clamp-2 break-words"
+        >
+          {active?.title || ""}
+        </p>
       </div>
     </div>
   );

@@ -4,7 +4,6 @@ import PropTypes from 'prop-types';
 import { createPageUrl } from "@/utils";
 import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
-import ScrollingTitle from "@/components/common/ScrollingTitle";
 
 function formatTimeLeft(seconds) {
   if (!seconds || seconds <= 0) return null;
@@ -99,11 +98,12 @@ export default function KeepListeningSection({
 
                 {/* Info + progress */}
                 <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
-                  <ScrollingTitle
-                    as="h3"
-                    text={episode.title}
-                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300"
-                  />
+                  <h3
+                    title={episode.title}
+                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300 line-clamp-2 break-words"
+                  >
+                    {episode.title}
+                  </h3>
                   <div className="flex items-center gap-1.5 min-w-0">
                     {podcast?.title ? (
                       <Link

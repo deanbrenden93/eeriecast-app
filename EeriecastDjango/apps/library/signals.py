@@ -16,7 +16,12 @@ busting on each would defeat the cache. We bust only on:
   * Completion (``completed=True``) — the engagement weight for that
     episode jumps from a fractional value to a full 1.0.
   * Any follow / unfollow / favorite / unfavorite — explicit
-    user-driven taste signals that should reflect immediately.
+    user-driven taste signals that should reflect immediately. The
+    ``Favorite`` model is content-type agnostic (it stores both
+    podcast favorites and episode favorites in the same table) and
+    the recommendation profile now folds episode favorites up to
+    their parent podcast, so a single ``post_save sender=Favorite``
+    handler is enough to cover both kinds of write.
 """
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver

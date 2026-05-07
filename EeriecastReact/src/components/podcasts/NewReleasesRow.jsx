@@ -11,7 +11,6 @@ import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
-import ScrollingTitle from "@/components/common/ScrollingTitle";
 import { qk } from "@/lib/queryClient";
 
 function formatDuration(raw) {
@@ -51,7 +50,15 @@ export default function NewReleasesRow({
   const navigate = useNavigate();
   const { podcasts, getById } = usePodcasts();
   const { loadAndPlay } = useAudioPlayerContext();
-  const { episodeProgressMap, isAuthenticated } = useUser() || {};
+  const { user, episodeProgressMap, isAuthenticated } = useUser() || {};
+
+  // Personalized feeds are per-account (the backend ranks against the
+  // signed-in user's history/follows/favorites). We MUST scope the cache
+  // key by user id so signing in/out on the same tab doesn't keep showing
+  // the previous identity's "For You" list. The "latest" and "trending"
+  // feeds are global, so they remain shared across users.
+  const userScope =
+    feedType === "recommended" ? (user?.id ?? "anon") : undefined;
 
   // The trending / recommended endpoints already exclude audiobooks
   // and music server-side, so a small over-fetch is plenty. The plain
@@ -77,7 +84,12 @@ export default function NewReleasesRow({
   // three rows on the home screen plus Discover pull from the same cache and
   // only refetch when stale.
   const { data: primaryRaw = [], isLoading: primaryLoading } = useQuery({
-    queryKey: qk.episodes.feed(feedType, { ordering, trendWindowHours, fetchLimit }),
+    queryKey: qk.episodes.feed(feedType, {
+      ordering,
+      trendWindowHours,
+      fetchLimit,
+      ...(userScope !== undefined ? { userScope } : {}),
+    }),
     queryFn: async () => {
       let resp;
       if (feedType === "trending") resp = await EpisodeApi.trending(fetchLimit, trendWindowHours);
@@ -325,11 +337,12 @@ export default function NewReleasesRow({
 
                 {/* Info */}
                 <div className="p-3 space-y-1 mt-auto min-h-[4rem] flex flex-col justify-end">
-                  <ScrollingTitle
-                    as="h3"
-                    text={ep.title}
-                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300"
-                  />
+                  <h3
+                    title={ep.title}
+                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300 line-clamp-2 break-words"
+                  >
+                    {ep.title}
+                  </h3>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); handleShowClick(ep); }}

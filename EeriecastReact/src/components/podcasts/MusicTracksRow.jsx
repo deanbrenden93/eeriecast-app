@@ -9,7 +9,6 @@ import { useUser } from "@/context/UserContext.jsx";
 import { isMusic, getEpisodeAudioUrl } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import EpisodeMenu from "@/components/podcasts/EpisodeMenu";
-import ScrollingTitle from "@/components/common/ScrollingTitle";
 
 /**
  * Format a seconds (or mm:ss) duration into compact "m:ss" / "h:mm:ss".
@@ -315,14 +314,15 @@ function TrackCard({
 
       {/* Text column */}
       <div className="relative flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <ScrollingTitle
-            as="p"
-            text={track.title}
-            className={`text-[13px] font-semibold leading-tight ${
+        <div className="flex items-start gap-1.5">
+          <p
+            title={track.title}
+            className={`text-[13px] font-semibold leading-tight line-clamp-2 break-words flex-1 min-w-0 ${
               isCurrent ? "text-fuchsia-100" : "text-white"
             }`}
-          />
+          >
+            {track.title}
+          </p>
           {track.is_members && (
             // Icon-only members indicator — the full "Members" pill was
             // eating ~60px on a 280px card and truncating track titles.
