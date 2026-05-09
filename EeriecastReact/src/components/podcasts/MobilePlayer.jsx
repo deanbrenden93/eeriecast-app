@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import { useState, useEffect, useMemo, useRef, memo } from "react";
-import { ListMusic, Headphones, Shuffle, Repeat, X, ChevronDown } from "lucide-react";
+import { ListMusic, Headphones, Shuffle, Repeat, X } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useAudioTime } from "@/hooks/use-audio-time";
@@ -178,18 +178,137 @@ function MobilePlayer({
     onRestore?.();
   };
 
+  // ── Mini-player swipe gestures ───────────────────────────────────
+  // Four intent-mapped gestures on the full-width mini player:
+  //   • Swipe up    → expand into the full player
+  //   • Swipe down  → minimize to the floating pill
+  //   • Swipe ←/→   → close (pauses + dismisses)
+  //
+  // Implementation note: an earlier version of this tried to play
+  // a "fly-off" animation BEFORE calling the parent handler, both
+  // via reactive animate-prop changes and via imperative
+  // useAnimationControls. Both routes fought with framer's drag
+  // release snap-back, race-conditioned with AnimatePresence's
+  // mode="wait" outer transitions, and produced the cascading
+  // "gesture animates twice / pill never appears / re-tap into
+  // mini disappears for good" bugs. The simple approach below —
+  // detect commit on dragEnd, fire the parent handler
+  // immediately, let the existing AnimatePresence variants handle
+  // the visual transition — is what works.
+  //
+  // dragConstraints={{0,0,0,0}} + dragElastic gives the gesture
+  // its physical "give" during the drag itself. dragMomentum=
+  // false stops kinetic coast on release, so the bar always
+  // returns to rest when no commit threshold was met.
+  const SWIPE_AXIS_PX = 56;
+  const SWIPE_AXIS_VELOCITY = 500;
+  // Slightly more generous tap guard than the original 10 px —
+  // touch input on phones routinely drifts 12–14 px during a
+  // "stationary" tap, especially with a thumb on a glass surface.
+  // At 10 px those drifts were classifying clean taps as drags
+  // and `handleFullClickCapture` was swallowing the synthetic
+  // click, producing the "first tap on the mini doesn't register"
+  // bug. 18 px is still well below any of the directional commit
+  // thresholds (≥56 px) so real swipes are unaffected.
+  const SWIPE_TAP_GUARD = 18;
+  const fullPlayerDraggedRef = useRef(false);
+
+  // Defensive reset: any time the mini-full node mounts (the bar
+  // came back from the pill or from the expanded player) we clear
+  // the dragged flag. Previously, a swipe-to-minimize would set
+  // the flag to true and then unmount mini-full before the
+  // synthetic click reached `handleFullClickCapture` to clear it
+  // — so the FIRST click on the next mini-full instance would
+  // hit a stale `true` and get swallowed. Resetting on mount
+  // guarantees every fresh bar starts in a clean state.
+  useEffect(() => {
+    if (!isMinimized) {
+      fullPlayerDraggedRef.current = false;
+    }
+  }, [isMinimized]);
+
+  const handleFullDragStart = () => {
+    fullPlayerDraggedRef.current = false;
+  };
+
+  const handleFullDrag = (_e, info) => {
+    if (
+      Math.abs(info.offset.x) > SWIPE_TAP_GUARD ||
+      Math.abs(info.offset.y) > SWIPE_TAP_GUARD
+    ) {
+      fullPlayerDraggedRef.current = true;
+    }
+  };
+
+  const handleFullDragEnd = (_e, info) => {
+    if (!fullPlayerDraggedRef.current) return;
+    const dx = info.offset.x;
+    const dy = info.offset.y;
+    const vx = info.velocity.x;
+    const vy = info.velocity.y;
+    const horizontalDominant = Math.abs(dx) >= Math.abs(dy);
+
+    // Swipe UP → expand. The expanded player has its own slide-
+    // up enter animation that visually replaces the mini bar, so
+    // we just hand off — no need to pre-animate the mini.
+    if (!horizontalDominant && (dy < -SWIPE_AXIS_PX || vy < -SWIPE_AXIS_VELOCITY)) {
+      onExpand?.();
+      return;
+    }
+
+    // Swipe DOWN → minimize. AnimatePresence mode="wait" handles
+    // the mini-full → pill crossfade.
+    if (!horizontalDominant && (dy > SWIPE_AXIS_PX || vy > SWIPE_AXIS_VELOCITY)) {
+      onMinimize?.();
+      return;
+    }
+
+    // Swipe SIDEWAYS → close. Pause first so the bar's exit
+    // doesn't overlap with audible playback.
+    if (
+      horizontalDominant &&
+      (Math.abs(dx) > SWIPE_AXIS_PX || Math.abs(vx) > SWIPE_AXIS_VELOCITY)
+    ) {
+      try { pause && pause(); } catch { /* ignore */ }
+      onClose?.();
+      return;
+    }
+
+    // Otherwise dragConstraints + dragElastic snap the bar back
+    // automatically — no action needed here.
+  };
+
+  // Suppress synthetic clicks fired after a drag — without this, a
+  // swipe-to-close that ends on the album-art zone would also pop
+  // the expanded player open. Same pattern as the notification
+  // swipe-to-delete in the layout shell.
+  const handleFullClickCapture = (e) => {
+    if (fullPlayerDraggedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      fullPlayerDraggedRef.current = false;
+    }
+  };
+
   if (!podcast || !episode) return null;
 
   return (
     <>
-      {/* `initial={false}` skips the inner enter animation on first
-          mount of MobilePlayer — the wrapper in AudioPlayerContext
-          already handles the slide-up, so this AnimatePresence is
-          purely for the *minimize ↔ restore* (pill ↔ full-width)
-          transition. Skipping the redundant initial animation is
-          what got rid of the stacked dual-slide that was making
-          open/close feel sloppy. */}
-      <AnimatePresence mode="wait" initial={false}>
+      {/* AnimatePresence with `initial={true}` (the default) so the
+          mini-full / pill node animates in on every mount —
+          including the first time MobilePlayer is mounted by
+          AudioPlayerContext (e.g. after collapsing the expanded
+          player back down). The wrapper in AudioPlayerContext is
+          intentionally NOT a `motion.div` (see the long note in
+          AudioPlayerContext where this wrapper is rendered for the
+          mobile-Safari containing-block reasoning), so this inner
+          AnimatePresence is the ONLY place the mini gets an
+          entrance animation — without it the bar would snap in at
+          full opacity and the expanded → mini hand-off would feel
+          choppy. `mode="wait"` is preserved so a swap between the
+          full bar and the pill (minimize ↔ restore) doesn't briefly
+          double-up. */}
+      <AnimatePresence mode="wait">
         {isMinimized ? (
           /* ─── Minimized Pill ─────────────────────────────────────── */
           /* Full-viewport boundary keeps the pill on screen when dragged */
@@ -290,10 +409,36 @@ function MobilePlayer({
              they don't trigger a backdrop-filter recomposite. */
           <motion.div
             key="mini-full"
-            initial={{ y: 12 }}
-            animate={{ y: 0 }}
-            exit={{ y: 12 }}
-            transition={{ type: 'tween', duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
+            // Opacity-only entrance — NO y translation. A
+            // translated entrance (initial y: 12 → animate y: 0)
+            // mounted the bar 12 px below its rest position and
+            // slid it up, which (a) read to users as "the bar
+            // jumped down a few pixels", and (b) made the first
+            // tap land on a moving target — the framer drag
+            // gesture interpreted the small finger drift as drag
+            // intent and `handleFullClickCapture` swallowed the
+            // synthetic click. Fading at the rest position fixes
+            // both at once: nothing visibly translates, so taps
+            // land where the user expects.
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            // The exit keeps a y-translation (slide-down + fade)
+            // because that's an unmount path — the bar isn't
+            // accepting taps as it leaves, and the downward
+            // motion is what makes the minimize transition feel
+            // satisfying as it hands off to the pill's spring
+            // entrance.
+            exit={{ y: 64, opacity: 0 }}
+            transition={{ type: 'tween', duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            drag
+            dragDirectionLock
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={0.18}
+            dragMomentum={false}
+            onDragStart={handleFullDragStart}
+            onDrag={handleFullDrag}
+            onDragEnd={handleFullDragEnd}
+            onClickCapture={handleFullClickCapture}
             // pointer-events-auto: the AudioPlayerContext wrapper is
             // pointer-events-none (so it doesn't swallow taps on
             // page content behind the mini player); we re-enable
@@ -321,16 +466,23 @@ function MobilePlayer({
                 <X className="w-3.5 h-3.5" />
               </button>
 
-              {/* Minimize handle — prominent pull-down zone at top center */}
+              {/* Minimize handle — the nib alone is universally
+                  understood as "drag/swipe me down" (every iOS
+                  sheet, Android bottom sheet, and Apple Music mini
+                  player uses the same affordance). The previous
+                  ChevronDown duplicated the signal and added visual
+                  weight without communicating anything new, so it's
+                  gone. The hit zone stays the same generous 48×24
+                  pull-down strip so a tap on the nib still
+                  minimizes for users who prefer that to a swipe. */}
               {onMinimize && (
                 <button
                   type="button"
                   aria-label="Minimize player"
                   onClick={onMinimize}
-                  className="absolute top-0 left-1/2 -translate-x-1/2 z-[10] flex flex-col items-center gap-0.5 px-6 pt-1 pb-2.5 group cursor-pointer focus:outline-none"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 z-[10] flex flex-col items-center gap-0.5 px-6 pt-1.5 pb-3 group cursor-pointer focus:outline-none"
                 >
                   <span className="w-9 h-[3px] rounded-full bg-white/20 group-hover:bg-white/40 transition-colors" />
-                  <ChevronDown className="w-3.5 h-3.5 text-white/20 group-hover:text-white/50 transition-colors" />
                 </button>
               )}
 

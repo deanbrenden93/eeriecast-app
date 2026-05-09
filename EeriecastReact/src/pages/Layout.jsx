@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown, ShoppingBag, CheckCheck } from "lucide-react";
+import { Search, Bell, User, Menu, X, Home, Library, Headphones, BookOpen, Settings, Crown, ShoppingBag, CheckCheck, Trash2 } from "lucide-react";
 import { useCart } from '@/context/CartContext';
 import PropTypes from 'prop-types';
 import SearchModal from "../components/search/SearchModal";
@@ -10,6 +10,7 @@ import UserMenu from "../components/layout/UserMenu";
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import LegacyTrialBanner from '@/components/auth/LegacyTrialBanner.jsx';
 import { useUser } from '@/context/UserContext.jsx';
+import { toast } from '@/components/ui/use-toast';
 import { cn } from "@/lib/utils";
 import { FeatureGate } from '@/lib/featureFlags';
 import logo from '@/assets/logo.png';
@@ -530,7 +531,19 @@ function NotificationsPopover({ onClose }) {
     isAuthenticated,
     markNotificationRead,
     markAllNotificationsRead,
+    deleteNotification,
+    clearAllNotifications,
   } = useUser();
+  // Inline confirm state for Clear All — first tap arms, second
+  // confirms. Beats a global modal for what's a low-stakes,
+  // low-frequency action and stays inside the popover so no other
+  // chrome appears.
+  const [clearArmed, setClearArmed] = useState(false);
+  useEffect(() => {
+    if (!clearArmed) return undefined;
+    const t = setTimeout(() => setClearArmed(false), 3500);
+    return () => clearTimeout(t);
+  }, [clearArmed]);
   const navigate = useNavigate();
   const initializedRef = useRef(false);
 
@@ -543,22 +556,69 @@ function NotificationsPopover({ onClose }) {
     }
   }, [isAuthenticated, refreshNotifications]);
 
+  // Hostnames we consider "us" for the purposes of routing
+  // notification URLs. An admin-authored notification might ship an
+  // absolute link like ``https://eeriecast.com/Library`` because the
+  // admin tool defaults to copying full URLs from the prod site —
+  // when that notification lands on a dev build (localhost) or a
+  // sibling domain (eerie.fm), we still want it to deep-link inside
+  // the SPA via react-router instead of forcing a full page reload
+  // out to production.
+  //
+  // The current window's origin is always treated as internal even
+  // if it isn't in this list, so this only needs to enumerate
+  // siblings (alternate domains, marketing site, staging hostnames).
+  // ``backend.eerie.fm`` is intentionally NOT here — the API host
+  // doesn't render the SPA, so links to it really are external.
+  const APP_HOSTNAMES = new Set([
+    'eeriecast.com',
+    'www.eeriecast.com',
+    'eerie.fm',
+    'www.eerie.fm',
+    'app.eerie.fm',
+    'app.eeriecast.com',
+  ]);
+
   // Resolve the best deep-link target for a notification.
   //
   // Three flavors, in priority order:
   //
-  //   1. `n.url` — admin broadcasts can ship an arbitrary internal
-  //      path (`/Library`) or absolute URL (`https://eeriecast.com/lore`).
-  //      Internal paths go through react-router's navigate; absolute
-  //      URLs open in the same tab via window.location so the popover
-  //      can carry users out to the marketing site or store.
+  //   1. `n.url` — admin broadcasts can ship an arbitrary path
+  //      (`/Library`) or full URL (`https://eeriecast.com/lore`).
+  //      Anything that resolves to "us" (current origin or a known
+  //      sibling app hostname) is routed via react-router so the
+  //      SPA shell stays mounted and audio playback isn't
+  //      interrupted; only genuinely third-party URLs fall through
+  //      to a full-page navigation.
   //   2. Episode notifications — link to the show page with the
   //      episode id pinned, so the page can scroll/highlight the
   //      specific episode if supported.
   //   3. No target — the notification just informs and dismisses.
   const resolveDeepLink = (n) => {
     const url = (n?.url || '').trim();
-    if (url) return { kind: url.startsWith('/') ? 'internal' : 'external', target: url };
+    if (url) {
+      if (url.startsWith('/')) {
+        return { kind: 'internal', target: url };
+      }
+      // Try parsing as an absolute URL. If the host matches "us",
+      // strip everything but path+search+hash so react-router can
+      // route within the SPA instead of bouncing through window.
+      try {
+        const parsed = new URL(url, window.location.href);
+        const isOurOrigin =
+          parsed.origin === window.location.origin
+          || APP_HOSTNAMES.has(parsed.hostname.toLowerCase());
+        if (isOurOrigin) {
+          const internalPath = `${parsed.pathname || '/'}${parsed.search || ''}${parsed.hash || ''}`;
+          return { kind: 'internal', target: internalPath };
+        }
+      } catch {
+        // Malformed URL — let it fall through to external so the
+        // browser can decide what to do (it'll usually surface the
+        // error in an obvious way).
+      }
+      return { kind: 'external', target: url };
+    }
     const podId = (n?.podcast && typeof n.podcast === 'object') ? n.podcast.id : n?.podcast;
     const epId = (n?.episode && typeof n.episode === 'object') ? n.episode.id : n?.episode;
     if (!podId) return null;
@@ -573,6 +633,10 @@ function NotificationsPopover({ onClose }) {
     if (!link) return;
     onClose?.();
     if (link.kind === 'external') {
+      // Open same-tab — admin can opt notifications into a new tab
+      // by including target=_blank in their UI flow if needed; the
+      // common "go check out X on the marketing site" case wants
+      // same-tab navigation so back-button returns to the app.
       window.location.assign(link.target);
     } else {
       navigate(link.target);
@@ -589,20 +653,58 @@ function NotificationsPopover({ onClose }) {
       exit={{ opacity: 0, y: -6, scale: 0.97 }}
       transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
     >
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.04]">
+      {/* Header — title on the left, action cluster on the right.
+          On the narrowest popover width (320px) the actions wrap
+          to a second line beneath the title rather than crowding
+          the row, so the "Mark all read" + "Clear all" buttons
+          never overflow or get clipped. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 py-2.5 border-b border-white/[0.04]">
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Notifications</h3>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ml-auto">
           {hasUnread && typeof markAllNotificationsRead === 'function' && (
             <button
               onClick={() => markAllNotificationsRead()}
-              className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition-colors focus:outline-none"
               title="Mark all as read"
             >
               <CheckCheck className="w-3.5 h-3.5" />
-              Mark all read
+              <span>Mark all read</span>
             </button>
           )}
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors">Close</button>
+          {Array.isArray(notifications) && notifications.length > 0 && typeof clearAllNotifications === 'function' && (
+            // Two-tap confirm: first tap flips the button into a
+            // red "Confirm?" pill that auto-disarms after 3.5s, so
+            // a stray click never wipes someone's notification
+            // history. Same idiom we use on the queue's clear-all.
+            <button
+              onClick={() => {
+                if (!clearArmed) { setClearArmed(true); return; }
+                setClearArmed(false);
+                Promise.resolve(clearAllNotifications()).catch(() => {
+                  // Endpoint missing or network error — context will
+                  // refetch from the server in a moment to restore
+                  // truth. Surface a toast so the user knows the
+                  // action didn't actually persist and to try again.
+                  toast({
+                    title: "Couldn't clear notifications",
+                    description: 'Server rejected the request — please try again in a moment.',
+                    variant: 'destructive',
+                    duration: 3000,
+                  });
+                });
+              }}
+              className={`inline-flex items-center gap-1 text-[11px] transition-colors focus:outline-none ${
+                clearArmed
+                  ? 'text-red-300 hover:text-red-200'
+                  : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+              title={clearArmed ? 'Tap again to confirm' : 'Clear all notifications'}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{clearArmed ? 'Confirm?' : 'Clear all'}</span>
+            </button>
+          )}
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors focus:outline-none">Close</button>
         </div>
       </div>
       <div className="max-h-80 overflow-auto">
@@ -612,36 +714,16 @@ function NotificationsPopover({ onClose }) {
           <div className="px-4 py-8 text-center text-zinc-600 text-sm">No notifications</div>
         ) : (
           <ul className="divide-y divide-white/[0.03]">
-            {notifications.map((n) => (
-              <li
-                key={n.id}
-                className={`px-4 py-3 hover:bg-white/[0.03] cursor-pointer transition-colors ${n.is_read ? 'opacity-60' : ''}`}
-                onClick={() => handleNotificationClick(n)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(n); } }}
-                aria-label={`Notification: ${n?.message || ''}`}
-              >
-                <div className="flex items-start gap-3">
-                  <span className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${n.is_read ? 'bg-zinc-700' : 'bg-red-500'}`} />
-                  <div className="flex-1 min-w-0">
-                    {n.title && (
-                      <p className="text-sm font-semibold leading-snug break-words text-white">
-                        {n.title}
-                      </p>
-                    )}
-                    <p className={`text-sm leading-snug break-words text-zinc-300 ${n.title ? 'mt-0.5' : ''}`}>
-                      {n.message || 'You have a new notification.'}
-                    </p>
-                    {n.created_at && (
-                      <p className="text-[11px] text-zinc-600 mt-1">
-                        {new Date(n.created_at).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
+            <AnimatePresence initial={false}>
+              {notifications.map((n) => (
+                <SwipeableNotificationItem
+                  key={n.id}
+                  notification={n}
+                  onClick={() => handleNotificationClick(n)}
+                  onDelete={() => deleteNotification?.(n.id)}
+                />
+              ))}
+            </AnimatePresence>
           </ul>
         )}
       </div>
@@ -651,6 +733,191 @@ function NotificationsPopover({ onClose }) {
 
 NotificationsPopover.propTypes = {
   onClose: PropTypes.func,
+};
+
+/* ─── Swipeable notification row ─── */
+
+// SwipeableNotificationItem
+//
+// A single row in the notifications popover that supports two
+// gestures:
+//
+//   * Swipe left ➜ slide the row to reveal a red Trash button. If
+//     the user releases past the dismiss threshold, the row animates
+//     fully off-screen and `onDelete` fires (which the parent wires
+//     up to the optimistic `deleteNotification` action).
+//   * Tap (no horizontal movement, or below the threshold) ➜ falls
+//     through to the standard click handler so the notification
+//     still deep-links to its target as before.
+//
+// The native click is intentionally cancelled when a swipe fires —
+// without that guard, dismissing on touchscreens would also navigate
+// to whatever the notification linked to. We track the absolute
+// horizontal delta during pan and consume the next click event when
+// the user actually swiped.
+function SwipeableNotificationItem({ notification: n, onClick, onDelete }) {
+  // Mid-removal flag — once a swipe commits we set this true,
+  // which kicks off the slide-off-screen animation. The animate
+  // prop takes priority over the drag motion-value, so the row
+  // doesn't snap back to rest while the optimistic delete is in
+  // flight; if the API rejects it we flip back to false and the
+  // parent's rollback re-inserts the row in place.
+  const [isRemoving, setIsRemoving] = useState(false);
+  // True whenever the user is actively dragging — drives the
+  // reveal animation on the trash affordance underneath. We also
+  // keep an "X has moved at all" ref so the synthetic click that
+  // fires after pointer-up doesn't navigate when the user was
+  // really swiping.
+  const [isDragging, setIsDragging] = useState(false);
+  // Show/hover state for the inline trash button on desktop.
+  const [hovered, setHovered] = useState(false);
+  const dragMovedRef = useRef(false);
+
+  const SWIPE_DISMISS_PX = 80;
+  const SWIPE_DISMISS_VELOCITY = 500;
+  const TAP_GUARD_PX = 8;
+
+  const handleDragStart = () => {
+    dragMovedRef.current = false;
+    setIsDragging(true);
+  };
+
+  const handleDrag = (_e, info) => {
+    if (Math.abs(info.offset.x) > TAP_GUARD_PX) {
+      dragMovedRef.current = true;
+    }
+  };
+
+  const handleDragEnd = (_e, info) => {
+    setIsDragging(false);
+    const past =
+      info.offset.x <= -SWIPE_DISMISS_PX ||
+      info.velocity.x <= -SWIPE_DISMISS_VELOCITY;
+    if (past) {
+      setIsRemoving(true);
+      Promise.resolve()
+        .then(() => onDelete?.())
+        .catch(() => setIsRemoving(false));
+    }
+    // Otherwise dragSnapToOrigin returns the row to x=0 and the
+    // trash affordance fades back out via the AnimatePresence
+    // around it.
+  };
+
+  const handleClickCapture = (e) => {
+    if (dragMovedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragMovedRef.current = false;
+    }
+  };
+
+  const triggerDelete = () => {
+    if (isRemoving) return;
+    setIsRemoving(true);
+    Promise.resolve()
+      .then(() => onDelete?.())
+      .catch(() => setIsRemoving(false));
+  };
+
+  // The trash affordance is shown only when (a) the user is mid-
+  // swipe (mobile gesture), (b) hovering with a mouse / focused
+  // (desktop keyboard), or (c) the row is animating off. Keeping
+  // it hidden at rest is what makes the popover read as a clean
+  // notification list rather than a wall of red strips.
+  const showTrash = isDragging || hovered || isRemoving;
+
+  return (
+    <motion.li
+      layout
+      initial={false}
+      exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+      transition={{ type: 'tween', duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+      className="relative overflow-hidden group"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
+      {/* Trash affordance — sits at the far-right edge of the row
+          and only appears in interactive states. Width is just
+          enough for the icon (no "DELETE" text strip eating the
+          row). On desktop it's a real clickable button so users
+          can dismiss without swiping; on mobile it acts as the
+          visual reveal target for the swipe gesture. */}
+      <AnimatePresence>
+        {showTrash && (
+          <motion.button
+            type="button"
+            key="trash"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={(e) => { e.stopPropagation(); triggerDelete(); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label="Delete notification"
+            title="Delete notification"
+            className="absolute top-1/2 right-2 -translate-y-1/2 z-[1] inline-flex items-center justify-center w-7 h-7 rounded-full bg-zinc-800/80 text-zinc-300 hover:bg-red-500/90 hover:text-white border border-white/[0.06] transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <motion.div
+        className={`relative bg-[#12121a] pl-4 pr-10 py-3 hover:bg-white/[0.03] cursor-pointer transition-colors ${n.is_read ? 'opacity-60' : ''}`}
+        drag="x"
+        dragDirectionLock
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0.6, right: 0 }}
+        dragSnapToOrigin
+        dragMomentum={false}
+        onDragStart={handleDragStart}
+        onDrag={handleDrag}
+        onDragEnd={handleDragEnd}
+        animate={isRemoving ? { x: -360, opacity: 0 } : undefined}
+        transition={{ type: 'tween', duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+        onClickCapture={handleClickCapture}
+        onClick={onClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); }
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            triggerDelete();
+          }
+        }}
+        aria-label={`Notification: ${n?.message || ''}`}
+      >
+        <div className="flex items-start gap-3">
+          <span className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${n.is_read ? 'bg-zinc-700' : 'bg-red-500'}`} />
+          <div className="flex-1 min-w-0">
+            {n.title && (
+              <p className="text-sm font-semibold leading-snug break-words text-white">
+                {n.title}
+              </p>
+            )}
+            <p className={`text-sm leading-snug break-words text-zinc-300 ${n.title ? 'mt-0.5' : ''}`}>
+              {n.message || 'You have a new notification.'}
+            </p>
+            {n.created_at && (
+              <p className="text-[11px] text-zinc-600 mt-1">
+                {new Date(n.created_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </motion.li>
+  );
+}
+
+SwipeableNotificationItem.propTypes = {
+  notification: PropTypes.object.isRequired,
+  onClick: PropTypes.func,
+  onDelete: PropTypes.func,
 };
 
 Layout.propTypes = {

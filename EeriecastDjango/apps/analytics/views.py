@@ -23,6 +23,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -931,8 +932,15 @@ class AnalyticsEpisodesView(APIView):
             episodes_qs = episodes_qs.filter(title__icontains=query_param)
 
         rows = []
+        # Episode model uses ``published_at`` for the public release
+        # timestamp and ``created_at`` for the row insert time. The
+        # admin table cares about release date — listeners see "newest
+        # episode" by published_at — so we surface that as
+        # ``published_at`` in the response. (A previous version of
+        # this view referenced the non-existent ``created_date`` field
+        # and 500'd on every call.)
         for ep in episodes_qs.values(
-            "id", "title", "podcast_id", "podcast__title", "created_date"
+            "id", "title", "podcast_id", "podcast__title", "published_at"
         ):
             eid = ep["id"]
             seconds = seconds_by_ep.get(eid, 0)
@@ -941,8 +949,8 @@ class AnalyticsEpisodesView(APIView):
                 "title": ep["title"],
                 "podcast_id": ep["podcast_id"],
                 "podcast_title": ep["podcast__title"] or "",
-                "created_date": (
-                    ep["created_date"].isoformat() if ep["created_date"] else None
+                "published_at": (
+                    ep["published_at"].isoformat() if ep["published_at"] else None
                 ),
                 "plays": plays_by_ep.get(eid, 0),
                 "completions": completions_by_ep.get(eid, 0),
@@ -1024,11 +1032,16 @@ class AnalyticsEpisodeDetailView(APIView):
         bucket_labels = [d.isoformat() for d in buckets]
 
         try:
+            # Episode model has no ``created_date`` column — the public
+            # release timestamp is ``published_at`` and the row insert
+            # timestamp is ``created_at``. Asking for ``created_date``
+            # raised a FieldError that surfaced as a generic 500 in
+            # the admin episode-detail modal.
             episode = (
                 Episode.objects
                 .select_related("podcast")
                 .values(
-                    "id", "title", "duration", "created_date",
+                    "id", "title", "duration", "published_at",
                     "podcast_id", "podcast__title",
                 )
                 .get(id=episode_id)
@@ -1136,8 +1149,8 @@ class AnalyticsEpisodeDetailView(APIView):
             "podcast_id": episode["podcast_id"],
             "podcast_title": episode["podcast__title"] or "",
             "duration": duration,
-            "created_date": (
-                episode["created_date"].isoformat() if episode["created_date"] else None
+            "published_at": (
+                episode["published_at"].isoformat() if episode["published_at"] else None
             ),
             "range": {
                 "key": range_label,

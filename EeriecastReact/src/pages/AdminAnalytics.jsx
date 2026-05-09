@@ -1911,9 +1911,9 @@ function EpisodeDetailModal({ episodeId, queryArgs, rangeLabel, onClose }) {
                     {formatMinutes(Math.round(data.duration / 60))}
                   </span>
                 )}
-                {data.created_date && (
+                {(data.published_at || data.created_date) && (
                   <span>
-                    {new Date(data.created_date).toLocaleDateString(undefined, {
+                    {new Date(data.published_at || data.created_date).toLocaleDateString(undefined, {
                       year: "numeric",
                       month: "short",
                       day: "numeric",

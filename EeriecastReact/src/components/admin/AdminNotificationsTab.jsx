@@ -197,7 +197,7 @@ export default function AdminNotificationsTab() {
             <Field
               icon={Link2}
               label="Link"
-              hint="Optional. Tapping the notification opens this URL. Use a path like /Library or a full https:// URL."
+              hint="Optional. Tapping the notification opens this URL. Paths like /Library and full eeriecast.com / eerie.fm URLs both route inside the app — only third-party links cause a full page navigation."
             >
               <Input
                 value={url}

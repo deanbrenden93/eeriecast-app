@@ -73,9 +73,13 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
     if (sortOrder === 'unplayed') {
       filtered = filtered.filter(ep => {
         const prog = episodeProgressMap?.get(Number(ep.id));
-        // Treat as unplayed if there's no record at all, or if the
-        // listener hasn't yet crossed the completion threshold.
-        return !prog || !prog.completed;
+        // "Unplayed" means "haven't started yet" — exclude both
+        // completed episodes AND anything with saved progress > 0.
+        // In-progress rows surface elsewhere as "X% played" so this
+        // tab stays focused on truly fresh material.
+        if (!prog) return true;
+        if (prog.completed) return false;
+        return (prog.progress || 0) <= 0;
       });
     }
     const toTs = (e) => new Date(e?.published_at || e?.created_date || e?.release_date || 0).getTime();
@@ -146,14 +150,27 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
 
       {/* ═══ Section 2: Latest Episodes ═══ */}
       <div>
+        {/* The outer row wraps at the H3 boundary on narrow screens so
+            the heading and the control cluster always sit together
+            cleanly. The inner control cluster never wraps internally —
+            instead it horizontally scrolls when the selected show title
+            is long enough to force overflow. That stops the Sort
+            dropdown from ever dropping to a second line and keeps the
+            row visually tidy regardless of show name length. */}
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
             {sortOrder === 'unplayed' ? 'Unplayed Episodes' : 'Latest Episodes'}
           </h3>
-          {/* flex-wrap so a long selected show title can never push the
-              Sort dropdown off-screen on mobile — controls drop to a
-              second line instead of clipping. */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+          {/* `justify-start` (not end) anchors the leftmost control —
+              "Play All" — to the start of the row, so when a long
+              show title pushes total cluster width past the viewport
+              the OVERFLOW lands on the right (the Sort dropdown,
+              which a horizontal scroll can reveal) rather than
+              clipping the most-tappable action off the left edge.
+              The previous justify-end was hiding Play All by a few
+              pixels on phones whenever the selected show name was
+              long. */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-nowrap justify-start max-w-full overflow-x-auto scrollbar-none -mx-1 px-1">
             {/* Play All — only meaningful when there are episodes to queue.
                 Surfaced more prominently when the listener is on the
                 "Unplayed" sort because that's the moment they're most
@@ -162,7 +179,7 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
               <Button
                 size="sm"
                 onClick={handlePlayAll}
-                className={`h-9 px-3.5 rounded-full gap-1.5 text-sm font-semibold transition-all duration-300 ${
+                className={`shrink-0 h-9 px-3.5 rounded-full gap-1.5 text-sm font-semibold transition-all duration-300 ${
                   sortOrder === 'unplayed'
                     ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white shadow-[0_4px_16px_rgba(220,38,38,0.25)]'
                     : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08]'
@@ -177,20 +194,24 @@ export default function FollowingTab({ podcasts, onAddToPlaylist, onPlayEpisode 
             {/* Filter by show — pill-styled dropdown matching Discover.
                 Capped width (with the SelectTrigger's built-in
                 line-clamp-1) so a long show title truncates with an
-                ellipsis instead of expanding the trigger. */}
+                ellipsis instead of expanding the trigger. The hard
+                max-width keeps the trigger from monopolizing the row
+                on phones; users still see the full title in the
+                dropdown menu when they tap to change. */}
             <FilterDropdown
               value={selectedShow}
               onChange={setSelectedShow}
               placeholder="Show"
-              className="max-w-[10rem] sm:max-w-[14rem]"
+              className="shrink-0 !min-w-[7rem] max-w-[7rem] sm:max-w-[14rem]"
               options={[
                 { value: "all", label: "All Shows" },
                 ...showOptions.map((s) => ({ value: String(s.id), label: s.title })),
               ]}
             />
 
-            {/* Sort dropdown — Newest / Oldest / Unplayed.
-                shrink-0 keeps it intact when the row wraps tight. */}
+            {/* Sort dropdown — Newest / Oldest / Unplayed. shrink-0 +
+                flex-nowrap parent keeps it on the same line as the
+                Show filter no matter how long the show name is. */}
             <FilterDropdown
               value={sortOrder}
               onChange={setSortOrder}

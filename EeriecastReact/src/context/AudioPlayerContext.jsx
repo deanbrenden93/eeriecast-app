@@ -973,11 +973,23 @@ export const AudioPlayerProvider = ({ children }) => {
 
   const handleCollapsePlayer = () => {
     setShowExpandedPlayer(false);
-    setMiniPlayerReady(false); // hide mini player until expanded exit completes
+    // Mini player is intentionally NOT gated here. The previous
+    // gate held the mini off-screen until the expanded player
+    // finished its 360 ms slide-down, producing a perceptible
+    // blank moment followed by an abrupt pop-in. Mounting the
+    // mini concurrently lets its spring entrance run beneath the
+    // sliding-down expanded; the expanded fully covers the mini
+    // area until it's ~90% off the screen, so the mini's entry
+    // animation has already settled into place by the time it's
+    // visible — no overlap is ever observed by the user.
+    setMiniPlayerReady(true);
   };
 
   const handleExpandedExitComplete = () => {
-    // Expanded player has fully left the screen — let the mini player animate in
+    // No-op now that the mini animates in concurrently. Kept for
+    // AnimatePresence's onExitComplete callback contract; we may
+    // still want to hook future "post-expanded-collapse" cleanup
+    // here without re-introducing the gate.
     setMiniPlayerReady(true);
   };
 

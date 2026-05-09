@@ -439,3 +439,21 @@ class NotificationViewSet(viewsets.ModelViewSet):
             notification.is_read = True
             notification.save(update_fields=['is_read'])
         return Response(self.get_serializer(notification).data)
+
+    @action(detail=False, methods=['delete', 'post'])
+    def clear_all(self, request):
+        """Permanently delete every notification belonging to the
+        caller. Used by the "Clear all" affordance in the
+        notifications popover. Scoped via ``get_queryset`` so a
+        request can never reach into someone else's row even with a
+        pathological client.
+
+        Accepts both DELETE (the semantically correct verb) and POST
+        so callers fronting through caches/proxies that strip
+        DELETE bodies still work. Returns 200 + a small JSON body
+        — using 204 with a body is technically inconsistent and
+        some clients (and some intermediaries) drop the body, so
+        we keep the contract simple instead.
+        """
+        deleted_count, _ = self.get_queryset().delete()
+        return Response({"deleted": deleted_count}, status=200)

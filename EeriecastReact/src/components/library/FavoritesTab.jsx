@@ -14,7 +14,7 @@ export default function FavoritesTab({
   onAddToPlaylist,
 }) {
   const { episode: currentEpisode, setPlaybackQueue, addToQueue } = useAudioPlayerContext();
-  const { favoriteEpisodeIds } = useUser();
+  const { favoriteEpisodeIds, episodeProgressMap } = useUser();
   const somethingPlaying = !!currentEpisode;
 
   // ── Local episode list: mirrors favoriteEpisodes but delays removals for animation ──
@@ -104,6 +104,9 @@ export default function FavoritesTab({
   const [sortOrder, setSortOrder] = useState('newest');
 
   // ── Visible episodes (filtered + sorted) ──
+  // "Unplayed" doubles as a filter: hides anything the listener has
+  // already finished, then surfaces the rest newest-first so a single
+  // Play All tap starts a clean catch-up queue from their favorites.
   const visibleEpisodes = useMemo(() => {
     let filtered = normalizedEpisodes;
     if (selectedShow !== 'all') {
@@ -112,11 +115,23 @@ export default function FavoritesTab({
         return String(pid) === String(selectedShow);
       });
     }
+    if (sortOrder === 'unplayed') {
+      filtered = filtered.filter(ep => {
+        const prog = episodeProgressMap?.get(Number(ep?.id));
+        // "Unplayed" means "haven't started yet" — exclude both
+        // completed episodes AND any in-progress rows. Listeners
+        // expect a clean catch-up queue, not a mix of partially
+        // listened episodes that already advertise their progress.
+        if (!prog) return true;
+        if (prog.completed) return false;
+        return (prog.progress || 0) <= 0;
+      });
+    }
     const toTs = (e) => new Date(e?.published_at || e?.created_date || e?.release_date || 0).getTime();
     return [...filtered].sort((a, b) =>
-      sortOrder === 'newest' ? toTs(b) - toTs(a) : toTs(a) - toTs(b)
+      sortOrder === 'oldest' ? toTs(a) - toTs(b) : toTs(b) - toTs(a)
     );
-  }, [normalizedEpisodes, selectedShow, sortOrder]);
+  }, [normalizedEpisodes, selectedShow, sortOrder, episodeProgressMap]);
 
   // ── Play All: replace current queue with visible favorites ──
   const handlePlayAll = useCallback(async () => {
@@ -178,6 +193,7 @@ export default function FavoritesTab({
             options={[
               { value: 'newest', label: 'Newest' },
               { value: 'oldest', label: 'Oldest' },
+              { value: 'unplayed', label: 'Unplayed' },
             ]}
           />
         </div>

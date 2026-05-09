@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Play, Crown, BookOpen, Clock, ChevronDown, ChevronUp, ChevronLeft, Headphones, Heart, Loader2, Share2, Sparkles, Feather, ArrowUpRight } from 'lucide-react';
 import { sharePodcast } from '@/lib/share';
 import EpisodesTable from '@/components/podcasts/EpisodesTable';
+import { FilterDropdown } from '@/components/common/FilterControls';
 import AddToPlaylistModal from '@/components/library/AddToPlaylistModal';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
 import { useUser } from '@/context/UserContext';
@@ -77,7 +78,12 @@ export default function Episodes() {
   const [show, setShow] = useState(null);
   const [episodes, setEpisodes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [sortOrder, setSortOrder] = useState('Newest');
+  // Sort order: 'newest' | 'oldest' | 'unplayed'.
+  // Lowercased + matched to the FilterDropdown the rest of the app
+  // uses (Following tab, Discover tabs) so all sort controls have a
+  // single shared shape. Audiobooks (which have a natural chapter
+  // order) flip to 'oldest' on first mount via the effect below.
+  const [sortOrder, setSortOrder] = useState('newest');
   const [showAddModal, setShowAddModal] = useState(false);
   const [episodeToAdd, setEpisodeToAdd] = useState(null);
   const [isFollowingLoading, setIsFollowingLoading] = useState(false);
@@ -166,7 +172,7 @@ export default function Episodes() {
 
   useEffect(() => {
     if (show && isAudiobook(show)) {
-      setSortOrder('Oldest');
+      setSortOrder('oldest');
     }
   }, [show]);
 
@@ -352,6 +358,59 @@ export default function Episodes() {
     }
   };
 
+  // ── Play All — queues the currently-visible episode list ──────────
+  // Distinct from `doPlay` (which builds the queue from the full,
+  // unfiltered episode set). Play All honors the active sort + the
+  // "Unplayed" filter, so a listener on Unplayed gets a queue of just
+  // the unplayed episodes and starts at the top of that list.
+  // Mid-progress episodes resume from where the listener left off
+  // instead of restarting at zero.
+  const handlePlayAllEpisodes = async () => {
+    if (!mainEpisodes.length || typeof setPlaybackQueue !== 'function') return;
+
+    // Free-tier gate: if the very first episode is locked behind premium,
+    // route to /Premium instead of dropping the listener into an unplayable queue.
+    const firstEp = mainEpisodes[0];
+    if (lockedEpisodeIds.has(firstEp?.id) || (firstEp?.is_premium && !isPremium)) {
+      goToPremium();
+      return;
+    }
+
+    try {
+      // Enrich the head of the queue (the episode that's about to
+      // play) with a fresh detail fetch if audio is missing —
+      // matches doPlay's behavior so a sparse list-row episode is
+      // still playable once the user actually hits Play All.
+      let playEp = firstEp;
+      if (!getEpisodeAudioUrl(playEp) && playEp?.id) {
+        try {
+          const fullEp = await Episode.get(playEp.id);
+          if (fullEp && getEpisodeAudioUrl(fullEp)) playEp = fullEp;
+        } catch { /* ignore */ }
+      }
+
+      const queueItems = mainEpisodes.map((ep) => {
+        const prog = episodeProgressMap?.get(Number(ep.id));
+        const resumeProgress =
+          prog && !prog.completed && prog.progress > 0 ? prog.progress : 0;
+        return {
+          podcast: show,
+          episode: ep.id === firstEp.id ? playEp : ep,
+          resume: { progress: resumeProgress },
+        };
+      });
+
+      await setPlaybackQueue(queueItems, 0);
+    } catch (e) {
+      console.error('Failed to play all', e);
+      toast({
+        title: 'Playback error',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // ── Audiobook resume detection ────────────────────────────────────
   // Find the chapter the user should resume from (the first non-completed
   // chapter that has progress, or the first chapter after all completed ones).
@@ -515,12 +574,27 @@ export default function Episodes() {
   }, [deepLinkEpId, deepLinkStart, show?.id, episodes, showMatureGate]);
 
   const sortedEpisodes = useMemo(() => {
-    const arr = [...episodes];
+    let arr = [...episodes];
+    // Unplayed mode hides anything the listener has touched at all —
+    // both completed episodes AND episodes with any saved progress
+    // greater than zero. The thinking: an in-progress row already
+    // surfaces as "X% played" with the red bar overlay, so a feed
+    // labelled "Unplayed" should mean "haven't started yet". This
+    // runs BEFORE the date sort so the row count + Play All queue
+    // both reflect the filtered set.
+    if (sortOrder === 'unplayed') {
+      arr = arr.filter((ep) => {
+        const prog = episodeProgressMap?.get(Number(ep?.id));
+        if (!prog) return true;
+        if (prog.completed) return false;
+        return (prog.progress || 0) <= 0;
+      });
+    }
     const getDate = (e) => new Date(e.created_date || e.published_at || e.release_date || 0).getTime();
-    if (sortOrder === 'Newest') arr.sort((a, b) => getDate(b) - getDate(a));
-    else if (sortOrder === 'Oldest') arr.sort((a, b) => getDate(a) - getDate(b));
+    if (sortOrder === 'oldest') arr.sort((a, b) => getDate(a) - getDate(b));
+    else arr.sort((a, b) => getDate(b) - getDate(a)); // 'newest' + 'unplayed'
     return arr;
-  }, [episodes, sortOrder]);
+  }, [episodes, sortOrder, episodeProgressMap]);
 
   // For free users on gated content, split the list into a dedicated samples
   // section (shown above) + the main (locked) list below. Paid members always
@@ -790,25 +864,34 @@ export default function Episodes() {
                 </div>
               )}
 
-              {/* Action buttons */}
+              {/* Action buttons.
+                  The hero Play button is intentionally only rendered
+                  for audiobooks now — they need the
+                  Continue / Start Listening affordance because the
+                  chapter-resume logic ("pick up where you left off
+                  on chapter 7") only lives on this button. For
+                  regular podcasts and music shows it duplicated the
+                  Play All button that now sits next to the episode
+                  list, so we drop it to avoid two near-identical
+                  CTAs stacked above each other. */}
               <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  className="px-7 py-2.5 rounded-full flex items-center gap-2.5 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
-                  style={{
-                    background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
-                    boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
-                    color: showColors.hero.fg,
-                  }}
-                  onClick={isBook ? doPlayAudiobook : () => doPlay(showSampleSection ? (sampleEpisodes[0] || sortedEpisodes[0]) : sortedEpisodes[0])}
-                >
-                  <Play
-                    className="w-4 h-4"
-                    style={{ fill: showColors.hero.fg, color: showColors.hero.fg }}
-                  />
-                  {isBook
-                    ? (audiobookResume ? 'Continue' : 'Start Listening')
-                    : 'Play'}
-                </Button>
+                {isBook && (
+                  <Button
+                    className="px-7 py-2.5 rounded-full flex items-center gap-2.5 text-sm font-semibold shadow-lg transition-all duration-500 hover:scale-[1.02] hover:brightness-110"
+                    style={{
+                      background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                      boxShadow: `0 10px 15px -3px ${showColors.hero.shadow || 'transparent'}`,
+                      color: showColors.hero.fg,
+                    }}
+                    onClick={doPlayAudiobook}
+                  >
+                    <Play
+                      className="w-4 h-4"
+                      style={{ fill: showColors.hero.fg, color: showColors.hero.fg }}
+                    />
+                    {audiobookResume ? 'Continue' : 'Start Listening'}
+                  </Button>
+                )}
 
                 <Button
                   variant="outline"
@@ -1012,7 +1095,7 @@ export default function Episodes() {
           })()
         )}
 
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 md:gap-0 mb-5 md:mb-7">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5 md:mb-7">
           <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2.5">
             {isBook
               ? (showAudiobookSampleSection ? 'Members-Only Chapters' : 'Chapters')
@@ -1023,21 +1106,54 @@ export default function Episodes() {
               <Crown className="w-5 h-5 text-amber-300/80" />
             )}
           </h2>
-          <div className="flex flex-wrap gap-1.5">
-            {['Newest', 'Oldest'].map(order => (
+          {/* Control cluster — Play All + Sort dropdown. Same shape and
+              behavior as the Library → Following tab so the two
+              surfaces feel like the same app. The cluster never wraps
+              internally; on tight phones the Show/Sort pills scroll
+              horizontally if needed instead of dropping the Sort
+              control to a second line. */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-nowrap justify-end max-w-full overflow-x-auto scrollbar-none -mx-1 px-1">
+            {mainEpisodes.length > 0 && (
+              // Play All takes the show's hero gradient as its
+              // dominant color — same palette the show-page header
+              // is themed with — so the CTA reads as "play this
+              // show" rather than a generic global red. Inline
+              // styles drive the gradient because each show pulls
+              // its own primary/darker pair from `getShowColors`,
+              // and Tailwind can't generate dynamic-gradient
+              // utility classes from runtime values.
               <Button
-                key={order}
-                variant="ghost"
-                onClick={() => setSortOrder(order)}
-                className={`rounded-full px-4 py-1.5 text-xs font-medium transition-all duration-300 ${
-                  sortOrder === order
-                    ? 'bg-white/[0.06] text-white border border-white/[0.08]'
-                    : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
-                }`}
+                size="sm"
+                onClick={handlePlayAllEpisodes}
+                className="shrink-0 h-9 px-3.5 rounded-full gap-1.5 text-sm font-semibold transition-all duration-300 hover:brightness-110"
+                style={{
+                  background: `linear-gradient(to right, ${showColors.hero.primary}, ${showColors.hero.darker})`,
+                  boxShadow: `0 4px 16px ${showColors.hero.shadow || 'rgba(0,0,0,0.25)'}`,
+                  color: showColors.hero.fg,
+                }}
+                title={`Play ${mainEpisodes.length} ${sortOrder === 'unplayed' ? 'unplayed ' : ''}${
+                  isBook ? 'chapter' : isMusicShow ? 'track' : 'episode'
+                }${mainEpisodes.length === 1 ? '' : 's'}`}
               >
-                {order}
+                <Play
+                  className="w-3.5 h-3.5"
+                  style={{ fill: showColors.hero.fg, color: showColors.hero.fg }}
+                />
+                Play All
               </Button>
-            ))}
+            )}
+
+            <FilterDropdown
+              value={sortOrder}
+              onChange={setSortOrder}
+              placeholder="Sort"
+              className="shrink-0"
+              options={[
+                { value: 'newest', label: 'Newest' },
+                { value: 'oldest', label: 'Oldest' },
+                { value: 'unplayed', label: 'Unplayed' },
+              ]}
+            />
           </div>
         </div>
 

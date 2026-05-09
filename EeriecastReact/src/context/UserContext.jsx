@@ -5,9 +5,66 @@ import PropTypes from 'prop-types';
 
 const UserContext = React.createContext();
 
+// Persisted snapshot of the currently-authenticated user. Rehydrated
+// synchronously when <UserProvider> mounts so consumers reading
+// `user` (avatar, name, premium gates, "For You" feed, etc.) see
+// the logged-in chrome on the very first paint instead of flashing
+// logged-out chrome for the ~150–500 ms it takes /me to resolve.
+//
+// Trade-off: the cached payload can briefly be stale (e.g. user
+// upgraded to premium on another device); we accept that because
+// the background revalidation in `fetchUser` reconciles within
+// one network round-trip and the cache is wiped the moment that
+// call returns 401 or `logout` runs. We also bump CACHE_VERSION
+// any time the on-the-wire `/me` shape changes so old cached
+// objects can't poison a new build.
+const USER_CACHE_KEY = 'eeriecast_user_cache_v1';
+
+const readCachedUser = () => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    // Only trust the cache if there's also an auth token present
+    // — otherwise some other tab logged us out and our cached
+    // user is meaningless. Reading the token here is sync.
+    const token = djangoClient.getToken && djangoClient.getToken();
+    if (!token) return null;
+    const raw = window.localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedUser = (data) => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    if (data && typeof data === 'object') {
+      window.localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data));
+    } else {
+      window.localStorage.removeItem(USER_CACHE_KEY);
+    }
+  } catch { /* quota / private-mode — non-fatal */ }
+};
+
 const UserProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Initialize from the cached snapshot so the very first render
+  // already knows whether the user is logged in. If we didn't
+  // cache anything (or there's no token), `user` stays null and
+  // the UI renders in its normal logged-out state. The lazy init
+  // form means localStorage is only read once on mount, not on
+  // every re-render.
+  const [user, setUser] = useState(() => readCachedUser());
+  // If we had a cached user, we don't want to gate UI on a
+  // "loading" spinner — the real content is already on screen and
+  // we're just revalidating in the background.
+  const hadCachedUserOnMountRef = useRef(false);
+  const [loading, setLoading] = useState(() => {
+    const cached = readCachedUser();
+    hadCachedUserOnMountRef.current = !!cached;
+    return !cached;
+  });
   const [error, setError] = useState(null);
   const [favoriteEpisodeIds, setFavoriteEpisodeIds] = useState(() => new Set());
   const [favoritePodcastIds, setFavoritePodcastIds] = useState(() => new Set());
@@ -245,16 +302,25 @@ const UserProvider = ({ children }) => {
     }
   }, []);
 
-  // Fetch user (stable), only called on mount or explicit refresh
-  const fetchUser = useCallback(async () => {
-    setLoading(true);
+  // Fetch user (stable), only called on mount or explicit refresh.
+  //
+  // If we already rehydrated a cached user on mount, this runs as
+  // a *background revalidation* — we skip flipping `loading` to
+  // true so consumers don't see a spinner over content that's
+  // already correctly rendered. Only when there's no cached user
+  // (cold load with no token, or the cache was wiped) do we show
+  // the loading state.
+  const fetchUser = useCallback(async ({ background = false } = {}) => {
+    if (!background) setLoading(true);
     setError(null);
     try {
       const data = await UserAPI.me();
       setUser(data);
+      writeCachedUser(data);
       return data;
     } catch {
       setUser(null); // not authenticated
+      writeCachedUser(null);
       setFavoriteEpisodeIds(new Set());
       setFavoritePodcastIds(new Set());
       setFavoritePodcasts([]);
@@ -264,7 +330,7 @@ const UserProvider = ({ children }) => {
       setUnreadNotificationCount(0);
       return null;
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, []);
 
@@ -342,13 +408,19 @@ const UserProvider = ({ children }) => {
     try { localStorage.removeItem('eeriecast_user_dob'); } catch { /* */ }
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
     try { localStorage.removeItem('recentlyPlayed'); } catch { /* */ }
+    // Wipe the rehydration snapshot so the next visit doesn't
+    // momentarily show this user's chrome before /me 401s.
+    writeCachedUser(null);
 
     window.location.replace('/');
   }, []);
 
-  // On initial mount, check current user once
+  // On initial mount, revalidate the current user once. If we
+  // rehydrated a cached snapshot on init we revalidate in the
+  // background so the UI doesn't flicker; otherwise it's a normal
+  // foreground fetch with the loading flag set.
   useEffect(() => {
-    fetchUser();
+    fetchUser({ background: hadCachedUserOnMountRef.current });
   }, [fetchUser]);
 
   // When user id becomes available, fetch favorites ONCE per user id
@@ -423,6 +495,86 @@ const UserProvider = ({ children }) => {
     });
   }, []);
 
+  // Manual "Mark as Listened" — flips the listening-history row to
+  // completed=true server-side and updates the local progress map
+  // optimistically so UI affordances (greyed-out rows, completion
+  // checkmarks, "Unplayed" sort filter, etc.) reflect the change
+  // immediately. The backend endpoint upserts the row, so calling
+  // this on an episode the user has never started still creates the
+  // history entry, which is what makes the action save.
+  const markEpisodeListened = useCallback(async (episodeId, episodeDuration = null) => {
+    const eid = Number(episodeId);
+    if (!Number.isFinite(eid) || eid <= 0) return false;
+    // Use whichever duration we know about — passed in, in the local
+    // map already, or zero as a last resort. The backend doesn't
+    // strictly require duration to honor `event: 'complete'`, but
+    // it's needed for the threshold-based completion calc, and we
+    // also want the local progress bar to render full.
+    const known = episodeProgressMap.get(eid);
+    const duration = Number(episodeDuration) || known?.duration || 0;
+    const progress = duration > 0 ? duration : (known?.progress ?? 0);
+
+    setEpisodeProgressMap(prev => {
+      const next = new Map(prev);
+      next.set(eid, { progress, duration, completed: true });
+      return next;
+    });
+
+    try {
+      await UserLibrary.updateProgress(eid, {
+        progress,
+        duration,
+        event: 'complete',
+        source: 'manual_mark_complete',
+      });
+      return true;
+    } catch (e) {
+      // Roll back on failure so the local map matches reality.
+      setEpisodeProgressMap(prev => {
+        const next = new Map(prev);
+        if (known) next.set(eid, known);
+        else next.delete(eid);
+        return next;
+      });
+      throw e;
+    }
+  }, [episodeProgressMap]);
+
+  // Manual "Mark as Unplayed" — resets progress to 0 and flips the
+  // completed flag off on both the backend and the local map. The
+  // PATCH handler decides completion from `(progress >= duration * 0.9)
+  // OR event == 'complete'`, so sending progress=0 with no complete
+  // event is enough to undo a prior completion.
+  const markEpisodeUnplayed = useCallback(async (episodeId) => {
+    const eid = Number(episodeId);
+    if (!Number.isFinite(eid) || eid <= 0) return false;
+    const known = episodeProgressMap.get(eid);
+    const duration = known?.duration || 0;
+
+    setEpisodeProgressMap(prev => {
+      const next = new Map(prev);
+      next.set(eid, { progress: 0, duration, completed: false });
+      return next;
+    });
+
+    try {
+      await UserLibrary.updateProgress(eid, {
+        progress: 0,
+        duration,
+        source: 'manual_mark_unplayed',
+      });
+      return true;
+    } catch (e) {
+      setEpisodeProgressMap(prev => {
+        const next = new Map(prev);
+        if (known) next.set(eid, known);
+        else next.delete(eid);
+        return next;
+      });
+      throw e;
+    }
+  }, [episodeProgressMap]);
+
   // Mark notification read (optimistic)
   const markNotificationRead = useCallback(async (notificationId) => {
     if (!notificationId) return null;
@@ -478,6 +630,83 @@ const UserProvider = ({ children }) => {
 
   // Batch "Mark all as read" — fires mark_read for every unread notification
   // in parallel, with optimistic UI updates so the UI flips instantly.
+  // Delete a notification permanently (swipe-to-delete in the
+  // notification feed). The action is optimistic + rollback so the
+  // row drops out of the list the instant the user releases the
+  // swipe; if the network call fails we re-insert the row in its
+  // original spot and restore the unread badge if relevant.
+  const deleteNotification = useCallback(async (notificationId) => {
+    if (!notificationId) return false;
+    const idNum = Number(notificationId);
+    let removed = null;
+    let removedIdx = -1;
+
+    setNotifications((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      removedIdx = list.findIndex((n) => n && Number(n.id) === idNum);
+      if (removedIdx === -1) return prev;
+      removed = list[removedIdx];
+      const next = [...list.slice(0, removedIdx), ...list.slice(removedIdx + 1)];
+      return next;
+    });
+
+    if (removed && removed.is_read === false) {
+      setUnreadNotificationCount((c) => Math.max(0, c - 1));
+    }
+
+    try {
+      await UserLibrary.deleteNotification(idNum);
+      return true;
+    } catch (e) {
+      if (removed != null) {
+        setNotifications((prev) => {
+          const list = Array.isArray(prev) ? prev : [];
+          // Re-insert at the original position (or the head if the
+          // list mutated underneath us in the meantime).
+          const insertAt = Math.min(removedIdx, list.length);
+          return [...list.slice(0, insertAt), removed, ...list.slice(insertAt)];
+        });
+        if (removed.is_read === false) {
+          setUnreadNotificationCount((c) => c + 1);
+        }
+      }
+      throw e;
+    }
+  }, []);
+
+  // Clear (permanently delete) every notification for the current
+  // user. Optimistic: empties the local list immediately so the
+  // popover can play its row-exit animations. If the backend call
+  // fails we DON'T snap-rollback to the previous list — that was
+  // making the rows pop right back into place faster than
+  // AnimatePresence could finish their exit animations, so the
+  // listener saw "they cleared and instantly came back" with no
+  // motion. Instead we let the optimistic state stand for a beat,
+  // then refetch from the server, which restores truth via a
+  // normal render pass that allows enter animations to play.
+  const clearAllNotifications = useCallback(async () => {
+    const prevCount = Array.isArray(notifications) ? notifications.length : 0;
+    if (prevCount === 0) return { cleared: 0 };
+    setNotifications([]);
+    setUnreadNotificationCount(0);
+    try {
+      await UserLibrary.clearAllNotifications();
+      return { cleared: prevCount };
+    } catch (e) {
+      // Keep the empty optimistic state visible long enough for
+      // the row-exit animations to finish (≈220ms), then ask the
+      // server for the source of truth. If the endpoint is
+      // genuinely missing (e.g. Django wasn't restarted after
+      // adding the action) the refetch will repopulate the list
+      // and the user can retry.
+      const uid = user?.id || user?.user?.id || user?.pk;
+      setTimeout(() => {
+        if (uid) fetchNotificationsForUser(uid);
+      }, 260);
+      throw e;
+    }
+  }, [notifications, user, fetchNotificationsForUser]);
+
   const markAllNotificationsRead = useCallback(async () => {
     const unread = (notifications || []).filter((n) => n && n.is_read === false);
     if (unread.length === 0) return { updated: 0 };
@@ -782,10 +1011,14 @@ const UserProvider = ({ children }) => {
         refreshNotifications,
         markNotificationRead,
         markAllNotificationsRead,
+        deleteNotification,
+        clearAllNotifications,
         // listening history / episode progress
         episodeProgressMap,
         refreshHistory,
         updateEpisodeProgress,
+        markEpisodeListened,
+        markEpisodeUnplayed,
       }}
     >
       {children}

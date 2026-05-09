@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play, Share2 } from 'lucide-react';
+import { MoreVertical, SkipForward, ListPlus, ListMinus, Plus, Play, Share2, CheckCircle2, RotateCcw } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { useAudioPlayerContext } from '@/context/AudioPlayerContext';
+import { useUser } from '@/context/UserContext.jsx';
 import { toast } from '@/components/ui/use-toast';
 import { shareEpisode } from '@/lib/share';
 
@@ -37,6 +38,12 @@ export default function EpisodeMenu({
   inline = false,
 }) {
   const { addNext, addToQueue } = useAudioPlayerContext();
+  const {
+    episodeProgressMap,
+    markEpisodeListened,
+    markEpisodeUnplayed,
+    isAuthenticated,
+  } = useUser() || {};
 
   // ── Controlled open state for scroll-aware behavior ──
   const [menuOpen, setMenuOpen] = useState(false);
@@ -120,6 +127,50 @@ export default function EpisodeMenu({
     shareEpisode(podcast, episode);
   };
 
+  // Has the listener already finished this episode? Used to flip the
+  // "Mark as Listened" / "Mark as Unplayed" affordance into a single
+  // contextual action — never show both at once.
+  const progress = episodeProgressMap?.get(Number(episode?.id));
+  const isCompleted = !!progress?.completed;
+
+  const handleMarkListened = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: 'Sign in required',
+        description: 'Sign in to track episodes you have finished.',
+        variant: 'destructive',
+        duration: 2500,
+      });
+      return;
+    }
+    try {
+      await markEpisodeListened?.(episode.id, episode.duration);
+      toast({ title: 'Marked as listened', description: episode.title, duration: 2000 });
+    } catch {
+      toast({
+        title: "Couldn't mark as listened",
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
+        duration: 2500,
+      });
+    }
+  };
+
+  const handleMarkUnplayed = async () => {
+    if (!isAuthenticated) return;
+    try {
+      await markEpisodeUnplayed?.(episode.id);
+      toast({ title: 'Marked as unplayed', description: episode.title, duration: 2000 });
+    } catch {
+      toast({
+        title: "Couldn't mark as unplayed",
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
+        duration: 2500,
+      });
+    }
+  };
+
   return (
     <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange} modal={inline ? false : undefined}>
       <DropdownMenuTrigger asChild>
@@ -185,6 +236,30 @@ export default function EpisodeMenu({
           >
             <Plus className="w-4 h-4" />
             Add to Playlist
+          </DropdownMenuItem>
+        )}
+
+        {/* Mark as Listened / Mark as Unplayed — single contextual
+            slot. Saves to the user's listening history so the change
+            persists across sessions and feeds back into "Unplayed"
+            sort filters, completion checkmarks, the For You ranker
+            (which excludes already-listened episodes), and so on. */}
+        <DropdownMenuSeparator className="my-1 bg-white/[0.08]" />
+        {isCompleted ? (
+          <DropdownMenuItem
+            onClick={handleMarkUnplayed}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Mark as Unplayed
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            onClick={handleMarkListened}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer text-sm"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Mark as Listened
           </DropdownMenuItem>
         )}
 

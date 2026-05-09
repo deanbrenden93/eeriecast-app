@@ -210,7 +210,14 @@ export default function EpisodesTable({
                   {isCompleted && !isChapterLocked && (
                     <>
                       <span>•</span>
-                      <span className="text-green-400 text-xs">Played</span>
+                      {/* "Completed" reads more clearly than the old
+                          "Played" — it covers both the natural-end
+                          finish path and the manual "Mark as
+                          Listened" action, and visually pairs with
+                          the in-progress "X% played" badge above
+                          (in-progress = "played some", completed =
+                          "completed"). */}
+                      <span className="text-green-400 text-xs">Completed</span>
                     </>
                   )}
                 </div>

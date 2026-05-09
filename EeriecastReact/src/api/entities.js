@@ -419,6 +419,23 @@ export const UserLibrary = {
     return djangoClient.post(`/library/notifications/${notificationId}/mark_read/`);
   },
 
+  // Delete a single notification permanently. The Django side is a
+  // plain DRF ModelViewSet so the default destroy action handles
+  // this — no custom @action needed. We expose the call here to keep
+  // every notification mutation in the same place the rest of the
+  // library API lives.
+  async deleteNotification(notificationId) {
+    return djangoClient.delete(`/library/notifications/${notificationId}/`);
+  },
+
+  // Permanently delete every notification belonging to the current
+  // user. Powers the "Clear all" affordance on the notifications
+  // popover. Backend ignores other users' rows by scoping through
+  // the user-aware queryset.
+  async clearAllNotifications() {
+    return djangoClient.delete('/library/notifications/clear_all/');
+  },
+
   // Get listening history (request a generous page size to get all recent entries)
   async getHistory(limit = 100) {
     return djangoClient.get('/library/history/', { page_size: limit });

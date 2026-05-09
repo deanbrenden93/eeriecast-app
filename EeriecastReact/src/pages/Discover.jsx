@@ -17,7 +17,8 @@ import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useToast } from "@/components/ui/use-toast";
 import { FREE_FAVORITE_LIMIT, canAccessExclusiveEpisode } from "@/lib/freeTier";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { X, Loader2, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { X, Loader2, ArrowLeft, Play } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { getCategoryStyle, normalizeCategoryKey } from "@/lib/categoryStyles";
 import { ShowGridSkeleton, EpisodesTableSkeleton } from "@/components/skeletons/HomeSkeletons";
@@ -132,14 +133,19 @@ function EpisodeFilterBar({ podcasts, categories, filters, onFilterChange, resul
 // the backend returned (i.e. the trending / recommendation algorithm),
 // and is the sensible default for anything other than the plain
 // "latest" feed where chronological order is the product intent.
+// "Unplayed" is a filter-as-sort: it hides anything the listener has
+// already finished and orders the remainder newest-first so a single
+// tap on Play All starts a fresh catch-up queue.
 const RELEVANCE_SORT_OPTIONS = [
   { value: "relevance", label: "Relevance" },
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
+  { value: "unplayed", label: "Unplayed" },
 ];
 const CHRONOLOGICAL_SORT_OPTIONS = [
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
+  { value: "unplayed", label: "Unplayed" },
 ];
 
 function ShowFilterBar({ categories, filters, onFilterChange }) {
@@ -262,10 +268,10 @@ export default function Discover() {
   const [episodeFilters, setEpisodeFilters] = useState({ show: "all", category: "all", sort: "newest", access: "all" });
   const [showFilters, setShowFilters] = useState({ category: "all" });
 
-  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated } = useUser();
+  const { favoritePodcastIds, favoriteEpisodeIds, user, refreshFavorites, isPremium, isAuthenticated, episodeProgressMap } = useUser();
   const { playlists, addPlaylist, updatePlaylist } = usePlaylistContext();
   const { openAuth } = useAuthModal();
-  const { loadAndPlay } = useAudioPlayerContext();
+  const { loadAndPlay, setPlaybackQueue } = useAudioPlayerContext();
   const { toast } = useToast();
 
   // Apply members-only overrides to podcasts
@@ -433,6 +439,22 @@ export default function Discover() {
       });
     }
 
+    // "Unplayed" hides anything the listener has touched — both
+    // completed episodes AND episodes with any saved progress
+    // greater than zero. That keeps the row labelled "Unplayed"
+    // honest: an in-progress row already advertises itself as
+    // "X% played", so it shouldn't reappear here. After filtering
+    // we sort newest-first so the queue surfaces the freshest
+    // episodes the user hasn't started yet.
+    if (filters.sort === "unplayed") {
+      filtered = filtered.filter((ep) => {
+        const prog = episodeProgressMap?.get(Number(ep?.id));
+        if (!prog) return true;
+        if (prog.completed) return false;
+        return (prog.progress || 0) <= 0;
+      });
+    }
+
     // Sort.
     //
     // "relevance" leaves the list in whatever order the backend returned
@@ -440,12 +462,12 @@ export default function Discover() {
     // recommended). Only the explicit newest/oldest choices re-sort.
     if (filters.sort === "oldest") {
       filtered.sort((a, b) => new Date(a.published_at || a.created_at) - new Date(b.published_at || b.created_at));
-    } else if (filters.sort === "newest") {
+    } else if (filters.sort === "newest" || filters.sort === "unplayed") {
       filtered.sort((a, b) => new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at));
     }
 
     return filtered;
-  }, [podcastMap]);
+  }, [podcastMap, episodeProgressMap]);
 
   const filterShows = useCallback((shows, filters) => {
     if (filters.category === "all") return shows;
@@ -603,6 +625,30 @@ export default function Discover() {
     return ep;
   }, [podcastMap]);
 
+  // Play All — queues every episode currently visible in the active
+  // tab (post-filter, post-sort) and starts at the top. Mirrors the
+  // Library → Following Play All so users get the same affordance
+  // everywhere we surface a list of episodes outside Search.
+  const handlePlayAllFiltered = async (filtered) => {
+    if (!filtered?.length || typeof setPlaybackQueue !== 'function') return;
+    const enriched = filtered.map(enrichEpisode);
+    const queueItems = enriched.map((ep) => {
+      const prog = episodeProgressMap?.get(Number(ep?.id));
+      const podcast = ep.podcast && typeof ep.podcast === 'object'
+        ? ep.podcast
+        : podcastMap[ep.podcast || ep.podcast_id];
+      return {
+        podcast,
+        episode: ep,
+        resume:
+          prog && !prog.completed && prog.progress > 0
+            ? { progress: prog.progress }
+            : { progress: 0 },
+      };
+    });
+    try { await setPlaybackQueue(queueItems, 0); } catch { /* swallow */ }
+  };
+
   const renderEpisodeList = (
     episodes,
     heading,
@@ -617,14 +663,35 @@ export default function Discover() {
     return (
       <div>
         <SectionHeader title={heading} subtitle={subtitle} count={filtered.length} countLabel="episodes">
-          <EpisodeFilterBar
-            podcasts={podcasts.filter(p => !isAudiobook(p) && !isMusic(p))}
-            categories={categories}
-            filters={episodeFilters}
-            onFilterChange={(f) => { setEpisodeFilters(f); setDisplayCount(DISPLAY_PAGE_SIZE); }}
-            resultCount={filtered.length}
-            sortOptions={sortOptions}
-          />
+          {/* Control row — Play All sits ahead of the filter bar so
+              its visual weight reads first; on tight phones the
+              cluster wraps at the Play All button to keep the row
+              tidy when many filter pills are active. */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full">
+            {filtered.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => handlePlayAllFiltered(filtered)}
+                className={`shrink-0 h-9 px-3.5 rounded-full gap-1.5 text-sm font-semibold transition-all duration-300 ${
+                  episodeFilters.sort === 'unplayed'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white shadow-[0_4px_16px_rgba(220,38,38,0.25)]'
+                    : 'bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08]'
+                }`}
+                title={`Play ${filtered.length} ${episodeFilters.sort === 'unplayed' ? 'unplayed ' : ''}episode${filtered.length === 1 ? '' : 's'}`}
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Play All
+              </Button>
+            )}
+            <EpisodeFilterBar
+              podcasts={podcasts.filter(p => !isAudiobook(p) && !isMusic(p))}
+              categories={categories}
+              filters={episodeFilters}
+              onFilterChange={(f) => { setEpisodeFilters(f); setDisplayCount(DISPLAY_PAGE_SIZE); }}
+              resultCount={filtered.length}
+              sortOptions={sortOptions}
+            />
+          </div>
         </SectionHeader>
         {loading && visible.length === 0 ? (
           // Skeleton shaped like the real episode-row table so the tab
@@ -917,7 +984,7 @@ export default function Discover() {
         return renderEpisodeList(
           recommendedEpisodes,
           "Recommended for You",
-          "Personalized picks from the same engine the home-screen \"For You\" row uses.",
+          null,
           isAuthenticated
             ? "No recommendations yet. Listen to some episodes to get personalized suggestions."
             : "Sign in to get personalized recommendations based on your listening history.",
@@ -927,7 +994,7 @@ export default function Discover() {
         return renderEpisodeList(
           latestEpisodes,
           "Latest Episodes",
-          "The most recently published episodes across every podcast — the same feed that drives the home-screen \"New Releases\" row.",
+          null,
           "No episodes found.",
           { loading: latestLoading, sortOptions: CHRONOLOGICAL_SORT_OPTIONS },
         );
@@ -935,7 +1002,7 @@ export default function Discover() {
         return renderEpisodeList(
           trendingEpisodes,
           "Trending Now",
-          "Episodes picking up steam — same feed as the home-screen \"Trending Now\" row, with a server-side fallback to the newest releases when volume is low.",
+          null,
           "No trending episodes at the moment.",
           { loading: trendingLoading, sortOptions: RELEVANCE_SORT_OPTIONS },
         );
