@@ -6,12 +6,17 @@ from datetime import timedelta
 User = get_user_model()
 
 class Command(BaseCommand):
-    help = 'Refreshes the free trial period for all imported Memberful users to start from NOW'
+    help = (
+        "HARD RESET every imported Memberful user's legacy trial to start "
+        "from NOW (90 days monthly / 365 days yearly). This WILL shorten "
+        "trials that are currently longer than the policy. For the safe, "
+        "extend-only variant that never shortens an existing trial, use "
+        "`python manage.py extend_legacy_trials` instead."
+    )
 
     def handle(self, *args, **options):
-        # Target all users who were imported from Memberful
         users = User.objects.filter(is_imported_from_memberful=True)
-        
+
         count = users.count()
         if count == 0:
             self.stdout.write(self.style.WARNING("No imported users found to refresh."))
@@ -20,17 +25,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Refreshing trials for {count} users..."))
 
         for user in users:
-            # Determine the correct free period based on their imported plan type
             if user.memberful_plan_type == 'yearly':
                 days = 365
             else:
-                # Default to monthly (60 days as per requirements)
-                days = 60
-                user.memberful_plan_type = 'monthly' # Ensure field is set
-            
-            # Calculate new expiration from current time
+                days = 90
+                user.memberful_plan_type = 'monthly'
+
             new_expiry = now() + timedelta(days=days)
-            
+
             user.free_trial_ends = new_expiry
             user.subscription_expires = new_expiry
             user.is_premium = True

@@ -52,15 +52,17 @@ class Command(BaseCommand):
                     stripe_customer_id = row.get('Stripe Customer ID', '').strip()
                     plan_name = row.get('Plan', '').strip().lower()
                     active = row.get('Active', '').strip().lower() == 'yes'
-                    expiration_date_str = row.get('Expiration date', '').strip()
                     created_at_str = row.get('Created at', '').strip()
 
-                    subscription_expires = None
-                    if expiration_date_str:
-                        try:
-                            subscription_expires = make_aware(datetime.strptime(expiration_date_str, '%Y-%m-%d'))
-                        except ValueError:
-                            self.stdout.write(self.style.WARNING(f"Could not parse expiration date '{expiration_date_str}' for {email}"))
+                    # NOTE: We intentionally do NOT read the CSV's "Expiration
+                    # date" column anymore. CSV exports are snapshots that can
+                    # be days/weeks/months stale by the time the import runs
+                    # (members renew, cancel, auto-renew etc. between export
+                    # and import), and trusting them silently gave several
+                    # users incorrect — sometimes already-expired — legacy
+                    # trial dates. Policy now: every active Memberful import
+                    # gets a fresh 90-day (monthly) or 365-day (yearly) legacy
+                    # trial counted from the moment the import is run.
 
                     date_joined = None
                     if created_at_str:
@@ -97,32 +99,25 @@ class Command(BaseCommand):
                         if last_name: user.last_name = last_name
                         if stripe_customer_id: user.stripe_customer_id = stripe_customer_id
 
-                        # Update is_premium and calculate expiration based on plan
+                        # Grant the standard legacy free trial for active
+                        # Memberful members. Length is fixed by policy
+                        # (90/365 days) regardless of where they were in
+                        # their old billing cycle — see the note above
+                        # about why we no longer trust the CSV date.
                         if active:
                             user.is_premium = True
-
-                            # Set up legacy free trial for migrated users
                             user.is_legacy_free_trial = True
 
-                            # Determine plan type and set trial expiration
                             if 'yearly' in plan_name or 'annual' in plan_name:
                                 user.memberful_plan_type = 'yearly'
-                                default_expiry = now() + timedelta(days=365)
+                                trial_days = 365
                             else:
-                                # Default to monthly if not explicitly yearly
                                 user.memberful_plan_type = 'monthly'
-                                default_expiry = now() + timedelta(days=60)
+                                trial_days = 90
 
-                            # Use CSV date if it's in the future, otherwise use the default trial duration from now
-                            trial_end = subscription_expires if (subscription_expires and subscription_expires > now()) else default_expiry
+                            trial_end = now() + timedelta(days=trial_days)
                             user.free_trial_ends = trial_end
                             user.subscription_expires = trial_end
-                        
-                        # Sync free_trial_ends if it's missing but we have a subscription_expires
-                        if user.is_legacy_free_trial and not user.free_trial_ends and user.subscription_expires:
-                            user.free_trial_ends = user.subscription_expires
-                        elif user.is_legacy_free_trial and user.free_trial_ends and not user.subscription_expires:
-                            user.subscription_expires = user.free_trial_ends
                         
                         if created and date_joined:
                             user.date_joined = date_joined

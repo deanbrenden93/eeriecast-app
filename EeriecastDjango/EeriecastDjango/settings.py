@@ -381,6 +381,17 @@ try:
             'schedule': crontab(hour=12, minute=15),  # shortly after 8am ET run
             'options': {'time_limit': 10 * 60},
         },
+        # Revoke premium access from imported Memberful users whose legacy
+        # free trial has elapsed. Without this, expired-trial users keep
+        # their `is_premium=True` flag indefinitely, which both lets them
+        # access paid content and (because the backend `is_premium_member()`
+        # gate then thinks they're already subscribed) blocks them from
+        # being able to actually pay for a real Stripe subscription.
+        'check-legacy-trial-expiration-daily': {
+            'task': 'authentication.check_legacy_trial_expiration',
+            'schedule': crontab(hour=11, minute=30),  # daily, just before the 8am ET sync
+            'options': {'time_limit': 15 * 60},
+        },
     }
 except ModuleNotFoundError:  # pragma: no cover
     # Allow running in environments without Celery installed.

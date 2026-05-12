@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { HelpCircle, BarChart3 } from 'lucide-react';
 
 export default function UserMenu({ isOpen, onClose }) {
-  const { user, logout, isOnLegacyTrial, isAdmin } = useUser();
+  const { user, logout, isOnLegacyTrial, isPremium, isAdmin } = useUser();
 
   if (!isOpen) return null;
 
@@ -16,7 +16,13 @@ export default function UserMenu({ isOpen, onClose }) {
 
   const displayName = user?.full_name || user?.name || user?.username || 'Guest User';
   const email = user?.email || '';
-  const isPremium = !!user?.is_premium;
+  // Use the context's `isPremium` (which validates `subscription_expires`
+  // alongside the raw `is_premium` flag) instead of reading the flag
+  // directly. The raw flag can lag behind reality for imported users
+  // whose legacy trial has elapsed but whose daily expiration job hasn't
+  // run yet, which previously caused this dropdown to show "Premium
+  // Member" while the rest of the app (Profile badge, paid-content
+  // gates) correctly showed them as Free.
   const accountType = isOnLegacyTrial ? 'Free Trial' : (isPremium ? 'Premium Member' : 'Free Account');
 
   return (

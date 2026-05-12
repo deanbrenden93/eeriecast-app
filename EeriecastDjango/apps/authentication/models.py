@@ -73,29 +73,36 @@ class User(AbstractUser):
     def is_premium_member(self) -> bool:
         """
         Return True if this user should be treated as a premium member.
-        Checks for:
+        Checks, in priority order:
         1. Active legacy free trial (migrated Memberful users)
-        2. Active Subscription record
-        3. is_premium boolean flag on the user model
+        2. Active Stripe Subscription record
+        3. ``is_premium`` flag — but only if ``subscription_expires`` is
+           either unset (e.g. admin override with no end date) or still
+           in the future. A stale ``is_premium=True`` paired with an
+           already-elapsed ``subscription_expires`` does NOT count: that
+           combination meant the daily legacy-trial expiration job
+           hadn't run yet, and previously it both let expired users
+           keep paid access AND blocked them from re-subscribing
+           through Stripe (because checkout views call this method).
         """
-        # Check if user is on active legacy free trial
         if self.is_on_legacy_trial():
             return True
 
-        # Check the stored flag (set via admin, test toggle, etc.)
-        if bool(getattr(self, 'is_premium', False)):
-            return True
-
         try:
-            # Lazy import to avoid circular imports at import time
             from apps.billing.models import Subscription
         except Exception:
-            return False
+            Subscription = None
 
-        qs = Subscription.objects.filter(user=self)
-        for sub in qs:
-            if getattr(sub, 'is_active', False):
+        if Subscription is not None:
+            for sub in Subscription.objects.filter(user=self):
+                if getattr(sub, 'is_active', False):
+                    return True
+
+        if bool(getattr(self, 'is_premium', False)):
+            expires_at = getattr(self, 'subscription_expires', None)
+            if expires_at is None or expires_at > timezone.now():
                 return True
+
         return False
 
     def is_on_legacy_trial(self) -> bool:
