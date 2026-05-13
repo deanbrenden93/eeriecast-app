@@ -1,0 +1,11 @@
+Welcome to Eeriecast.
+
+You're one step away from unlocking over 1,300 episodes of the stories that keep you up at night.
+
+Verify your email address to complete your account setup:
+
+__VERIFY_URL__
+
+If you didn't create this account, you can safely ignore this email.
+
+Need help? Reach us at __SUPPORT_EMAIL__

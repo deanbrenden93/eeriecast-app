@@ -258,6 +258,14 @@ export const User = {
     return djangoClient.post('/auth/password-reset/request/', { email: normalizedEmail });
   },
 
+  // Resend the email-verification link for an unverified account. Server is
+  // rate-limited and always responds 200 to avoid leaking which emails have
+  // accounts.
+  async resendVerificationEmail(email) {
+    const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : email;
+    return djangoClient.post('/auth/verify-email/resend/', { email: normalizedEmail });
+  },
+
   // Confirm password reset
   async confirmPasswordReset(uid, token, newPassword) {
     return djangoClient.post('/auth/password-reset/confirm/', {

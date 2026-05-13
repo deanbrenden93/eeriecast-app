@@ -75,7 +75,37 @@ def _render_html_template(template_name: str, context: dict[str, Any]) -> str:
     return rendered
 
 
-@shared_task(bind=True)
+def _render_text_template(template_name: str, context: dict[str, Any]) -> str | None:
+    """Render an authored plain-text sibling template if one exists.
+
+    Looks for the same path as the HTML template but with a .txt extension.
+    Plain-text bodies give Gmail/Outlook a much cleaner text/html ratio than
+    strip_tags(html), which materially improves deliverability.
+    """
+    templates_root = Path(__file__).resolve().parent / "templates"
+    html_path = templates_root / template_name
+    text_path = html_path.with_suffix(".txt")
+    if not text_path.exists():
+        return None
+
+    raw = text_path.read_text(encoding="utf-8")
+    # Plain text: do NOT HTML-escape; just substitute as-is.
+    rendered = raw
+    for k, v in (context or {}).items():
+        token = f"__{k.upper()}__"
+        rendered = rendered.replace(token, "" if v is None else str(v))
+    return rendered
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=60,
+    retry_backoff_max=900,
+    retry_jitter=True,
+    max_retries=5,
+    acks_late=True,
+)
 def send_event_email_task(
     self,
     *,
@@ -89,7 +119,9 @@ def send_event_email_task(
 ):
     """Idempotently send an event email.
 
-    Idempotency is enforced via EmailEvent.external_id being unique.
+    Idempotency is enforced via EmailEvent.external_id being unique. Transient
+    SMTP errors are retried with exponential backoff (60s, 120s, 240s, ..., capped
+    at 900s) up to 5 times before being marked failed.
     """
     server_details = _get_email_server_details()
 
@@ -146,8 +178,11 @@ def send_event_email_task(
 
     try:
         html_body = _render_html_template(template_name, render_ctx)
-        text_body = strip_tags(html_body)
-        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@eeriecast.com"
+        authored_text = _render_text_template(template_name, render_ctx)
+        text_body = authored_text if authored_text is not None else strip_tags(html_body)
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "hello@eerie.fm"
+        reply_to_addr = (getattr(settings, "EMAIL_REPLY_TO", "") or "").strip()
+        support_email = (getattr(settings, "EMAIL_SUPPORT", "") or "").strip()
 
         redirect_to = (getattr(settings, "EMAIL_REDIRECT_ALL_TO", "") or "").strip()
         actual_to_email = redirect_to or to_email
@@ -155,11 +190,23 @@ def send_event_email_task(
         if redirect_to:
             actual_subject = f"[REDIRECTED to {redirect_to}] {subject}"
 
+        # List-Unsubscribe is a deliverability signal even for transactional mail;
+        # Gmail and Outlook both factor it into spam scoring. mailto: form is the
+        # simplest correct value and points support@ at a real, monitored inbox.
+        extra_headers: dict[str, str] = {}
+        if reply_to_addr:
+            extra_headers["Reply-To"] = reply_to_addr
+        if support_email:
+            extra_headers["List-Unsubscribe"] = f"<mailto:{support_email}?subject=unsubscribe>"
+            extra_headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
         msg = EmailMultiAlternatives(
             subject=actual_subject,
             body=text_body,
             from_email=from_email,
             to=[actual_to_email],
+            reply_to=[reply_to_addr] if reply_to_addr else None,
+            headers=extra_headers or None,
         )
         msg.attach_alternative(html_body, "text/html")
         msg.send(fail_silently=False)

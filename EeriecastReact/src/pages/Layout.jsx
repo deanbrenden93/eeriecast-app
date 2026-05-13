@@ -9,6 +9,7 @@ import SearchModal from "../components/search/SearchModal";
 import UserMenu from "../components/layout/UserMenu";
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import LegacyTrialBanner from '@/components/auth/LegacyTrialBanner.jsx';
+import VerifyEmailBanner from '@/components/auth/VerifyEmailBanner.jsx';
 import { useUser } from '@/context/UserContext.jsx';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from "@/lib/utils";
@@ -84,6 +85,7 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
   const userMenuRef = useRef(null);
   const notifRef = useRef(null);
   const {
+    user,
     isAuthenticated,
     isPremium,
     unreadNotificationCount,
@@ -92,6 +94,18 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
     legacyTrialDaysRemaining,
     hasPaymentMethod
   } = useUser();
+
+  // Imported legacy users live in a special state: they exist in the system
+  // but haven't set a password yet. The "verify your email" banner is
+  // irrelevant for them — what they need is the set-password link. The
+  // imported-user welcome panel and login flow already handle that case,
+  // so we hide the verify banner for them.
+  const shouldShowVerifyBanner = (
+    isAuthenticated
+    && user
+    && user.email_verified === false
+    && !user.is_imported_from_memberful
+  );
   const { cartCount } = useCart();
   const prevAuthRef = useRef(isAuthenticated);
 
@@ -499,6 +513,11 @@ export default function Layout({ children, currentPageName, hasPlayer }) {
         "relative w-full pt-16 pb-16 max-[1000px]:pb-20",
         hasPlayer && "pb-32 max-[1000px]:pb-48"
       )}>
+        {/* Verify-email nudge — sits directly below the header for anyone
+            who signed up but never clicked the link in their inbox. */}
+        {shouldShowVerifyBanner && (
+          <VerifyEmailBanner email={user?.email} />
+        )}
         {/* Legacy Trial Banner — full-bleed strip directly below the header */}
         {isOnLegacyTrial && (
           <LegacyTrialBanner

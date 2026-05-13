@@ -103,17 +103,30 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   const [showImportedWelcome, setShowImportedWelcome] = useState(false);
   const [importedUserEmail, setImportedUserEmail] = useState('');
 
+  const [showCheckInbox, setShowCheckInbox] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [resendStatus, setResendStatus] = useState('idle'); // idle | sending | sent
+
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
 
   const prevAuthRef = useRef(isAuthenticated);
 
   useEffect(() => {
-    if (!prevAuthRef.current && isAuthenticated && isOpen && !afterLoginAction?.fn) {
+    // Auto-close on login, but NOT immediately after registration — the
+    // post-signup "check your inbox" panel needs to stay visible until the
+    // user dismisses it themselves.
+    if (
+      !prevAuthRef.current
+      && isAuthenticated
+      && isOpen
+      && !afterLoginAction?.fn
+      && !showCheckInbox
+    ) {
       onClose();
     }
     prevAuthRef.current = isAuthenticated;
-  }, [isAuthenticated, isOpen, onClose, afterLoginAction]);
+  }, [isAuthenticated, isOpen, onClose, afterLoginAction, showCheckInbox]);
 
   useEffect(() => {
     setTab(defaultTab);
@@ -122,6 +135,9 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setForgotSubmitted(false);
     setShowImportedWelcome(false);
     setImportedUserEmail('');
+    setShowCheckInbox(false);
+    setRegisteredEmail('');
+    setResendStatus('idle');
     setLocalError(null);
   }, [defaultTab, isOpen]);
 
@@ -179,9 +195,39 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setSubmitting(false);
     sessionStorage.setItem('eeriecast_just_registered', '1');
 
-    const pendingAction = afterLoginAction?.fn;
-    onClose();
+    // Show the post-signup "check your inbox" panel rather than silently
+    // closing the modal. This is the single biggest lever on verification
+    // completion: users who don't know to look for the email won't open it.
+    setRegisteredEmail(registerForm.email);
+    setResendStatus('idle');
+    setShowCheckInbox(true);
+  };
 
+  const handleResendVerification = async () => {
+    if (!registeredEmail || resendStatus === 'sending') return;
+    setResendStatus('sending');
+    try {
+      await User.resendVerificationEmail(registeredEmail);
+      setResendStatus('sent');
+      toast({
+        title: 'Verification email sent',
+        description: `We just sent another link to ${registeredEmail}. Check your inbox (and spam).`,
+        variant: 'success',
+      });
+    } catch (err) {
+      setResendStatus('idle');
+      toast({
+        title: 'Could not resend',
+        description: err?.message || 'Something went wrong. Please try again in a minute.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleContinueAfterSignup = () => {
+    const pendingAction = afterLoginAction?.fn;
+    setShowCheckInbox(false);
+    onClose();
     if (pendingAction) {
       setTimeout(() => pendingAction(), 0);
       return;
@@ -219,7 +265,7 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                     alt="EERIECAST"
                     className="h-8 sm:h-9 mb-3 invert opacity-95"
                   />
-                  {!showImportedWelcome && (
+                  {!showImportedWelcome && !showCheckInbox && (
                     <>
                       <h2 className="text-[22px] sm:text-[26px] font-bold tracking-tight text-white">
                         {isLogin ? 'Welcome back' : 'Create your account'}
@@ -231,13 +277,47 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
                   )}
                 </div>
 
-                {showImportedWelcome ? (
+                {showCheckInbox ? (
+                  <div className="flex flex-col items-center py-6 text-center animate-in fade-in duration-300">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600/20 to-red-500/10 flex items-center justify-center mb-4 ring-2 ring-red-600/30">
+                      <Mail className="w-8 h-8 text-red-400" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">
+                      Check your inbox
+                    </h3>
+                    <p className="text-sm text-zinc-400 mb-2 max-w-[320px] leading-relaxed">
+                      We sent a verification email to <span className="font-semibold text-white">{registeredEmail}</span>.
+                    </p>
+                    <p className="text-xs text-zinc-500 mb-6 max-w-[320px] leading-relaxed">
+                      Click the link in the email to verify your account. Don&apos;t forget to check your spam folder.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={handleContinueAfterSignup}
+                      className="w-full max-w-[260px] h-11 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-lg transition-all duration-300 shadow-[0_4px_14px_rgba(220,38,38,0.25)] hover:shadow-[0_6px_20px_rgba(220,38,38,0.35)] mb-3"
+                    >
+                      Continue to Eeriecast
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resendStatus === 'sending' || resendStatus === 'sent'}
+                      className="text-xs text-zinc-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {resendStatus === 'sending'
+                        ? 'Sending…'
+                        : resendStatus === 'sent'
+                          ? 'Verification email re-sent'
+                          : "Didn't get the email? Resend"}
+                    </button>
+                  </div>
+                ) : showImportedWelcome ? (
                   <div className="flex flex-col items-center py-6 text-center animate-in fade-in duration-300">
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600/20 to-red-500/10 flex items-center justify-center mb-4 ring-2 ring-red-600/30">
                       <CheckCircle className="w-8 h-8 text-red-500" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">
-                      Welcome to the new EERIECAST!
+                      Welcome back to Eeriecast
                     </h3>
                     <p className="text-sm text-zinc-400 mb-2 max-w-[320px] leading-relaxed">
                       We found your account from Memberful. Your premium access is still active!

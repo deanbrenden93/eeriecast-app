@@ -226,6 +226,53 @@ def verify_email_confirm(request):
 
 
 @api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def resend_verification(request):
+    """Re-send the email-verification link for an unverified account.
+
+    Accepts either an authenticated request (uses request.user) or an
+    unauthenticated POST with `{ "email": "..." }`. Always returns 200 with
+    the same payload to avoid leaking which emails have accounts. Rate-limited
+    to once per 60 seconds per email via the Django cache.
+    """
+    from django.core.cache import cache
+
+    target_email: str | None = None
+    if request.user and request.user.is_authenticated:
+        target_email = getattr(request.user, 'email', None)
+    if not target_email:
+        target_email = (request.data.get('email') or '').strip().lower() or None
+
+    generic_ok = Response(
+        {'detail': 'If that account exists and is unverified, we just sent a new verification email.'},
+        status=status.HTTP_200_OK,
+    )
+
+    if not target_email:
+        return generic_ok
+
+    cache_key = f"verify_resend:{target_email}"
+    if cache.get(cache_key):
+        # Still 200 — we don't want to advertise rate-limit state either, but we
+        # do skip the actual send to avoid spamming a single inbox.
+        return generic_ok
+    cache.set(cache_key, 1, timeout=60)
+
+    user = User.objects.filter(email__iexact=target_email).first()
+    if not user or getattr(user, 'is_deleted', False) or not getattr(user, 'is_active', True):
+        return generic_ok
+    if getattr(user, 'email_verified', False):
+        return generic_ok
+
+    try:
+        email_events.resend_account_created_verify(user_id=user.id, to_email=user.email)
+    except Exception:
+        logger.exception(f"Failed to enqueue resend of verification email to {user.email}")
+
+    return generic_ok
+
+
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def request_email_change(request):
     user = request.user
