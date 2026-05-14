@@ -146,9 +146,13 @@ INSTALLED_APPS = [
     'apps.admin_tools',
 ]
 
-# Email configuration (driven by env; safe defaults for local/dev)
+# Email configuration (driven by env; safe defaults for Resend SMTP on eerie.fm).
+# Production must set EMAIL_HOST_PASSWORD=<resend_api_key>. With an empty password the
+# SMTP send will fail and the Celery retry policy will back off — preferable to keeping
+# a leaked Gmail app password as a fallback.
 EMAIL_APP_NAME = config('EMAIL_APP_NAME', default='Eeriecast')
-EMAIL_SUPPORT = config('EMAIL_SUPPORT', default='support@eeriecast.com')
+EMAIL_SUPPORT = config('EMAIL_SUPPORT', default='support@eerie.fm')
+EMAIL_REPLY_TO = config('EMAIL_REPLY_TO', default='support@eerie.fm')
 EMAIL_LOGO_URL = config(
     'EMAIL_LOGO_URL',
     default='https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/e37bc9c15_logo.png',
@@ -158,26 +162,18 @@ EMAIL_LOGO_URL = config(
 # Example: EMAIL_REDIRECT_ALL_TO=jacob.durante@bitbenders.com
 EMAIL_REDIRECT_ALL_TO = config('EMAIL_REDIRECT_ALL_TO', default='').strip()
 
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=f"{EMAIL_APP_NAME} <no-reply@eeriecast.com>")
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=f"{EMAIL_APP_NAME} <hello@eerie.fm>")
 
 EMAIL_BACKEND = config(
     'EMAIL_BACKEND',
     default='django.core.mail.backends.smtp.EmailBackend',
 )
 
-EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.resend.com')
 EMAIL_PORT = config('EMAIL_PORT', cast=int, default=587)
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='brenden@eeriecast.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='djkhisqktjmxxzbm')
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='resend')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', cast=bool, default=True)
-
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 465  # Changed to integer
-# EMAIL_HOST_USER = 'info@pocketchef.io'
-# EMAIL_HOST_PASSWORD = 'notzfccwltxziseu'
-# EMAIL_USE_SSL = True  # Changed from TLS to SSL
-# EMAIL_USE_TLS = False  # Explicitly disable TLS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

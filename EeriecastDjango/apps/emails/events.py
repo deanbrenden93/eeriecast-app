@@ -51,6 +51,27 @@ def send_account_created_verify(*, user_id: int, to_email: str):
     )
 
 
+def resend_account_created_verify(*, user_id: int, to_email: str):
+    """Re-send the initial verification email.
+
+    Uses a UUID-suffixed external_id so it bypasses the deterministic
+    idempotency lock that protects the original signup send.
+    """
+    token = _sign_verify_token(user_id)
+    verify_url = make_app_url(f"/verify-email?token={token}")
+    enqueue_event_email(
+        event_type=EmailEventTypes.ACCOUNT_CREATED_VERIFY,
+        to_email=to_email,
+        external_id=f"user:{user_id}:account_created:resend:{uuid.uuid4()}",
+        subject="Verify your Eeriecast email",
+        template_name="emails/account_created_verify.html",
+        context={
+            "verify_url": verify_url,
+        },
+        user_id=user_id,
+    )
+
+
 def send_account_verified(*, user_id: int, to_email: str):
     enqueue_event_email(
         event_type=EmailEventTypes.ACCOUNT_VERIFIED,
@@ -84,7 +105,7 @@ def send_imported_user_welcome(*, user_id: int, to_email: str, reset_url: str):
         event_type=EmailEventTypes.IMPORTED_USER_WELCOME,
         to_email=to_email,
         external_id=f"user:{user_id}:imported_welcome",
-        subject="Welcome to the new EERIECAST!",
+        subject="Welcome back to Eeriecast — set your password",
         template_name="emails/imported_user_welcome.html",
         context={
             "reset_url": reset_url,

@@ -1,0 +1,17 @@
+Welcome back to Eeriecast.
+
+We've migrated your account from Memberful, and your premium access is still active.
+
+To get started, set up a password for your account using the link below:
+
+__RESET_URL__
+
+What's new on the platform:
+- Improved podcast player with better controls
+- Enhanced search and discovery features
+- Faster streaming and downloads
+- Your listening history and favorites are preserved
+
+Once you set your password, you can log in and continue enjoying all your favorite horror content.
+
+Questions? Contact us at __SUPPORT_EMAIL__
