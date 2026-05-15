@@ -7,6 +7,12 @@ module.exports = {
   		fontFamily: {
   			sans: ['"DM Sans"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
   			display: ['"Outfit"', 'system-ui', 'sans-serif'],
+  			// Used sparingly for atmospheric flourishes (e.g. Trending Now rank
+  			// numerals on episode cards). Pirata One is a single-weight
+  			// gothic display face — legible at glance sizes, with a stamped
+  			// / tombstone-engraved feel that nods at the brand without
+  			// tipping into Halloween-clipart territory.
+  			eerie: ['"Pirata One"', '"Cinzel Decorative"', 'serif'],
   		},
   		borderRadius: {
   			lg: 'var(--radius)',

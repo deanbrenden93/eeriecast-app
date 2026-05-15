@@ -408,6 +408,12 @@ const UserProvider = ({ children }) => {
     try { localStorage.removeItem('eeriecast_user_dob'); } catch { /* */ }
     try { localStorage.removeItem('eeriecast_player_state'); } catch { /* */ }
     try { localStorage.removeItem('recentlyPlayed'); } catch { /* */ }
+    // Onboarding sentinels are per-account, not per-device — clear them so
+    // that whoever signs in next (especially a freshly-signed-up account)
+    // is not silently opted out of onboarding by the prior user's session.
+    try { localStorage.removeItem('eeriecast_onboarding_done'); } catch { /* */ }
+    try { sessionStorage.removeItem('eeriecast_onboarding_session_dismissed'); } catch { /* */ }
+    try { sessionStorage.removeItem('eeriecast_just_registered'); } catch { /* */ }
     // Wipe the rehydration snapshot so the next visit doesn't
     // momentarily show this user's chrome before /me 401s.
     writeCachedUser(null);

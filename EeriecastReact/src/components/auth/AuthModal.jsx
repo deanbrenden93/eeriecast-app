@@ -114,19 +114,30 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
 
   useEffect(() => {
     // Auto-close on login, but NOT immediately after registration — the
-    // post-signup "check your inbox" panel needs to stay visible until the
-    // user dismisses it themselves.
+    // post-signup "check your inbox" panel needs to stay visible until
+    // the user dismisses it themselves.
+    //
+    // The ``!submitting`` guard closes a race: ``isAuthenticated`` flips
+    // to true *during* the ``await register(...)`` call (UserContext
+    // picks up the new token the moment Django returns), which fires
+    // this effect mid-handler — while ``showCheckInbox`` is still false
+    // because the handler hasn't reached its post-await body yet.
+    // Without this guard, the modal auto-closes before the check-inbox
+    // panel ever mounts, which silently swallows the entire onboarding
+    // flow because the "Continue to Eeriecast" button never appears
+    // and the ``eeriecast-start-onboarding`` event never fires.
     if (
       !prevAuthRef.current
       && isAuthenticated
       && isOpen
       && !afterLoginAction?.fn
       && !showCheckInbox
+      && !submitting
     ) {
       onClose();
     }
     prevAuthRef.current = isAuthenticated;
-  }, [isAuthenticated, isOpen, onClose, afterLoginAction, showCheckInbox]);
+  }, [isAuthenticated, isOpen, onClose, afterLoginAction, showCheckInbox, submitting]);
 
   useEffect(() => {
     setTab(defaultTab);
@@ -201,6 +212,23 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
     setRegisteredEmail(registerForm.email);
     setResendStatus('idle');
     setShowCheckInbox(true);
+
+    // Start onboarding *now*, not when the user dismisses the check-inbox
+    // panel. The panel is a verification reminder; onboarding is its own
+    // flow, and gating onboarding behind a "Continue" click was creating
+    // failure modes where any close path (X, Esc, backdrop, or even a
+    // React-scheduling race that closed the modal before the panel ever
+    // mounted) silently skipped onboarding entirely. The onboarding
+    // overlay sits at z-[100] and the auth modal/dialog backdrop sits
+    // below it, so the user sees onboarding immediately and the check-
+    // inbox panel is preserved underneath for when they dismiss it.
+    // ``VerifyEmailBanner`` (mounted by Layout for any authenticated
+    // user with ``email_verified=false``) is the persistent reminder
+    // path either way, so even if a user never sees the check-inbox
+    // panel they still get nudged to verify.
+    if (!afterLoginAction?.fn) {
+      window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'free' } }));
+    }
   };
 
   const handleResendVerification = async () => {
@@ -225,14 +253,20 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
   };
 
   const handleContinueAfterSignup = () => {
+    // Onboarding was already dispatched at the moment ``handleRegister``
+    // succeeded — this button is now just a "dismiss the verification
+    // reminder" affordance. We do NOT redispatch the onboarding event
+    // here, because by the time the user reaches this button the
+    // onboarding flow has already either completed, been skipped, or is
+    // currently overlaying this modal; redispatching would re-mount the
+    // flow on top of the home screen after the user thought they were
+    // done with it.
     const pendingAction = afterLoginAction?.fn;
     setShowCheckInbox(false);
     onClose();
     if (pendingAction) {
       setTimeout(() => pendingAction(), 0);
-      return;
     }
-    window.dispatchEvent(new CustomEvent('eeriecast-start-onboarding', { detail: { variant: 'free' } }));
   };
 
   const isLogin = tab === 'login';
@@ -243,7 +277,17 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login' }) {
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (open) return;
+          // Onboarding is dispatched at the moment registration succeeds
+          // (see ``handleRegister``), so dismissing this dialog by any
+          // path — Continue button, X, Esc, backdrop click — simply
+          // hides the verification-reminder panel. No event redispatch.
+          onClose();
+        }}
+      >
         <DialogContent
           className="p-0 overflow-hidden border-0 bg-transparent shadow-none
                      max-w-[95vw] sm:max-w-[460px] md:max-w-[860px]

@@ -363,6 +363,7 @@ body::-webkit-scrollbar,
   height: 0;
 }
 
+
 /* Shimmering placeholder for cover art that hasn't loaded yet */
 @keyframes shimmer-slide {
   0%   { background-position: -200% 0; }

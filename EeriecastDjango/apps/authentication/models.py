@@ -74,36 +74,61 @@ class User(AbstractUser):
         """
         Return True if this user should be treated as a premium member.
         Checks, in priority order:
-        1. Active legacy free trial (migrated Memberful users)
-        2. Active Stripe Subscription record
-        3. ``is_premium`` flag — but only if ``subscription_expires`` is
-           either unset (e.g. admin override with no end date) or still
-           in the future. A stale ``is_premium=True`` paired with an
-           already-elapsed ``subscription_expires`` does NOT count: that
-           combination meant the daily legacy-trial expiration job
-           hadn't run yet, and previously it both let expired users
-           keep paid access AND blocked them from re-subscribing
-           through Stripe (because checkout views call this method).
+        1. Active legacy free trial (migrated Memberful users) — no DB hit.
+        2. ``is_premium`` flag paired with a non-expired
+           ``subscription_expires`` — no DB hit. A stale ``is_premium=True``
+           paired with an already-elapsed ``subscription_expires`` does NOT
+           count: that combination meant the daily legacy-trial expiration
+           job hadn't run yet, and previously it both let expired users
+           keep paid access AND blocked them from re-subscribing through
+           Stripe (because checkout views call this method).
+        3. Live Stripe Subscription lookup — only reached when the cached
+           flag is unreliable. Pushed into a single ``EXISTS`` SQL query
+           rather than pulling rows back and re-checking ``is_active`` in
+           Python (which was an N+1 hazard from per-episode feed
+           serialization).
         """
         if self.is_on_legacy_trial():
             return True
 
-        try:
-            from apps.billing.models import Subscription
-        except Exception:
-            Subscription = None
-
-        if Subscription is not None:
-            for sub in Subscription.objects.filter(user=self):
-                if getattr(sub, 'is_active', False):
-                    return True
-
+        # Fast path: trust the cached ``is_premium`` flag when it is paired
+        # with a non-expired ``subscription_expires`` (or no expiry at all,
+        # i.e. an admin override). This avoids a Subscription DB roundtrip
+        # for the overwhelming majority of paying users on every premium
+        # check — and ``is_premium_member`` fires on hot paths like episode
+        # feed serialization, where a missed short-circuit becomes N+1.
         if bool(getattr(self, 'is_premium', False)):
             expires_at = getattr(self, 'subscription_expires', None)
             if expires_at is None or expires_at > timezone.now():
                 return True
 
-        return False
+        # Slow path: live Subscription lookup for users whose cached flag is
+        # either False or paired with an elapsed expiry. Push the active /
+        # not-expired conditions into SQL and short-circuit with ``exists``
+        # rather than pulling rows back and re-checking in Python.
+        try:
+            from apps.billing.models import Subscription
+        except Exception:
+            return False
+
+        # SQL-equivalent of ``Subscription.is_active``:
+        #   (status in {trialing, active, past_due}
+        #    AND (current_period_end IS NULL OR current_period_end > now))
+        #   OR (cancel_at_period_end=True AND current_period_end > now)
+        now = timezone.now()
+        active_status_clause = models.Q(
+            status__in=("trialing", "active", "past_due")
+        ) & (
+            models.Q(current_period_end__isnull=True)
+            | models.Q(current_period_end__gt=now)
+        )
+        cancel_window_clause = models.Q(
+            cancel_at_period_end=True,
+            current_period_end__gt=now,
+        )
+        return Subscription.objects.filter(user=self).filter(
+            active_status_clause | cancel_window_clause
+        ).exists()
 
     def is_on_legacy_trial(self) -> bool:
         """

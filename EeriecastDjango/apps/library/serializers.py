@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Favorite, Following, ListeningHistory, PlaybackEvent, Playlist, Notification
 from apps.episodes.models import Episode
-from apps.episodes.serializers import EpisodeSerializer
+from apps.episodes.serializers import EpisodeSerializer, _resolve_is_premium
 from EeriecastDjango.serializers import EpisodeWithPodcastSerializer  # use the full episode serializer + nested podcast
 
 class FavoriteSerializer(serializers.ModelSerializer):
@@ -43,8 +43,11 @@ class FollowingSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class EpisodeBriefSerializer(serializers.ModelSerializer):
-    # Only return computed audio_url, not ad_* URLs
+    # Only return computed audio_url, not ad_* URLs. ``duration`` is also
+    # computed so premium users see ad-free runtime — see EpisodeSerializer
+    # for the full rationale.
     audio_url = serializers.SerializerMethodField(read_only=True)
+    duration = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Episode
@@ -54,9 +57,12 @@ class EpisodeBriefSerializer(serializers.ModelSerializer):
         )
 
     def get_audio_url(self, obj: Episode) -> str:
-        request = self.context.get('request')
-        user = getattr(request, 'user', None)
-        return obj.get_computed_audio_url(user)
+        is_premium = _resolve_is_premium(self.context)
+        return obj.get_computed_audio_url(is_premium=is_premium)
+
+    def get_duration(self, obj: Episode) -> int:
+        is_premium = _resolve_is_premium(self.context)
+        return obj.get_computed_duration(is_premium=is_premium)
 
 class ListeningHistorySerializer(serializers.ModelSerializer):
     # Remove redundant source kwarg; computed by model property of the same name

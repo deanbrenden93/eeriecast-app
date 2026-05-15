@@ -307,9 +307,28 @@ export default function Podcasts() {
         )}
       </div>
 
+      {/* ─── Trending ───
+          Sits directly after For You so the strongest social-proof
+          surface gets first claim on the slot below the personalized
+          row. The Pirata One rank numerals on these cards are a
+          deliberate atmospheric flourish; they deserve above-the-fold
+          placement on most laptops. */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeRowSkeleton titleWidth="w-40" />
+        ) : (
+          <NewReleasesRow
+            title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
+            viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
+            feedType="trending"
+            onAddToPlaylist={openAddToPlaylist}
+          />
+        )}
+      </div>
+
       {/* ─── Newest ───
-          Freshest episodes across the catalog. Sits between For You
-          and Trending Now (personal → recent → popular). Same
+          Freshest episodes across the catalog, sitting just below
+          Trending Now (personal → popular → recent). Same
           NewReleasesRow plumbing as the Discover → Newest tab so feeds
           stay in sync. */}
       <div className="w-full px-2.5 lg:px-10 py-3">
@@ -325,23 +344,11 @@ export default function Podcasts() {
         )}
       </div>
 
-      {/* ─── Trending ─── */}
-      <div className="w-full px-2.5 lg:px-10 py-3">
-        {isLoading ? (
-          <EpisodeRowSkeleton titleWidth="w-40" />
-        ) : (
-          <NewReleasesRow
-            title={<h2 className="text-2xl font-bold text-white">Trending Now</h2>}
-            viewAllTo={`${createPageUrl('Discover')}?tab=Trending`}
-            feedType="trending"
-            onAddToPlaylist={openAddToPlaylist}
-          />
-        )}
-      </div>
-
       {/* ─── Random Cravings (Episode Clouds) ───
           Themed clusters that break the row-monotony with organic
-          thumbnail clouds. The component owns its own loading state. */}
+          thumbnail clouds. The component owns its own loading state.
+          Placed after three identical card-row shapes so the visual
+          shift lands as a deliberate palate cleanser. */}
       <div className="w-full px-2.5 lg:px-10 py-3">
         {isLoading ? (
           <EpisodeCloudsSkeleton />
@@ -350,7 +357,79 @@ export default function Podcasts() {
         )}
       </div>
 
-      {/* ─── Categories ─── */}
+      {/* ─── Membership promo banner (non-premium users only) ───
+          Positioned immediately *above* the Members-Only Episodes row
+          so it reads as one beat — pitch + proof. Non-premium users
+          see the claim ("Unlock the full experience") and then a row
+          of the actual content they'd be unlocking. Premium users
+          (where the banner is suppressed) instead see Members-Only
+          Episodes as a direct content row, which is what they pay
+          for. */}
+      {!isLoading && !isPremium && (
+        <div className="w-full px-2.5 lg:px-10 py-3">
+          <div className="relative overflow-hidden rounded-2xl border border-white/[0.05]">
+            {/* Layered atmospheric background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#1a1028] via-[#12101c] to-[#0d0f18]" />
+            <div className="absolute top-0 right-0 w-[28rem] h-[28rem] bg-amber-500/[0.04] rounded-full blur-[100px] -translate-y-1/2 translate-x-1/4" />
+            <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-600/[0.04] rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-amber-400/[0.02] rounded-full blur-[60px] rotate-12" />
+
+            {/* Content */}
+            <div className="relative px-6 sm:px-10 lg:px-14 py-10 sm:py-14 flex flex-col sm:flex-row items-center gap-8 sm:gap-12">
+              <div className="flex-1 text-center sm:text-left">
+                {/* Badge */}
+                <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/15 to-amber-400/10 text-amber-400/90 text-[10px] font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-amber-400/[0.08] mb-5">
+                  <Crown className="w-3 h-3" />
+                  <span>Membership</span>
+                </div>
+
+                <h2 className="text-2xl sm:text-3xl lg:text-[2rem] font-bold text-white leading-[1.2] mb-3 tracking-tight">
+                  Unlock the full experience
+                </h2>
+                <p className="text-[15px] text-zinc-400 max-w-lg leading-relaxed">
+                  Exclusive shows, after-hours episodes, and the complete audiobook library.
+                  <span className="text-zinc-500"> Support the creators behind the stories you love.</span>
+                </p>
+              </div>
+
+              {/* CTA */}
+              <div className="flex-shrink-0">
+                <Link
+                  to={createPageUrl("Premium")}
+                  className="group relative inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-semibold transition-all duration-500 overflow-hidden"
+                >
+                  {/* Button glow */}
+                  <span className="absolute inset-0 bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-500 group-hover:from-amber-400 group-hover:to-amber-500" />
+                  <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.15),transparent_70%)]" />
+                  <span className="relative flex items-center gap-2.5 text-black">
+                    <Crown className="w-4 h-4" />
+                    Become a Member
+                  </span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Members-Only Episodes ───
+          The "proof" half of the pitch + proof unit with the promo
+          banner above. Randomized mix of samples + gated content; the
+          component renders its own skeleton during its internal
+          fetches. For premium users the banner above is suppressed, so
+          this row simply reads as direct paid-tier content. */}
+      <div className="w-full px-2.5 lg:px-10 py-3">
+        {isLoading ? (
+          <EpisodeRowSkeleton titleWidth="w-56" />
+        ) : (
+          <MembersOnlyEpisodesRow onAddToPlaylist={openAddToPlaylist} />
+        )}
+      </div>
+
+      {/* ─── Categories ───
+          Lateral browsing pivot. By this point in the page the user
+          has signaled they want to explore beyond the curated/popular
+          rows; Categories is the natural "by topic" gateway. */}
       <div className="w-full px-2.5 lg:px-10 py-5">
         {isLoading ? <CategoryExplorerSkeleton /> : <CategoryExplorer />}
       </div>
@@ -399,18 +478,13 @@ export default function Podcasts() {
         </div>
       )}
 
-      {/* ─── Members-Only Episodes ───
-          Randomized mix of samples + gated content. The component
-          renders its own skeleton during its internal fetches. */}
-      <div className="w-full px-2.5 lg:px-10 py-3">
-        {isLoading ? (
-          <EpisodeRowSkeleton titleWidth="w-56" />
-        ) : (
-          <MembersOnlyEpisodesRow onAddToPlaylist={openAddToPlaylist} />
-        )}
-      </div>
-
-      {/* ─── Members Only Shows ─── */}
+      {/* ─── Members Only Shows ───
+          Complements Members-Only Episodes above: episodes are for
+          "what to listen to next," shows are for "what to subscribe to
+          / save for later." The gap between the two members sections
+          (filled with Categories + Audiobooks + Music) avoids a
+          three-row "members members members" block while still giving
+          paid content two distinct surfaces on the home screen. */}
       <div className="w-full px-2.5 lg:px-10 py-3">
         {isLoading ? (
           <ShowRowSkeleton titleWidth="w-36" />
@@ -422,54 +496,6 @@ export default function Podcasts() {
           />
         )}
       </div>
-
-      {/* ─── Membership promo banner (non-premium users only) ─── */}
-      {!isLoading && !isPremium && (
-        <div className="w-full px-2.5 lg:px-10 py-3">
-          <div className="relative overflow-hidden rounded-2xl border border-white/[0.05]">
-            {/* Layered atmospheric background */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1a1028] via-[#12101c] to-[#0d0f18]" />
-            <div className="absolute top-0 right-0 w-[28rem] h-[28rem] bg-amber-500/[0.04] rounded-full blur-[100px] -translate-y-1/2 translate-x-1/4" />
-            <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-600/[0.04] rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-amber-400/[0.02] rounded-full blur-[60px] rotate-12" />
-
-            {/* Content */}
-            <div className="relative px-6 sm:px-10 lg:px-14 py-10 sm:py-14 flex flex-col sm:flex-row items-center gap-8 sm:gap-12">
-              <div className="flex-1 text-center sm:text-left">
-                {/* Badge */}
-                <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/15 to-amber-400/10 text-amber-400/90 text-[10px] font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-amber-400/[0.08] mb-5">
-                  <Crown className="w-3 h-3" />
-                  <span>Membership</span>
-                </div>
-
-                <h2 className="text-2xl sm:text-3xl lg:text-[2rem] font-bold text-white leading-[1.2] mb-3 tracking-tight">
-                  Unlock the full experience
-                </h2>
-                <p className="text-[15px] text-zinc-400 max-w-lg leading-relaxed">
-                  Exclusive shows, after-hours episodes, and the complete audiobook library.
-                  <span className="text-zinc-500"> Support the creators behind the stories you love.</span>
-                </p>
-              </div>
-
-              {/* CTA */}
-              <div className="flex-shrink-0">
-                <Link
-                  to={createPageUrl("Premium")}
-                  className="group relative inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-sm font-semibold transition-all duration-500 overflow-hidden"
-                >
-                  {/* Button glow */}
-                  <span className="absolute inset-0 bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-500 group-hover:from-amber-400 group-hover:to-amber-500" />
-                  <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.15),transparent_70%)]" />
-                  <span className="relative flex items-center gap-2.5 text-black">
-                    <Crown className="w-4 h-4" />
-                    Become a Member
-                  </span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ─── Featured Creators ─── */}
       <div className="w-full px-2.5 lg:px-10 py-3 pb-32">

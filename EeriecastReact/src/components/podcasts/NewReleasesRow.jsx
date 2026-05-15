@@ -293,20 +293,23 @@ export default function NewReleasesRow({
                   {/* Countdown rank — Netflix-style stamped numeral at the
                       bottom-left of the cover. Counts DOWN to #1 from left
                       to right so listeners scroll *toward* the apex of the
-                      chart. The closer to #1 the bigger the gold flourish. */}
+                      chart. The closer to #1 the bigger the gold flourish.
+                      Rendered in ``font-eerie`` (Pirata One) for a subtle
+                      tombstone-engraved feel; the heavy stroke + drop
+                      shadow keep it readable against any cover artwork. */}
                   {rank != null && (
                     <div className="pointer-events-none absolute bottom-0 left-0 z-[4] flex items-end leading-none select-none">
                       <span
-                        className={`font-black tabular-nums leading-[0.78] tracking-tighter
+                        className={`font-eerie tabular-nums leading-[0.82] tracking-tight
                           ${rank <= 3 ? 'text-amber-300/95' : 'text-white/85'}
-                          ${rank >= 100 ? 'text-[3.25rem]' : rank >= 10 ? 'text-[4rem]' : 'text-[5rem]'}
+                          ${rank >= 100 ? 'text-[3.5rem]' : rank >= 10 ? 'text-[4.5rem]' : 'text-[5.75rem]'}
                         `}
                         style={{
-                          WebkitTextStroke: rank <= 3 ? '2px rgba(0,0,0,0.55)' : '2px rgba(0,0,0,0.7)',
+                          WebkitTextStroke: rank <= 3 ? '1.5px rgba(0,0,0,0.6)' : '1.5px rgba(0,0,0,0.75)',
                           textShadow: rank <= 3
-                            ? '0 4px 18px rgba(251,191,36,0.55), 0 2px 6px rgba(0,0,0,0.6)'
-                            : '0 4px 14px rgba(0,0,0,0.55)',
-                          paddingLeft: '0.15rem',
+                            ? '0 4px 18px rgba(251,191,36,0.55), 0 2px 6px rgba(0,0,0,0.65)'
+                            : '0 4px 14px rgba(0,0,0,0.6)',
+                          paddingLeft: '0.2rem',
                           paddingBottom: '0.05rem',
                         }}
                       >
@@ -341,14 +344,23 @@ export default function NewReleasesRow({
                   )}
                 </div>
 
-                {/* Info */}
+                {/* Info — the title plays the episode (matching the
+                    cover-click behavior); the show name below navigates
+                    to the show page. Both are real <button>s so keyboard
+                    and screen-reader users get the same affordances as
+                    mouse users, and ``stopPropagation`` keeps each
+                    target's intent distinct even though they're stacked
+                    inside the same hover-grouped card. */}
                 <div className="p-3 space-y-1 mt-auto min-h-[4rem] flex flex-col justify-end">
-                  <h3
+                  <button
+                    type="button"
                     title={ep.title}
-                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300 line-clamp-2 break-words"
+                    onClick={(e) => { e.stopPropagation(); handleEpisodePlay(ep); }}
+                    aria-label={`Play ${ep.title}`}
+                    className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300 line-clamp-2 break-words text-left bg-transparent border-0 p-0 cursor-pointer hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-eeriecast-surface rounded-sm"
                   >
                     {ep.title}
-                  </h3>
+                  </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); handleShowClick(ep); }}

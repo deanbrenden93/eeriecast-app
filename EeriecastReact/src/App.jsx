@@ -1,5 +1,5 @@
 import './App.css'
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Pages from "@/pages/index.jsx"
@@ -12,7 +12,7 @@ import CartDrawer from '@/components/shop/CartDrawer.jsx';
 import AuthModal from '@/components/auth/AuthModal.jsx';
 import ErrorBoundary from '@/components/ErrorBoundary.jsx';
 import SplashScreen from '@/components/SplashScreen.jsx';
-import OnboardingFlow, { isOnboardingDone } from '@/components/OnboardingFlow.jsx';
+import OnboardingFlow from '@/components/OnboardingFlow.jsx';
 import LegacyTrialReminderModal from '@/components/auth/LegacyTrialReminderModal.jsx';
 import { computeTrialDaysRemaining } from '@/utils/trial.js';
 import { djangoClient } from '@/api/djangoClient.js';
@@ -60,6 +60,16 @@ function App() {
 
   // Onboarding flow — triggered via custom event after registration or premium purchase
   const [onboardingVariant, setOnboardingVariant] = useState(null);
+  // Session-local dismissal sentinel: once the user reaches/skips/completes
+  // onboarding in this session, we never auto-remount it again — even if the
+  // backend ``onboarding_completed`` flag hasn't round-tripped yet. Without
+  // this, the belt-and-suspenders effect below loops on Skip All because
+  // ``markOnboardingDone`` is async and ``user.onboarding_completed`` stays
+  // false locally until the next /me fetch.
+  const onboardingDismissedRef = useRef(
+    typeof window !== 'undefined'
+      && sessionStorage.getItem('eeriecast_onboarding_session_dismissed') === '1'
+  );
   const {
     user,
     isAuthenticated,
@@ -71,16 +81,53 @@ function App() {
   } = useUser();
 
   useEffect(() => {
-    // Check if imported user needs onboarding
-    if (isAuthenticated && user?.is_imported_from_memberful && !user?.onboarding_completed && !isOnboardingDone()) {
-      setOnboardingVariant(user.is_premium ? 'premium' : 'free');
+    // Auto-trigger onboarding for any authenticated user whose backend
+    // ``onboarding_completed`` flag is still false. The backend flag is
+    // the source of truth — it survives across devices, browsers, and
+    // cache clears, which is what we want for a one-time-per-account
+    // experience.
+    //
+    // We do NOT gate this on ``isOnboardingDone()`` (the browser-wide
+    // localStorage flag): that flag is per-device and gets stuck from
+    // earlier dev testing or other accounts using the same browser,
+    // which silently swallows onboarding for fresh accounts on the
+    // same machine.
+    //
+    // The handler covers three real-world paths:
+    //   1. Fresh signup — handleRegister fires the custom event, but
+    //      this effect is the belt-and-suspenders backup in case the
+    //      event is missed (e.g. AuthModal already unmounted, race in
+    //      registration handler, etc.).
+    //   2. User signs up on device A, never finishes onboarding, then
+    //      logs into device B — they see onboarding on device B.
+    //   3. Imported Memberful users — same flow, with the premium
+    //      variant selected based on ``is_premium``.
+    if (
+      isAuthenticated
+      && user
+      && !userLoading
+      && user.onboarding_completed === false
+      && !onboardingVariant
+      && !onboardingDismissedRef.current
+    ) {
+      const isImported = !!user.is_imported_from_memberful;
+      if (isImported) {
+        setOnboardingVariant(user.is_premium ? 'premium' : 'free');
+      } else {
+        setOnboardingVariant(user.is_premium ? 'premium-existing' : 'free');
+      }
     }
-  }, [isAuthenticated, user, userLoading]);
+  }, [isAuthenticated, user, userLoading, onboardingVariant]);
 
   useEffect(() => {
     const handler = (e) => {
       const variant = e?.detail?.variant;
       if (variant === 'free' || variant === 'premium' || variant === 'premium-existing') {
+        // Explicit dispatch (post-signup, post-upgrade) overrides the
+        // session-dismissed sentinel — if someone triggers onboarding on
+        // purpose, honor it.
+        onboardingDismissedRef.current = false;
+        try { sessionStorage.removeItem('eeriecast_onboarding_session_dismissed'); } catch { /* noop */ }
         setOnboardingVariant(variant);
       }
     };
@@ -89,6 +136,12 @@ function App() {
   }, []);
 
   const handleOnboardingComplete = useCallback(() => {
+    // Mark dismissed in-session so the belt-and-suspenders effect doesn't
+    // immediately re-mount the flow while ``markOnboardingDone``'s backend
+    // PATCH is still in flight (and the cached ``user.onboarding_completed``
+    // is still false).
+    onboardingDismissedRef.current = true;
+    try { sessionStorage.setItem('eeriecast_onboarding_session_dismissed', '1'); } catch { /* noop */ }
     setOnboardingVariant(null);
   }, []);
 

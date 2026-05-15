@@ -5,7 +5,7 @@ import { ShieldAlert, X, Lock } from 'lucide-react';
 import { useUser } from '@/context/UserContext';
 import { User as UserAPI } from '@/api/entities';
 
-export default function MatureContentModal({ isOpen, onClose, onContinue }) {
+export default function MatureContentModal({ isOpen, onClose, onContinue, contentClassName, overlayClassName }) {
   const {
     user,
     userAge,
@@ -75,7 +75,13 @@ export default function MatureContentModal({ isOpen, onClose, onContinue }) {
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         hideClose
-        className="max-w-[420px] bg-gradient-to-br from-[#1a0a0a] via-[#121316] to-[#1a1012] text-white border border-red-600/30 shadow-2xl shadow-red-900/30 p-0 overflow-hidden rounded-2xl"
+        // ``contentClassName`` / ``overlayClassName`` allow callers to bump
+        // the modal above a higher-z layer (e.g. the onboarding overlay at
+        // z-[10300]) without affecting the default behavior. Passed last so
+        // tailwind-merge resolves the z-index conflict in favor of the
+        // override.
+        className={`max-w-[420px] bg-gradient-to-br from-[#1a0a0a] via-[#121316] to-[#1a1012] text-white border border-red-600/30 shadow-2xl shadow-red-900/30 p-0 overflow-hidden rounded-2xl ${contentClassName || ''}`}
+        overlayClassName={overlayClassName}
       >
         {/* Close button */}
         <button
@@ -212,4 +218,6 @@ MatureContentModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   onContinue: PropTypes.func.isRequired,
+  contentClassName: PropTypes.string,
+  overlayClassName: PropTypes.string,
 };

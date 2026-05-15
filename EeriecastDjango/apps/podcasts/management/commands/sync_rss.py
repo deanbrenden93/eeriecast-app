@@ -271,16 +271,44 @@ class Command(BaseCommand):
             # Prefer title-based slug to unify variants; fallback to GUID if no title
             candidate_slug = slugify(raw_title)[:200] or slugify(guid or "")[:200] or f"episode-{podcast.id}"
 
-            defaults = {
-                "title": raw_title,
-                "description": description,
-                "duration": duration,
-                "cover_image": image or None,
-                "published_at": published_at,
-                # Always populate audio_url as a fallback so episodes are
-                # playable even if no ad-supported variant exists yet.
-                "audio_url": audio_url or "",
-            }
+            # Route duration into the correct slot for the variant we're
+            # currently parsing. The ad-supported feed's ``itunes:duration``
+            # is the public/canonical runtime and lives on ``duration``;
+            # the ad-free feed's runtime (which is always slightly shorter
+            # because mid-rolls have been stripped) lives on
+            # ``ad_free_duration`` so premium-user card UIs can show the
+            # true runtime without conflating the two.
+            if variant == 'ad_free':
+                defaults = {
+                    "title": raw_title,
+                    "description": description,
+                    # ``duration`` is non-null on the model. When an episode
+                    # is first seen via the ad-free feed (i.e. no
+                    # ad-supported variant has synced yet), we seed
+                    # ``duration`` with the ad-free runtime so the row is
+                    # creatable. The update-merge path below will not
+                    # clobber it with subsequent ad-free runs, and the
+                    # next ad-supported sync will overwrite it with the
+                    # canonical (longer) public runtime.
+                    "duration": duration,
+                    "ad_free_duration": duration or None,
+                    "cover_image": image or None,
+                    "published_at": published_at,
+                    # Always populate audio_url as a fallback so episodes are
+                    # playable even if no ad-supported variant exists yet.
+                    "audio_url": audio_url or "",
+                }
+            else:
+                defaults = {
+                    "title": raw_title,
+                    "description": description,
+                    "duration": duration,
+                    "cover_image": image or None,
+                    "published_at": published_at,
+                    # Always populate audio_url as a fallback so episodes are
+                    # playable even if no ad-supported variant exists yet.
+                    "audio_url": audio_url or "",
+                }
 
             # 1) Try to find an existing episode by exact title (case-insensitive) in this podcast
             ep = Episode.objects.filter(podcast=podcast, title__iexact=raw_title).order_by('-published_at', 'id').first()
@@ -319,9 +347,20 @@ class Command(BaseCommand):
                 if (image or None) != ep.cover_image:
                     ep.cover_image = image or None
                     changed = True
-                if duration and ep.duration != duration:
-                    ep.duration = duration
-                    changed = True
+                # Route the per-variant duration into the correct column.
+                # The ad-supported feed owns ``duration`` (canonical/public
+                # runtime); the ad-free feed owns ``ad_free_duration``
+                # (shorter, mid-rolls removed). Never let one variant
+                # clobber the other's value.
+                if duration:
+                    if variant == 'ad_free':
+                        if ep.ad_free_duration != duration:
+                            ep.ad_free_duration = duration
+                            changed = True
+                    else:
+                        if ep.duration != duration:
+                            ep.duration = duration
+                            changed = True
                 if published_at and ep.published_at != published_at:
                     ep.published_at = published_at
                     changed = True
