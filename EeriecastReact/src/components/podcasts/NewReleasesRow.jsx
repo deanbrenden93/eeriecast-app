@@ -3,10 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useQuery } from "@tanstack/react-query";
 import { createPageUrl } from "@/utils";
-import { ChevronLeft, ChevronRight, Play, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Lock, Clock } from "lucide-react";
 import { Episode as EpisodeApi } from "@/api/entities";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
-import { isAudiobook, isMusic, formatDate } from "@/lib/utils";
+import { isAudiobook, isMusic, formatRelativeDate } from "@/lib/utils";
 import { useAudioPlayerContext } from "@/context/AudioPlayerContext";
 import { useUser } from "@/context/UserContext.jsx";
 import { toast } from "@/components/ui/use-toast";
@@ -236,7 +236,14 @@ export default function NewReleasesRow({
 
       <div
         ref={scrollRef}
-        className="flex space-x-3 overflow-x-auto pb-4 scroll-smooth"
+        // Numbered (trending) rows widen the gap between cards and add a
+        // left lead-in so each rank numeral has its own column to the
+        // left of the card it labels — never overlapping cover art,
+        // never overlapping the previous card. Non-numbered rows keep
+        // the tight default gap.
+        className={`flex overflow-x-auto pb-4 scroll-smooth ${
+          numbered ? "space-x-14 pl-16" : "space-x-3"
+        }`}
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {episodes.map((ep, idx) => {
@@ -251,9 +258,49 @@ export default function NewReleasesRow({
           // the user scrolls right. Reads naturally as "Top 1, 2, 3…".
           const rank = numbered ? idx + 1 : null;
 
+          // Side-rail rank numeral — sits in its own column in the gap
+          // to the left of each card. Card #1's numeral lives in the
+          // ``pl-16`` lead-in on the scroll row; every subsequent
+          // numeral lives in the ``space-x-14`` gap between cards.
+          // Never overlaps cover art, never gets clipped behind the
+          // card. Sizes are tuned to comfortably fit a single-, double-
+          // or triple-digit rank inside that column. Color scale:
+          // tarnished gold for the podium, bone for mid-rank, oxidized
+          // crimson for the long tail.
+          let rankFontSize = null;
+          let rankColorClass = "";
+          let rankTextShadow = "";
+          if (rank != null) {
+            rankFontSize = rank >= 100 ? "2.25rem" : rank >= 10 ? "3rem" : "3.75rem";
+            if (rank <= 3) {
+              rankColorClass = "text-amber-300/95";
+              rankTextShadow = "0 2px 18px rgba(251,191,36,0.45), 0 1px 3px rgba(0,0,0,0.6)";
+            } else if (rank <= 10) {
+              rankColorClass = "text-zinc-300/90";
+              rankTextShadow = "0 2px 14px rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.55)";
+            } else {
+              rankColorClass = "text-red-800/95";
+              rankTextShadow = "0 2px 14px rgba(127,29,29,0.55), 0 1px 3px rgba(0,0,0,0.55)";
+            }
+          }
+
           return (
-            <div key={ep.id} className="flex-shrink-0 w-44">
-              <div className="eeriecast-card group cursor-pointer h-full flex flex-col overflow-hidden">
+            <div key={ep.id} className="flex-shrink-0 w-44 relative">
+              {rank != null && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-0 bottom-[4rem] z-[2] flex items-center select-none"
+                  style={{ right: "100%", paddingRight: "0.4rem" }}
+                >
+                  <span
+                    className={`font-eerie tabular-nums leading-none ${rankColorClass}`}
+                    style={{ fontSize: rankFontSize, textShadow: rankTextShadow }}
+                  >
+                    {rank}
+                  </span>
+                </div>
+              )}
+              <div className="eeriecast-card group cursor-pointer h-full flex flex-col overflow-hidden relative z-[1]">
                 {/* Cover */}
                 <div
                   className="relative aspect-square bg-eeriecast-surface-light overflow-hidden rounded-t-lg"
@@ -289,34 +336,6 @@ export default function NewReleasesRow({
                       <Play className="w-4 h-4 text-white ml-0.5 fill-white" />
                     </button>
                   </div>
-
-                  {/* Countdown rank — Netflix-style stamped numeral at the
-                      bottom-left of the cover. Counts DOWN to #1 from left
-                      to right so listeners scroll *toward* the apex of the
-                      chart. The closer to #1 the bigger the gold flourish.
-                      Rendered in ``font-eerie`` (Pirata One) for a subtle
-                      tombstone-engraved feel; the heavy stroke + drop
-                      shadow keep it readable against any cover artwork. */}
-                  {rank != null && (
-                    <div className="pointer-events-none absolute bottom-0 left-0 z-[4] flex items-end leading-none select-none">
-                      <span
-                        className={`font-eerie tabular-nums leading-[0.82] tracking-tight
-                          ${rank <= 3 ? 'text-amber-300/95' : 'text-white/85'}
-                          ${rank >= 100 ? 'text-[3.5rem]' : rank >= 10 ? 'text-[4.5rem]' : 'text-[5.75rem]'}
-                        `}
-                        style={{
-                          WebkitTextStroke: rank <= 3 ? '1.5px rgba(0,0,0,0.6)' : '1.5px rgba(0,0,0,0.75)',
-                          textShadow: rank <= 3
-                            ? '0 4px 18px rgba(251,191,36,0.55), 0 2px 6px rgba(0,0,0,0.65)'
-                            : '0 4px 14px rgba(0,0,0,0.6)',
-                          paddingLeft: '0.2rem',
-                          paddingBottom: '0.05rem',
-                        }}
-                      >
-                        {rank}
-                      </span>
-                    </div>
-                  )}
 
                   {/* Three-dot menu — top-right on hover (below badge if present) */}
                   <div className="absolute bottom-1.5 right-1.5 z-[5]" onClick={(e) => e.stopPropagation()}>
@@ -356,7 +375,7 @@ export default function NewReleasesRow({
                     type="button"
                     title={ep.title}
                     onClick={(e) => { e.stopPropagation(); handleEpisodePlay(ep); }}
-                    aria-label={`Play ${ep.title}`}
+                    aria-label={rank != null ? `Trending #${rank}: play ${ep.title}` : `Play ${ep.title}`}
                     className="text-white/90 font-semibold text-xs leading-tight group-hover:text-red-400 transition-colors duration-300 line-clamp-2 break-words text-left bg-transparent border-0 p-0 cursor-pointer hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-eeriecast-surface rounded-sm"
                   >
                     {ep.title}
@@ -368,13 +387,27 @@ export default function NewReleasesRow({
                   >
                     {podName}
                   </button>
-                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-600">
-                    {ep.published_at && <span>{formatDate(ep.published_at)}</span>}
+                  {/* Date + runtime. Runtime is a decision input the
+                      listener uses to ask "do I have time for this?",
+                      so it gets the icon and the slightly brighter
+                      tone. Date is contextual breadcrumb — useful but
+                      almost always inferable from the row it's in
+                      ("Trending", "Newest"), so it sits a tier muted
+                      and uses a relative format ("2d ago", "Yesterday")
+                      that scans without the listener having to parse
+                      a full ISO date. */}
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    {ep.published_at && (
+                      <span className="text-zinc-600">{formatRelativeDate(ep.published_at)}</span>
+                    )}
+                    {ep.published_at && dur && (
+                      <span className="text-zinc-700 select-none">·</span>
+                    )}
                     {dur && (
-                      <>
-                        <span>•</span>
-                        <span>{dur}</span>
-                      </>
+                      <span className="inline-flex items-center gap-1 text-zinc-400">
+                        <Clock className="w-2.5 h-2.5" strokeWidth={2.25} />
+                        <span className="tabular-nums">{dur}</span>
+                      </span>
                     )}
                   </div>
                 </div>

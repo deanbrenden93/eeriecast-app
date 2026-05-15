@@ -235,3 +235,39 @@ export function formatDate(dateString) {
     return "";
   }
 }
+
+// Short, scannable relative date for card metadata rows. Mirrors the
+// social-media convention ("5m ago", "3h ago", "Yesterday", "4d ago",
+// "2w ago") so listeners read freshness at a glance instead of parsing
+// a full "May 13, 2026" string. Falls back to an absolute date for
+// anything older than ~12 weeks, and includes the year for content
+// that crossed a year boundary so we never show "Jan 5" when it
+// actually means "Jan 5, 2024".
+export function formatRelativeDate(dateString) {
+  if (!dateString) return "";
+  try {
+    const d = new Date(dateString);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 45) return "Just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay === 1) return "Yesterday";
+    if (diffDay < 7) return `${diffDay}d ago`;
+    const diffWeek = Math.floor(diffDay / 7);
+    if (diffWeek < 12) return `${diffWeek}w ago`;
+    // Older content — fall back to an absolute date, including the
+    // year if it's not the current calendar year.
+    const opts = d.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+    return d.toLocaleDateString("en-US", opts);
+  } catch {
+    return "";
+  }
+}
