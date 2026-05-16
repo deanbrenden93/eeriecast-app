@@ -16,7 +16,11 @@ import CreatorEpisodes from "./CreatorEpisodes";
 import Category from "./Category";
 import Episodes from "./Episodes";
 import Playlist from "./Playlist";
-import Help, { STORY_SUBMISSION_CATEGORY, STORY_SUBMISSION_SHOWS } from "./Help";
+import Help, {
+    STORY_SUBMISSION_CATEGORY,
+    STORY_SUBMISSION_SHOWS,
+    CONTEST_SUBMISSION_CATEGORY,
+} from "./Help";
 import Shop from "./Shop";
 import NotFound from "./NotFound";
 import VerifyEmail from "./VerifyEmail";
@@ -123,6 +127,20 @@ function SubmitStoryRedirect() {
         );
         if (matched) params.set('show', matched);
     }
+    return <Navigate to={`/Help?${params.toString()}`} replace />;
+}
+
+// Pretty-URL alias for the writing contest. Lands on the Help screen
+// with the Contact tab active and the contest category preselected so
+// the dedicated contest UI renders immediately. The contest constant
+// gates visibility — flipping CONTEST_ACTIVE off in Help.jsx will hide
+// the dropdown entry; this route still works (showing whatever the
+// form falls back to) but marketing links can be retired separately.
+function ContestRedirect() {
+    const params = new URLSearchParams({
+        tab: 'contact',
+        category: CONTEST_SUBMISSION_CATEGORY,
+    });
     return <Navigate to={`/Help?${params.toString()}`} replace />;
 }
 
@@ -235,6 +253,10 @@ function PagesContent() {
                     <Route path="/submit-a-story" element={<SubmitStoryRedirect />} />
                     <Route path="/submit-a-story/:show" element={<SubmitStoryRedirect />} />
                     <Route path="/submit" element={<SubmitStoryRedirect />} />
+
+                    {/* Writing-contest landing page */}
+                    <Route path="/contest" element={<ContestRedirect />} />
+                    <Route path="/Contest" element={<ContestRedirect />} />
 
                     <Route path="/Shop" element={<AnimatedPage><Shop /></AnimatedPage>} />
                     <Route path="/shop" element={<AnimatedPage><Shop /></AnimatedPage>} />

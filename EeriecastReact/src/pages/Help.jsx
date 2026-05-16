@@ -19,9 +19,12 @@ import {
   Radio,
   DollarSign,
   Check,
+  Trophy,
+  LogIn,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
+import { useAuthModal } from '@/context/AuthModalContext.jsx';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import RichTextEditor, { countWords, stripTags } from '@/components/ui/RichTextEditor';
 
@@ -35,6 +38,45 @@ export const STORY_SUBMISSION_SHOWS = [
   'Alone in the Woods',
 ];
 const STORY_MIN_WORDS = 500;
+
+// Writing-contest entries. Sits right under the regular story
+// submission slot so it has equal prominence in the dropdown while a
+// contest window is active. Hide by flipping ``CONTEST_ACTIVE`` to
+// false (the constant gates both the dropdown entry and the /contest
+// landing page) once the submission window closes — no other code
+// changes required to retire the contest.
+export const CONTEST_SUBMISSION_CATEGORY = 'Submit to Contest';
+export const CONTEST_ACTIVE = true;
+export const CONTEST_HEADING = 'Participate in the May Delete After Reading Contest';
+// Short lead-in shown in the page header above the form. The full
+// guidelines, prize breakdown, and rules live in the in-form details
+// panel so entrants see them right next to the fields they fill out.
+export const CONTEST_SUBTITLE =
+  "We're accepting entries through the end of May 2026 for stories to be produced as episodes of Delete After Reading, our members-only show on Eerie.fm. We're looking for the best new creepypasta out there — the kind that hearkens back to the golden days of internet horror.";
+const CONTEST_MIN_WORDS = 2000;
+
+// Inspirations cited in the announcement. Listed inline so it's easy
+// to swap out next time we run a themed contest.
+const CONTEST_INSPIRATIONS = ['Slenderman', 'The Rake', 'Candle Cove', '1999'];
+
+// Three-tier prize table. Order matters — rendered top-to-bottom in
+// the in-form details panel.
+const CONTEST_PRIZES = [
+  { place: '1st', amount: '$1,000', perk: 'one year of Eerie.fm Premium Membership' },
+  { place: '2nd', amount: '$300', perk: 'one month of Eerie.fm Premium Membership' },
+  { place: '3rd', amount: '$300', perk: 'one month of Eerie.fm Premium Membership' },
+];
+
+// Rules surfaced next to the entry fields. Kept as plain strings so a
+// future contest can swap them out without touching the layout.
+const CONTEST_RULES = [
+  'Stories must be original, unpublished, and written in first-person or found-evidence format.',
+  `Entries must be at least ${CONTEST_MIN_WORDS.toLocaleString()} words.`,
+  'No AI-written stories — entries will be checked for AI tells and disqualified if found.',
+  'Judging is based on atmosphere, originality, voice, and how well the story captures the classic creepypasta feeling.',
+  'Only winning stories will be produced as episodes of Delete After Reading. We may contact non-winners separately about producing their story later; your story will not be used in any form unless you win and accept the prize, or you separately agree.',
+  'A free or Premium Eerie.fm account is required to participate. No purchase necessary.',
+];
 
 // Per-show pay-rate notices — only shown for shows that actually pay
 // listener submissions. Rendered inline beneath the show dropdown so
@@ -50,8 +92,14 @@ const STORY_SHOW_NOTICES = {
 const RIGHTS_AGREEMENT_TEXT =
   "By submitting, I grant Eeriecast full, perpetual, irrevocable media rights to produce, adapt, edit, narrate, publish, and distribute this story in any format and on any platform, with or without attribution. I retain full ownership of my story and may continue to share, adapt, sell, or otherwise use it however I choose.";
 
+// Contest-specific variant. Names the intended destination show so the
+// contributor knows exactly where a winning entry would be produced.
+const CONTEST_RIGHTS_AGREEMENT_TEXT =
+  "By submitting, I grant Eeriecast full, perpetual, irrevocable media rights to produce, adapt, edit, narrate, publish, and distribute this story — including as an episode of the members-only show Delete After Reading — in any format and on any platform, with or without attribution. I retain full ownership of my story and may continue to share, adapt, sell, or otherwise use it however I choose.";
+
 const CONTACT_CATEGORIES = [
   STORY_SUBMISSION_CATEGORY,
+  ...(CONTEST_ACTIVE ? [CONTEST_SUBMISSION_CATEGORY] : []),
   'Podcast Issue',
   'Audiobook / E-Reader Issue',
   'Playback / Audio Problem',
@@ -332,6 +380,7 @@ ContactForm.propTypes = {
 
 function ContactForm({ initialCategory = '', initialShow = '' }) {
   const { user, isAuthenticated } = useUser();
+  const { openAuth } = useAuthModal();
 
   const [form, setForm] = useState(() => ({
     ...EMPTY_FORM,
@@ -365,23 +414,68 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
   }, []);
 
   const isStory = form.category === STORY_SUBMISSION_CATEGORY;
+  const isContest = form.category === CONTEST_SUBMISSION_CATEGORY;
+  // Either of the long-form branches uses the rich text editor and the
+  // word-count gate, so we can share the count + several render paths.
+  const isLongForm = isStory || isContest;
+  const minWords = isContest ? CONTEST_MIN_WORDS : STORY_MIN_WORDS;
   const storyWordCount = useMemo(
-    () => (isStory ? countWords(form.storyHtml) : 0),
-    [isStory, form.storyHtml],
+    () => (isLongForm ? countWords(form.storyHtml) : 0),
+    [isLongForm, form.storyHtml],
   );
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // Derived validation. Story submissions have stricter rules; other
-  // categories keep the original "name + email + message" minimum.
+  // Contest entries require an authenticated account so we can follow
+  // up with winners. When an unauthenticated user selects the contest
+  // category — whether from the dropdown or via the /contest deep-link
+  // — pop the auth modal immediately. If they dismiss it they can
+  // still see and fill out the form; the submit handler re-prompts.
+  useEffect(() => {
+    if (isContest && !isAuthenticated) {
+      openAuth(
+        'login',
+        null,
+        'Sign in or create a free account to enter the contest. We need an account on file to contact winners and award prizes.',
+      );
+    }
+    // ``openAuth`` identity changes whenever the modal opens, so depending
+    // on it would re-fire this effect every time the modal toggles. The
+    // intent here is "fire when the user enters/exits the contest path or
+    // when their auth state changes," which the two listed deps capture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isContest, isAuthenticated]);
+
+  // Loose email sanity-check (the server / PayPal will do the real
+  // validation). Just ensures we didn't get a blank string or a value
+  // missing the @ sign, which is by far the most common typo.
+  const looksLikeEmail = (v) =>
+    typeof v === 'string' && /\S+@\S+\.\S+/.test(v.trim());
+
+  // Derived validation. Story + contest submissions have stricter
+  // rules; other categories keep the original "name + email + message"
+  // minimum.
   const validation = useMemo(() => {
+    if (isContest) {
+      // Contest is account-gated, so authentication is part of the
+      // validation surface: the submit button stays disabled until
+      // the user has signed in. Story submissions historically allow
+      // anonymous submission with a typed email, so they don't carry
+      // this guard.
+      return {
+        auth: isAuthenticated,
+        name: !!form.name.trim(),
+        email: !!form.email.trim(),
+        category: !!form.category,
+        storyTitle: !!form.subject.trim(),
+        penName: !!form.penName.trim(),
+        paypal: looksLikeEmail(form.paypalEmail),
+        storyText: storyWordCount >= CONTEST_MIN_WORDS,
+        rights: form.rightsAcknowledged === true,
+      };
+    }
     if (isStory) {
       const showPays = !!STORY_SHOW_NOTICES[form.show];
-      // Loose email sanity-check (the server / PayPal will do the real
-      // validation). Just ensures we didn't get a blank string or a
-      // value missing the @ sign, which is by far the most common typo.
-      const looksLikeEmail = (v) =>
-        typeof v === 'string' && /\S+@\S+\.\S+/.test(v.trim());
       return {
         name: !!form.name.trim(),
         email: !!form.email.trim(),
@@ -400,7 +494,7 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
       category: !!form.category,
       message: !!form.message.trim(),
     };
-  }, [isStory, form, storyWordCount]);
+  }, [isStory, isContest, isAuthenticated, form, storyWordCount]);
 
   const canSubmit = Object.values(validation).every(Boolean);
 
@@ -416,6 +510,17 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setAttemptedSubmit(true);
+    // Contest entries require an account; if the user dismissed the
+    // auth modal earlier, surface it again on submit instead of
+    // silently doing nothing.
+    if (isContest && !isAuthenticated) {
+      openAuth(
+        'login',
+        null,
+        'Sign in or create a free account to enter the contest.',
+      );
+      return;
+    }
     if (!canSubmit) return;
     setStatus('sending');
     try {
@@ -425,7 +530,26 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
         category: form.category || 'Uncategorized',
       };
       let payload;
-      if (isStory) {
+      if (isContest) {
+        const storyPlain = stripTags(form.storyHtml).trim();
+        payload = {
+          ...basePayload,
+          contest: 'May 2026 Delete After Reading',
+          // Echo the user id so the inbox entry can be cross-referenced
+          // with the account if we need to follow up about prizes.
+          user_id: user?.id || '',
+          username: user?.username || '',
+          story_title: form.subject,
+          pen_name: form.penName,
+          story_text_html: form.storyHtml,
+          story_text: storyPlain,
+          word_count: storyWordCount,
+          paypal_email: form.paypalEmail.trim(),
+          rights_acknowledged: form.rightsAcknowledged === true ? 'yes' : 'no',
+          rights_agreement: CONTEST_RIGHTS_AGREEMENT_TEXT,
+          _subject: `Eeriecast [Contest Entry — Delete After Reading]: ${form.subject}`,
+        };
+      } else if (isStory) {
         const storyPlain = stripTags(form.storyHtml).trim();
         const showPays = !!STORY_SHOW_NOTICES[form.show];
         payload = {
@@ -490,12 +614,14 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
             <CheckCircle2 className="w-7 h-7 text-green-400" />
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">
-            {isStory ? 'Story Submitted' : 'Message Sent'}
+            {isContest ? 'Contest Entry Received' : isStory ? 'Story Submitted' : 'Message Sent'}
           </h3>
           <p className="text-sm text-zinc-400 max-w-xs mb-6">
-            {isStory
-              ? 'Thanks for sharing your story. Our team will review it and reach out if it\'s a fit for the show.'
-              : "Thanks for reaching out. We'll get back to you as soon as possible."}
+            {isContest
+              ? "Thanks for entering. We'll review every entry after submissions close at the end of May 2026 and reach out to the three winners directly."
+              : isStory
+                ? 'Thanks for sharing your story. Our team will review it and reach out if it\'s a fit for the show.'
+                : "Thanks for reaching out. We'll get back to you as soon as possible."}
           </p>
           <button
             type="button"
@@ -704,8 +830,237 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
             </>
           )}
 
-          {/* Standard (non-story) branch ------------------------------ */}
-          {!isStory && (
+          {/* Submit-to-Contest branch --------------------------------- */}
+          {isContest && (
+            <>
+              {/* Full contest details. Sits at the top of the contest
+                  branch so the prize table, theme guidance, and rules
+                  are visible right next to the fields the entrant is
+                  about to fill out. Long but worth the screen-space:
+                  these are the questions writers will scroll back up
+                  to re-check while drafting their story. */}
+              <motion.section
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+                className="rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.02] overflow-hidden"
+                aria-labelledby="contest-details-heading"
+              >
+                {/* Header strip */}
+                <div className="flex items-start gap-3 px-5 pt-5 pb-4 border-b border-amber-500/15">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center flex-shrink-0">
+                    <Trophy className="w-4 h-4 text-amber-300" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300/80">
+                      Contest Details
+                    </p>
+                    <h3 id="contest-details-heading" className="text-[15px] font-semibold text-amber-50 mt-0.5">
+                      May Delete After Reading Contest
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Theme + inspirations */}
+                <div className="px-5 pt-4 pb-2 text-[12.5px] leading-relaxed text-amber-100/90">
+                  <p>
+                    We&apos;re looking for the best new creepypasta out there — the kind that
+                    hearkens back to the golden days of internet horror. Think{' '}
+                    {CONTEST_INSPIRATIONS.map((name, i) => (
+                      <span key={name}>
+                        <em className="not-italic text-amber-50 font-medium">{name}</em>
+                        {i < CONTEST_INSPIRATIONS.length - 2
+                          ? ', '
+                          : i === CONTEST_INSPIRATIONS.length - 2
+                            ? ', or '
+                            : '.'}
+                      </span>
+                    ))}{' '}
+                    Our judges will select three winners based on atmosphere, originality,
+                    voice, and how well the story captures that classic creepypasta feeling.
+                  </p>
+                </div>
+
+                {/* Prize ladder */}
+                <div className="px-5 pt-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300/70 mb-2">
+                    Prizes
+                  </p>
+                  <ul className="space-y-1.5">
+                    {CONTEST_PRIZES.map((p, i) => (
+                      <li
+                        key={p.place}
+                        className="flex items-center gap-3 rounded-lg bg-black/30 border border-amber-500/15 px-3 py-2.5"
+                      >
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold tracking-wide flex-shrink-0 ${
+                            i === 0
+                              ? 'bg-amber-400/25 border border-amber-300/50 text-amber-100'
+                              : 'bg-amber-500/10 border border-amber-500/25 text-amber-200/90'
+                          }`}
+                        >
+                          {p.place.replace(/[a-z]/g, '')}
+                        </span>
+                        <span className="text-[12.5px] leading-snug text-amber-50">
+                          <span className="font-semibold">{p.place} place</span>
+                          <span className="text-amber-100/80"> — {p.amount} plus {p.perk}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Rules */}
+                <div className="px-5 pt-4 pb-5 mt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300/70 mb-2">
+                    Rules
+                  </p>
+                  <ul className="space-y-2">
+                    {CONTEST_RULES.map((rule) => (
+                      <li key={rule} className="flex items-start gap-2.5 text-[12.5px] leading-relaxed text-amber-100/90">
+                        <Check className="w-3.5 h-3.5 mt-0.5 text-amber-300 flex-shrink-0" strokeWidth={3} />
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Deadline footer */}
+                <div className="px-5 py-3 border-t border-amber-500/15 bg-black/20 text-[11.5px] text-amber-200/80 text-center">
+                  Submissions close at the end of May 2026.
+                </div>
+              </motion.section>
+
+              {/* Not-signed-in nudge. Lives inside the form so it's
+                  obvious why the submit button is disabled. */}
+              {!isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAuth(
+                      'login',
+                      null,
+                      'Sign in or create a free account to enter the contest.',
+                    )
+                  }
+                  className="w-full flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/[0.06] hover:bg-red-500/[0.1] px-4 py-3 text-left transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-red-500/15 border border-red-500/25 flex items-center justify-center flex-shrink-0">
+                    <LogIn className="w-3.5 h-3.5 text-red-300" />
+                  </div>
+                  <div className="text-[12.5px] leading-relaxed text-red-100">
+                    <p className="font-semibold text-red-50">Sign in to enter</p>
+                    <p className="text-red-200/80">
+                      Contest entries require an Eeriecast account so we can contact winners.
+                    </p>
+                  </div>
+                </button>
+              )}
+
+              <div>
+                <label className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2 uppercase tracking-wider">
+                  <DollarSign className="w-3 h-3" /> PayPal Email
+                  <span className="text-zinc-700 font-normal normal-case tracking-normal">
+                    (where prize money would be sent)
+                  </span>
+                </label>
+                <input
+                  name="paypalEmail"
+                  type="email"
+                  value={form.paypalEmail}
+                  onChange={handleChange}
+                  autoComplete="email"
+                  placeholder="paypal@example.com"
+                  className={`w-full bg-black/40 border rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none transition-all ${errorRing(validation.paypal)}`}
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2 uppercase tracking-wider">
+                  <FileText className="w-3 h-3" /> Story Title
+                </label>
+                <input
+                  name="subject"
+                  value={form.subject}
+                  onChange={handleChange}
+                  placeholder="Give your story a name"
+                  className={`w-full bg-black/40 border rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none transition-all ${errorRing(validation.storyTitle)}`}
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2 uppercase tracking-wider">
+                  <Feather className="w-3 h-3" /> Pen Name
+                </label>
+                <input
+                  name="penName"
+                  value={form.penName}
+                  onChange={handleChange}
+                  placeholder="The name you'd like us to read on-air"
+                  className={`w-full bg-black/40 border rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none transition-all ${errorRing(validation.penName)}`}
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2 uppercase tracking-wider">
+                  <MessageSquare className="w-3 h-3" /> Story Text
+                </label>
+                <RichTextEditor
+                  value={form.storyHtml}
+                  onChange={(html) => setForm((prev) => ({ ...prev, storyHtml: html }))}
+                  placeholder="Tell the tale exactly how you'd want it narrated…"
+                  minWords={CONTEST_MIN_WORDS}
+                  ariaLabel="Contest entry text"
+                  id="contest-text-editor"
+                />
+                {attemptedSubmit && !validation.storyText && (
+                  <p className="mt-2 text-[11px] text-red-400">
+                    Contest entries need at least {CONTEST_MIN_WORDS.toLocaleString()} words before they can be submitted.
+                  </p>
+                )}
+              </div>
+
+              <label
+                className={`flex items-start gap-3 rounded-xl border px-4 py-3.5 cursor-pointer transition-colors ${
+                  form.rightsAcknowledged
+                    ? 'border-red-500/30 bg-red-500/[0.06]'
+                    : attemptedSubmit && !validation.rights
+                      ? 'border-red-500/50 bg-red-500/[0.04] ring-1 ring-red-500/20'
+                      : 'border-white/[0.08] bg-black/40 hover:border-white/[0.12]'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  name="rightsAcknowledged"
+                  checked={form.rightsAcknowledged}
+                  onChange={(e) => setForm((prev) => ({ ...prev, rightsAcknowledged: e.target.checked }))}
+                  className="sr-only peer"
+                  aria-describedby="contest-rights-agreement-text"
+                />
+                <span
+                  aria-hidden="true"
+                  className={`mt-0.5 w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-all ${
+                    form.rightsAcknowledged
+                      ? 'border-red-500/70 bg-red-600/90 text-white'
+                      : 'border-white/[0.15] bg-black/50 text-transparent'
+                  }`}
+                >
+                  <Check className="w-3 h-3" strokeWidth={3} />
+                </span>
+                <span id="contest-rights-agreement-text" className="text-[12px] leading-relaxed text-zinc-300">
+                  {CONTEST_RIGHTS_AGREEMENT_TEXT}
+                </span>
+              </label>
+              {attemptedSubmit && !validation.rights && (
+                <p className="-mt-2 text-[11px] text-red-400">
+                  Please acknowledge the submission terms to continue.
+                </p>
+              )}
+            </>
+          )}
+
+          {/* Standard (non-story, non-contest) branch ----------------- */}
+          {!isStory && !isContest && (
             <>
               <div>
                 <label className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2 uppercase tracking-wider">
@@ -750,8 +1105,12 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" />
-                {isStory ? 'Submit Story' : 'Send Message'}
+                {isContest ? <Trophy className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                {isContest
+                  ? (isAuthenticated ? 'Submit Contest Entry' : 'Sign In to Submit')
+                  : isStory
+                    ? 'Submit Story'
+                    : 'Send Message'}
               </>
             )}
           </Button>
@@ -761,9 +1120,11 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
           )}
 
           <p className="text-[11px] text-zinc-600 text-center">
-            {isStory
-              ? 'Story submissions are reviewed on a rolling basis. We\'ll reach out if it\'s selected.'
-              : 'We typically respond within 24–48 hours.'}
+            {isContest
+              ? "Contest entries are reviewed after submissions close at the end of May 2026. Winners will be notified by email."
+              : isStory
+                ? 'Story submissions are reviewed on a rolling basis. We\'ll reach out if it\'s selected.'
+                : 'We typically respond within 24–48 hours.'}
           </p>
         </motion.form>
       )}
@@ -978,12 +1339,18 @@ export default function Help() {
                   <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent backdrop-blur-sm overflow-hidden p-6">
                     <div className="mb-6">
                       <h2 className="text-lg font-semibold text-white mb-1">
-                        {initialCategory === STORY_SUBMISSION_CATEGORY ? 'Submit Your Story' : 'Get in Touch'}
+                        {initialCategory === CONTEST_SUBMISSION_CATEGORY
+                          ? CONTEST_HEADING
+                          : initialCategory === STORY_SUBMISSION_CATEGORY
+                            ? 'Submit Your Story'
+                            : 'Get in Touch'}
                       </h2>
                       <p className="text-sm text-zinc-500">
-                        {initialCategory === STORY_SUBMISSION_CATEGORY
-                          ? "Share an original story with one of our narrators. Selected submissions may be read on the show."
-                          : "Have a question, bug report, or even have a story you want to submit? We'd love to hear from you."}
+                        {initialCategory === CONTEST_SUBMISSION_CATEGORY
+                          ? CONTEST_SUBTITLE
+                          : initialCategory === STORY_SUBMISSION_CATEGORY
+                            ? "Share an original story with one of our narrators. Selected submissions may be read on the show."
+                            : "Have a question, bug report, or even have a story you want to submit? We'd love to hear from you."}
                       </p>
                     </div>
                     <ContactForm
