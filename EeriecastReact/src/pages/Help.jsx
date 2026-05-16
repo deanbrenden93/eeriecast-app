@@ -21,6 +21,8 @@ import {
   Check,
   Trophy,
   LogIn,
+  AlertCircle,
+  Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/context/UserContext.jsx';
@@ -51,8 +53,11 @@ export const CONTEST_HEADING = 'Participate in the May Delete After Reading Cont
 // Short lead-in shown in the page header above the form. The full
 // guidelines, prize breakdown, and rules live in the in-form details
 // panel so entrants see them right next to the fields they fill out.
+// Kept intentionally lean — the panel below restates the theme and
+// inspirations, so repeating them here just makes the top of the page
+// read like the same paragraph twice.
 export const CONTEST_SUBTITLE =
-  "We're accepting entries through the end of May 2026 for stories to be produced as episodes of Delete After Reading, our members-only show on Eerie.fm. We're looking for the best new creepypasta out there — the kind that hearkens back to the golden days of internet horror.";
+  "Submissions accepted through the end of May 2026 for stories to be produced as episodes of Delete After Reading, our members-only show on Eerie.fm.";
 const CONTEST_MIN_WORDS = 2000;
 
 // Inspirations cited in the announcement. Listed inline so it's easy
@@ -69,11 +74,12 @@ const CONTEST_PRIZES = [
 
 // Rules surfaced next to the entry fields. Kept as plain strings so a
 // future contest can swap them out without touching the layout.
+// Judging criteria intentionally lives in the theme paragraph above
+// the rules list — listing it twice in one panel read as filler.
 const CONTEST_RULES = [
   'Stories must be original, unpublished, and written in first-person or found-evidence format.',
   `Entries must be at least ${CONTEST_MIN_WORDS.toLocaleString()} words.`,
   'No AI-written stories — entries will be checked for AI tells and disqualified if found.',
-  'Judging is based on atmosphere, originality, voice, and how well the story captures the classic creepypasta feeling.',
   'Only winning stories will be produced as episodes of Delete After Reading. We may contact non-winners separately about producing their story later; your story will not be used in any form unless you win and accept the prize, or you separately agree.',
   'A free or Premium Eerie.fm account is required to participate. No purchase necessary.',
 ];
@@ -373,6 +379,70 @@ const EMPTY_FORM = {
   rightsAcknowledged: false,
 };
 
+/* ─── Local draft autosave ─────────────────────────────────────────
+   Persists the in-progress form to localStorage so a refresh, logout,
+   or accidental tab close doesn't cost the user their draft. The key
+   is shared across all categories (a single "current draft") because
+   story & contest entries share most of their fields, and the
+   non-long-form branches only have a handful to retype anyway.
+
+   Bump DRAFT_VERSION whenever EMPTY_FORM's shape changes in a way
+   that would make old drafts incompatible — the loader will simply
+   discard stale drafts on next page load. */
+const DRAFT_STORAGE_KEY = 'eeriecast_contact_form_draft';
+const DRAFT_VERSION = 1;
+
+function loadContactDraft() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== DRAFT_VERSION) return null;
+    return parsed.form || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveContactDraft(form) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ version: DRAFT_VERSION, form, savedAt: Date.now() }),
+    );
+  } catch {
+    // Storage quota, private-mode, etc. — silently skip persistence.
+  }
+}
+
+function clearContactDraft() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // No-op.
+  }
+}
+
+// Quick "has the user typed anything?" check used to decide whether
+// to actually write to localStorage. Avoids polluting storage with
+// empty drafts on a page that the user just opened and immediately
+// closed without typing.
+function isDraftDirty(form) {
+  if (!form) return false;
+  if (form.name && form.name.trim()) return true;
+  if (form.subject && form.subject.trim()) return true;
+  if (form.message && form.message.trim()) return true;
+  if (form.penName && form.penName.trim()) return true;
+  if (form.paypalEmail && form.paypalEmail.trim()) return true;
+  if (form.show) return true;
+  if (form.rightsAcknowledged) return true;
+  if (form.storyHtml && form.storyHtml.replace(/<[^>]*>/g, '').trim()) return true;
+  return false;
+}
+
 ContactForm.propTypes = {
   initialCategory: PropTypes.string,
   initialShow: PropTypes.string,
@@ -382,15 +452,48 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
   const { user, isAuthenticated } = useUser();
   const { openAuth } = useAuthModal();
 
-  const [form, setForm] = useState(() => ({
-    ...EMPTY_FORM,
-    email: user?.email || '',
-    category: initialCategory || '',
-    show: initialShow || '',
-  }));
+  // Hydrate from a local draft on first mount. URL params (the
+  // /submit-a-story and /contest deep-links) always win over a stored
+  // draft so a direct link can't be hijacked by stale local state.
+  const [form, setForm] = useState(() => {
+    const draft = loadContactDraft();
+    const base = { ...EMPTY_FORM, ...(draft || {}) };
+    return {
+      ...base,
+      // Prefer the logged-in user's email; fall back to the drafted
+      // value, then empty. The post-mount auth-sync effect below will
+      // overwrite an empty field once the auth response settles.
+      email: user?.email || base.email || '',
+      category: initialCategory || base.category || '',
+      show: initialShow || base.show || '',
+    };
+  });
   const [status, setStatus] = useState('idle'); // idle | sending | sent | error
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  // Whether the user has attempted to submit a contest entry while
+  // unauthenticated. Drives a persistent inline error message just
+  // above the submit button. Cleared once they sign in.
+  const [authRequiredError, setAuthRequiredError] = useState(false);
   const formRef = useRef(null);
+
+  // Debounced persistence: write the draft 400ms after the user stops
+  // editing. Skipping the initial mount avoids re-writing a freshly
+  // hydrated draft right back to storage.
+  const hasMountedRef = useRef(false);
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    if (!isDraftDirty(form)) return;
+    const t = setTimeout(() => saveContactDraft(form), 400);
+    return () => clearTimeout(t);
+  }, [form]);
+
+  // Clear the auth-required banner the moment the user signs in.
+  useEffect(() => {
+    if (isAuthenticated) setAuthRequiredError(false);
+  }, [isAuthenticated]);
 
   // Keep the email in sync when the auth state settles after the form
   // first mounts (e.g. the user-me response arrives slightly later). We
@@ -505,15 +608,21 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
       email: user?.email || '',
     });
     setAttemptedSubmit(false);
+    setAuthRequiredError(false);
+    // A successful submit means the draft is no longer in-progress —
+    // clear local storage so the next visit starts from a clean slate.
+    clearContactDraft();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setAttemptedSubmit(true);
-    // Contest entries require an account; if the user dismissed the
-    // auth modal earlier, surface it again on submit instead of
-    // silently doing nothing.
+    // Contest entries require an account. Surface a clear inline error
+    // *and* re-pop the auth modal so the user has both an obvious
+    // message and a one-click path to sign in. Their typed draft is
+    // preserved by localStorage either way.
     if (isContest && !isAuthenticated) {
+      setAuthRequiredError(true);
       openAuth(
         'login',
         null,
@@ -846,26 +955,24 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
                 className="rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.08] to-amber-500/[0.02] overflow-hidden"
                 aria-labelledby="contest-details-heading"
               >
-                {/* Header strip */}
-                <div className="flex items-start gap-3 px-5 pt-5 pb-4 border-b border-amber-500/15">
+                {/* Header strip — single-line eyebrow + trophy. The
+                    contest name lives in the page H2 directly above
+                    this panel, so an H3 repeating it read as filler. */}
+                <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-amber-500/15">
                   <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center flex-shrink-0">
                     <Trophy className="w-4 h-4 text-amber-300" />
                   </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300/80">
-                      Contest Details
-                    </p>
-                    <h3 id="contest-details-heading" className="text-[15px] font-semibold text-amber-50 mt-0.5">
-                      May Delete After Reading Contest
-                    </h3>
-                  </div>
+                  <h3 id="contest-details-heading" className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-200">
+                    Contest Details
+                  </h3>
                 </div>
 
-                {/* Theme + inspirations */}
+                {/* Theme + inspirations. The subtitle above already
+                    summarises what we're looking for; this paragraph
+                    just adds the inspirations and judging criteria. */}
                 <div className="px-5 pt-4 pb-2 text-[12.5px] leading-relaxed text-amber-100/90">
                   <p>
-                    We&apos;re looking for the best new creepypasta out there — the kind that
-                    hearkens back to the golden days of internet horror. Think{' '}
+                    Think{' '}
                     {CONTEST_INSPIRATIONS.map((name, i) => (
                       <span key={name}>
                         <em className="not-italic text-amber-50 font-medium">{name}</em>
@@ -876,8 +983,8 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
                             : '.'}
                       </span>
                     ))}{' '}
-                    Our judges will select three winners based on atmosphere, originality,
-                    voice, and how well the story captures that classic creepypasta feeling.
+                    Judges score entries on atmosphere, originality, voice, and how well
+                    the story captures that classic creepypasta feeling.
                   </p>
                 </div>
 
@@ -1092,6 +1199,44 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
             </>
           )}
 
+          {/* Persistent auth-required error for contest entries.
+              Stays visible until the user signs in, so it's still
+              there if they dismissed the auth modal. */}
+          {authRequiredError && isContest && !isAuthenticated && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              role="alert"
+              className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/[0.1] px-4 py-3"
+            >
+              <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-3.5 h-3.5 text-red-300" />
+              </div>
+              <div className="text-[12.5px] leading-relaxed text-red-100">
+                <p className="font-semibold text-red-50">Must be logged in to submit.</p>
+                <p className="text-red-200/90">
+                  Sign in or create a free Eerie.fm account to enter the contest. Your
+                  draft is saved on this device.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAuth(
+                      'login',
+                      null,
+                      'Sign in or create a free account to enter the contest.',
+                    )
+                  }
+                  className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-semibold text-red-50 hover:text-white underline underline-offset-2 decoration-red-300/40 hover:decoration-red-200/70 transition-colors"
+                >
+                  <LogIn className="w-3 h-3" />
+                  Sign in or create account
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* Submit */}
           <Button
             type="submit"
@@ -1117,6 +1262,16 @@ function ContactForm({ initialCategory = '', initialShow = '' }) {
 
           {status === 'error' && (
             <p className="text-xs text-red-400 text-center">Something went wrong. Please try again or email us directly.</p>
+          )}
+
+          {/* Reassurance that the user's typing isn't going to
+              evaporate. Only shown once the form is actually dirty so
+              a freshly opened blank form isn't cluttered. */}
+          {isDraftDirty(form) && (
+            <p className="flex items-center justify-center gap-1.5 text-[11px] text-zinc-600 text-center">
+              <Save className="w-3 h-3" />
+              Draft saved on this device — your entry will still be here if you refresh or sign in.
+            </p>
           )}
 
           <p className="text-[11px] text-zinc-600 text-center">
