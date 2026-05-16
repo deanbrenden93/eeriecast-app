@@ -182,10 +182,22 @@ function SlideContent({ slide, podcast, onPlay, navigate }) {
         ))}
       </h1>
 
-      {/* Description — reserve space for the longest slide description so
-          the CTA row below stays pinned to the same vertical position
-          across slides (no jump during the cross-fade). */}
-      <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mb-7 min-h-[6.5rem]">
+      {/* Description — fixed-height slot capped at 4 lines so every
+          slide occupies exactly the same vertical space regardless of
+          how its text wraps at the current viewport width. Shorter
+          descriptions get bottom whitespace; longer ones (e.g. the
+          Dogwood blurb) clip via line-clamp rather than pushing the
+          CTA row — which used to leave the hero visibly taller on the
+          longer slides at narrow widths. */}
+      <p
+        className="text-sm text-zinc-400 leading-relaxed max-w-sm mb-7 overflow-hidden"
+        style={{
+          height: '7rem',
+          display: '-webkit-box',
+          WebkitLineClamp: 4,
+          WebkitBoxOrient: 'vertical',
+        }}
+      >
         {slide.description || ''}
       </p>
 
@@ -384,19 +396,19 @@ export default function FeaturedHero({ onPlay }) {
     setPaused(false);
   }, [slides.length]);
 
-  // Hero height baseline. The text column itself now reserves constant
-  // vertical space (2-line title slot + ~6.5rem description slot) so
-  // every slide renders at the same height regardless of its actual
-  // title/description length. That means swapping between slides
-  // doesn't cause the section to resize, but we still use `minHeight`
-  // (not a fixed `height`) so on unusually narrow or short viewports
-  // the section can grow to fit rather than clipping the badge.
-  const heroMinHeight = 'clamp(400px, 48vh, 500px)';
+  // Hero height baseline. The text column now occupies fully fixed
+  // vertical space (2-line title slot + 7rem / 4-line clamped
+  // description slot) and the section is locked to a fixed height so
+  // every slide renders at exactly the same overall height. Previously
+  // this used `minHeight`, which let longer descriptions push the
+  // section taller on narrow viewports — causing the visible "clunky"
+  // size shift between slides during the cross-fade.
+  const heroHeight = 'clamp(440px, 50vh, 520px)';
 
   return (
     <section
       className="relative w-full overflow-hidden flex flex-col justify-end"
-      style={{ minHeight: heroMinHeight }}
+      style={{ height: heroHeight }}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={handleTouchStart}
