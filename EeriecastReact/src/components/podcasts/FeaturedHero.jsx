@@ -6,6 +6,13 @@ import { Play, ChevronRight, BookOpen, Crown } from "lucide-react";
 import { usePodcasts } from "@/context/PodcastContext.jsx";
 import { useUser } from "@/context/UserContext.jsx";
 import dogwoodHero from "@/assets/heroes/dogwood.png";
+import { CONTEST_ACTIVE } from "@/pages/Help";
+
+// Delete After Reading podcast cover (Transistor CDN — same host as
+// the rest of the show artwork). Used as the editorial backdrop for
+// the May 2026 writing-contest hero slide.
+const DELETE_AFTER_READING_COVER =
+  "https://img.transistorcdn.com/Y12ElWzOOSJqnpIW7veZrkEFJYrNok1i-k1knbJtGXE/rs:fill:0:0:1/w:1400/h:1400/q:60/mb:500000/aHR0cHM6Ly9pbWct/dXBsb2FkLXByb2R1/Y3Rpb24udHJhbnNp/c3Rvci5mbS84ODYy/OTViMTU5ZTE1ZTJl/MWUzOWQ4ZGU5MDBj/NDg5YS5qcGc.jpg";
 
 /* ═══════════════════════════════════════════════════════════════════
    HERO SLIDES CONFIG
@@ -15,6 +22,33 @@ import dogwoodHero from "@/assets/heroes/dogwood.png";
    ═══════════════════════════════════════════════════════════════════ */
 
 const HERO_SLIDES = [
+  // ── May 2026 Delete After Reading writing-contest hero ─────────
+  // Sits at the top of the rotation while the contest is open.
+  // Flipping CONTEST_ACTIVE off in Help.jsx removes this slide
+  // everywhere — the dropdown entry, the in-form panel, and this
+  // hero — so the contest can be retired with a single boolean.
+  ...(CONTEST_ACTIVE
+    ? [
+        {
+          id: 'may-contest-2026',
+          type: 'promo',
+          badge: 'May Writing Contest',
+          title: 'Pen a New\nCreepypasta',
+          description:
+            'Channel the golden days of internet horror. Submit your story by the end of May 2026 — three winners earn cash prizes plus Eerie.fm Premium.',
+          ctaText: 'Enter Contest',
+          ctaIcon: 'book',
+          ctaTo: '/contest',
+          secondaryCta: null,
+          // Borrows the Delete After Reading crimson from
+          // lib/showColors.js so the slide reads as part of the
+          // show's identity, complementing the red cover backdrop.
+          accent: '#ef4444',
+          accentAlt: '#b91c1c',
+          heroImage: DELETE_AFTER_READING_COVER,
+        },
+      ]
+    : []),
   {
     id: 'premium-promo',
     type: 'promo',
@@ -44,20 +78,6 @@ const HERO_SLIDES = [
     secondaryCta: { text: 'View Show' },
     accent: '#22d3ee',
     accentAlt: '#0891b2',
-  },
-  {
-    slug: 'night-watchers',
-    // Night Watchers is tagged Mature on the backend — flag the slide so we
-    // skip it entirely for users who have mature content turned off.
-    mature: true,
-    badge: 'Fan Favorite',
-    title: 'Night\nWatchers',
-    description:
-      'The creepy, the weird, and the downright hilarious. Scary stories, pop culture, and deliciously laughable tales centering around all things weird.',
-    ctaText: 'Listen Now',
-    secondaryCta: { text: 'View Show' },
-    accent: '#a855f7',
-    accentAlt: '#7e22ce',
   },
   {
     slug: 'dogwood-a-southern-gothic-body-horror-novel',
@@ -293,11 +313,13 @@ export default function FeaturedHero({ onPlay }) {
   /* Resolve slide podcasts from the API data — strict slug match only.
      Slides advertising shows with explicit language remain in rotation:
      the gating now lives on the show page itself (via the explicit
-     language modal). Membership-promo slides are dropped for premium
-     subscribers so they never see "become a member" CTAs. */
+     language modal). The membership-promo slide is dropped for
+     premium subscribers (so they never see "become a member" CTAs),
+     but other promo-type slides — like the writing contest — stay in
+     rotation for everyone since they're relevant regardless of tier. */
   const slides = useMemo(() => {
     let source = HERO_SLIDES;
-    if (isPremium) source = source.filter((s) => s.type !== 'promo');
+    if (isPremium) source = source.filter((s) => s.id !== 'premium-promo');
     return source.map((slide) => {
       if (slide.type === 'promo') return { ...slide, podcast: null };
       if (!podcasts || podcasts.length === 0) return { ...slide, podcast: null };
